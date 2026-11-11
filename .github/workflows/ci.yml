@@ -2,8 +2,10 @@
 # Same commands as AGENTS.md section 0. No broker SDK, credential or running app is needed.
 name: CI
 
+# Pushes to main only: a release tag points at a commit main already tested, so it does not run the suite again.
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
