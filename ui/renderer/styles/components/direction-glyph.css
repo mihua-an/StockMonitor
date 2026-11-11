@@ -1,0 +1,29 @@
+/* The trend glyphs (js/core/components/direction_glyph.js): a rising or falling line after a short label's text, stroked
+ * in the user's 漲 / 跌 colour (--price-up-color / --price-down-color, which follow the 紅漲 / 綠漲 setting live). */
+.direction-glyph {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-left: 3px;
+  vertical-align: -2px;
+  pointer-events: none;
+}
+
+.direction-glyph > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.direction-glyph[data-direction="up"] {
+  color: var(--price-up-color);
+}
+
+.direction-glyph[data-direction="down"] {
+  color: var(--price-down-color);
+}

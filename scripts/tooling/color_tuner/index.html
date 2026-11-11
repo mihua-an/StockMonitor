@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><title>紅綠調色工具</title>
+<link rel="stylesheet" href="../../../ui/renderer/styles/index.css">
+<style>
+  html, body { height: 100%; margin: 0; }
+  body { background: #07111f; color: #e5e7eb; font-family: "Microsoft JhengHei", "Segoe UI", sans-serif; overflow: hidden; }
+  .tuner { display: grid; grid-template-columns: 500px minmax(0, 1fr) 380px; height: 100vh; }
+  .col { min-height: 0; overflow: auto; border-right: 1px solid #1c2b3b; }
+  .col:last-child { border-right: 0; }
+  h2 { font-size: 14px; margin: 12px 12px 6px; color: #c9d6e3; }
+  .hint { font-size: 12px; color: #7f93a6; margin: 0 12px 10px; line-height: 1.6; }
+  /* palette chips */
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 12px 12px; }
+  .chip { width: 22px; height: 22px; border-radius: 4px; border: 1px solid #ffffff30; cursor: grab; }
+  .chip.big { width: 34px; height: 34px; }
+  /* token rows */
+  .tok { display: grid; grid-template-columns: 34px 1fr; gap: 8px; padding: 8px 12px; border-top: 1px solid #142233; }
+  .tok.master { background: #0d1a29; }
+  .tok.overridden .name::after { content: "（已個別調整）"; color: #f0c674; font-weight: 400; margin-left: 4px; }
+  .sw { width: 34px; height: 34px; border-radius: 6px; border: 2px solid #ffffff40; cursor: grab; position: relative; }
+  .sw.drop { outline: 2px dashed #38bdf8; outline-offset: 2px; }
+  .sw input[type=color] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .name { font-size: 12.5px; font-weight: 700; color: #e3ecf4; }
+  .meta { font-size: 11px; color: #7f93a6; margin-top: 2px; }
+  .meta .old { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin: 0 3px; border: 1px solid #ffffff30; }
+  .sliders { display: grid; grid-template-columns: 14px 1fr 34px; gap: 2px 6px; align-items: center; margin-top: 6px; font-size: 11px; color: #91a7bd; }
+  .sliders input[type=range] { width: 100%; height: 14px; }
+  .row-actions { display: flex; gap: 6px; margin-top: 6px; }
+  .row-actions button, .tool-btn { background: #142233; color: #c9d6e3; border: 1px solid #263b57; border-radius: 4px; font-size: 11px; padding: 2px 8px; cursor: pointer; }
+  .row-actions button:hover, .tool-btn:hover { background: #1c2f45; }
+  details.where { margin-top: 4px; font-size: 10.5px; color: #6f8396; }
+  details.where summary { cursor: pointer; }
+  details.where div { white-space: pre-wrap; word-break: break-all; max-height: 160px; overflow: auto; }
+  .group-title { margin: 14px 12px 4px; font-size: 13px; color: #9fb3c8; }
+  /* preview */
+  .preview { padding: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: start; }
+  .pv-pane { background: #07111f; border: 1px solid #263b57; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
+  .pv-pane > .pv-title { font-size: 12px; padding: 6px 10px; border-bottom: 1px solid #263b57; color: #e6eef8; }
+  .pv-host { position: relative; display: flex; flex-direction: column; min-height: 0; }
+  .pv-wide { grid-column: 1 / -1; }
+  canvas.trend { display: block; width: 100%; height: 260px; }
+  .quote-strip { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .quote-strip th { color: #a9bdd2; font-weight: 600; font-size: 12px; padding: 4px 8px; border-bottom: 1px solid #2b4058; text-align: center; }
+  .quote-strip td { padding: 4px 8px; text-align: center; border-bottom: 1px solid rgba(38, 59, 87, .45); }
+  /* output */
+  textarea.out { width: calc(100% - 24px); margin: 0 12px; height: 62vh; background: #050b14; color: #d6e3f0; border: 1px solid #263b57; border-radius: 6px; font: 12px/1.5 Consolas, monospace; resize: vertical; }
+  .out-actions { display: flex; gap: 8px; margin: 8px 12px; flex-wrap: wrap; }
+  .flash-note { font-size: 11px; color: #f0c674; margin: 0 12px; min-height: 16px; }
+</style></head>
+<body>
+<div class="tuner">
+  <section class="col" id="controls">
+    <h2>色塊與調整</h2>
+    <p class="hint">拖拉：把上方任一色塊（或任一列左邊的色塊）拖到另一列的色塊上就換成那個顏色。點色塊可開取色器；下方 H／S／L 滑桿調色相、飽和度、亮度。「定位」會讓那個顏色閃成洋紅色 1.5 秒，看它在畫面哪裡。</p>
+    <div class="group-title">原本出現過的所有紅綠（點不到，拖拉用）</div>
+    <div class="chips" id="chips"></div>
+    <div id="tokens"></div>
+  </section>
+  <section class="col">
+    <h2>模擬畫面（實際的 styles 與元件）</h2>
+    <div class="preview" id="preview">
+      <div class="pv-pane pv-wide"><div class="pv-title">個股走勢（含漲停／跌停線、成交量柱）</div><canvas class="trend" id="trend"></canvas></div>
+      <div class="pv-pane"><div class="pv-title">買賣報價 — 漲停鎖住</div><div class="pv-host" id="obUp" style="height:420px"></div></div>
+      <div class="pv-pane"><div class="pv-title">買賣報價 — 跌停鎖住</div><div class="pv-host" id="obDown" style="height:420px"></div></div>
+      <div class="pv-pane"><div class="pv-title">成交明細（含漲停、跌停、大單）</div><div class="pv-host" id="ticks" style="height:360px"></div></div>
+      <div class="pv-pane"><div class="pv-title">價量（大單／小單買賣）</div><div class="pv-host price-flow" id="flow" style="height:360px;overflow:auto"></div></div>
+      <div class="pv-pane pv-wide"><div class="pv-title">商品列 現價（上漲／下跌／平盤／漲停／跌停）</div><div class="pv-host"><table class="quote-strip"><thead><tr><th>上漲</th><th>下跌</th><th>平盤</th><th>漲停</th><th>跌停</th></tr></thead><tbody><tr id="strip"></tr></tbody></table></div></div>
+    </div>
+  </section>
+  <section class="col">
+    <h2>輸出結果（貼給 Claude）</h2>
+    <p class="hint">調好後按「複製」，整段貼回對話即可。沒有個別調整的色票會跟著主色。</p>
+    <div class="out-actions">
+      <button class="tool-btn" id="copy">複製</button>
+      <button class="tool-btn" id="resetAll">全部改回跟主色</button>
+      <button class="tool-btn" id="restoreOld">全部改回最早的原色</button>
+    </div>
+    <div class="flash-note" id="note"></div>
+    <textarea class="out" id="out" readonly></textarea>
+  </section>
+</div>
+<script type="module">
+const fs = require("node:fs");
+const path = require("node:path");
+const HERE = decodeURIComponent(new URL(".", location.href).pathname).replace(/^\/([A-Za-z]:)/, "$1");
+const ROOT = path.resolve(HERE, "../../..");
+const BASE = "../../../ui/renderer/";
+const root = document.documentElement;
+
+// ---------- the tokens and where they are used (read from the stylesheets themselves)
+// styles/index.css imports the files of each concern in cascade order: read it as the one text the cascade sees.
+const readCss = (f) => fs.readFileSync(path.join(ROOT, "ui/renderer", f), "utf8")
+  .replace(/@import url\("([^"]+)"\)[^;]*;/g, (_m, rel) => readCss(path.posix.join(path.posix.dirname(f), rel)));
+const css = Object.fromEntries(["styles/index.css", "styles/windows/trade.css"].map((f) => [f, readCss(f)]));
+const defs = [...css["styles/index.css"].matchAll(/^\s*(--mc-(red|green)-\d\d):\s*[^;]+;\s*\/\*\s*was\s*(#[0-9a-f]{6})\s*\*\//gim)]
+  .map((m) => ({ token: m[1], family: m[2], old: m[3].toLowerCase() }));
+const where = {};
+for (const [file, text] of Object.entries(css)) {
+  const clean = text.replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const m of clean.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selector = m[1].trim().replace(/\s+/g, " ");
+    for (const v of m[2].matchAll(/var\((--mc-(?:red|green)-\d\d)\)/g)) {
+      if (selector.startsWith(":root")) continue;
+      (where[v[1]] ||= []).push(`${file === "styles/index.css" ? "" : `[${file}] `}${selector.slice(0, 140)}`);
+    }
+  }
+}
+// The aliases the components read: what each one is.
+const ALIAS = { "--price-up-color": "上漲文字（走勢線、價格、價量）", "--price-down-color": "下跌文字（走勢線、價格、價量）",
+  "--limit-up-bg": "漲停底色", "--limit-down-bg": "跌停底色" };
+const aliasOf = {};
+for (const [alias] of Object.entries(ALIAS)) {
+  const m = new RegExp(`${alias}:\\s*var\\((--mc-[a-z]+-\\d\\d)\\)`).exec(css["styles/index.css"]);
+  if (m) aliasOf[m[1]] = [...(aliasOf[m[1]] || []), alias];
+}
+
+// ---------- colour maths
+const hex2rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const rgb2hex = (r, g, b) => `#${[r, g, b].map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, "0")).join("")}`;
+function hex2hsl(h) {
+  let [r, g, b] = hex2rgb(h).map((v) => v / 255);
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
+  let hue = 0, s = 0;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    hue = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    hue *= 60;
+  }
+  return [Math.round(hue), Math.round(s * 100), Math.round(l * 100)];
+}
+function hsl2hex(h, s, l) {
+  s /= 100; l /= 100;
+  const k = (n) => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+  const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return rgb2hex(f(0) * 255, f(8) * 255, f(4) * 255);
+}
+
+// ---------- state
+const masterDefault = {
+  red: /--market-red:\s*(#[0-9a-f]{6})/i.exec(css["styles/index.css"])?.[1] || "#c4313a",
+  green: /--market-green:\s*(#[0-9a-f]{6})/i.exec(css["styles/index.css"])?.[1] || "#1b7f43",
+};
+const state = { master: { ...masterDefault }, own: {} };   // own[token] = #hex when it no longer follows the master
+const valueOf = (token) => state.own[token] || state.master[defs.find((d) => d.token === token)?.family];
+
+function apply() {
+  root.style.setProperty("--market-red", state.master.red);
+  root.style.setProperty("--market-green", state.master.green);
+  for (const d of defs) {
+    if (state.own[d.token]) root.style.setProperty(d.token, state.own[d.token]);
+    else root.style.setProperty(d.token, `var(--market-${d.family})`);
+  }
+  refreshRows();
+  drawTrend();
+  writeOutput();
+}
+
+// ---------- controls
+function rowHtml({ token, label, family, old, master }) {
+  const users = where[token] || [];
+  const aliases = (aliasOf[token] || []).map((a) => `${a}＝${ALIAS[a]}`).join("；");
+  return `<div class="tok${master ? " master" : ""}" data-token="${token}" data-family="${family}">
+    <div class="sw" draggable="true" data-sw><input type="color"></div>
+    <div><div class="name">${label}</div>
+      <div class="meta">${master ? "所有未個別調整的色票都跟它" : `原色<span class="old" style="background:${old}"></span>${old} · ${users.length} 處使用${aliases ? ` · ${aliases}` : ""}`}</div>
+      <div class="sliders">
+        <span>H</span><input type="range" min="0" max="360" data-hsl="0"><span data-hv="0"></span>
+        <span>S</span><input type="range" min="0" max="100" data-hsl="1"><span data-hv="1"></span>
+        <span>L</span><input type="range" min="0" max="100" data-hsl="2"><span data-hv="2"></span>
+      </div>
+      <div class="row-actions"><button data-act="locate">定位</button>${master ? "" : '<button data-act="follow">跟主色</button><button data-act="old">原色</button>'}</div>
+      ${users.length ? `<details class="where"><summary>用在哪裡（${users.length}）</summary><div>${users.join("\n")}</div></details>` : ""}
+    </div></div>`;
+}
+const masterKey = (token) => token === "--market-red" ? "red" : token === "--market-green" ? "green" : null;
+function currentOf(token) { return masterKey(token) ? state.master[masterKey(token)] : valueOf(token); }
+function setColor(token, hex) {
+  const key = masterKey(token);
+  if (key) state.master[key] = hex; else state.own[token] = hex;
+  apply();
+}
+function refreshRows() {
+  for (const row of document.querySelectorAll(".tok")) {
+    const token = row.dataset.token, hex = currentOf(token);
+    row.querySelector("[data-sw]").style.background = hex;
+    row.querySelector("input[type=color]").value = hex;
+    const hsl = hex2hsl(hex);
+    row.querySelectorAll("[data-hsl]").forEach((input) => { if (document.activeElement !== input) input.value = hsl[input.dataset.hsl]; });
+    row.querySelectorAll("[data-hv]").forEach((span) => { span.textContent = hsl[span.dataset.hv]; });
+    row.classList.toggle("overridden", Boolean(state.own[token]));
+  }
+}
+
+const tokensHost = document.getElementById("tokens");
+tokensHost.innerHTML = [
+  '<div class="group-title">主色</div>',
+  rowHtml({ token: "--market-red", label: "主色・紅", family: "red", master: true }),
+  rowHtml({ token: "--market-green", label: "主色・綠", family: "green", master: true }),
+  `<div class="group-title">紅色色票（${defs.filter((d) => d.family === "red").length} 個，淺 → 深）</div>`,
+  ...defs.filter((d) => d.family === "red").map((d) => rowHtml({ ...d, label: d.token })),
+  `<div class="group-title">綠色色票（${defs.filter((d) => d.family === "green").length} 個，淺 → 深）</div>`,
+  ...defs.filter((d) => d.family === "green").map((d) => rowHtml({ ...d, label: d.token })),
+].join("");
+
+const chips = [...new Set([masterDefault.red, masterDefault.green, ...defs.map((d) => d.old)])];
+document.getElementById("chips").innerHTML = chips.map((c, i) => `<div class="chip${i < 2 ? " big" : ""}" draggable="true" data-color="${c}" title="${c}" style="background:${c}"></div>`).join("");
+
+document.addEventListener("dragstart", (e) => {
+  const chip = e.target.closest?.(".chip");
+  const sw = e.target.closest?.("[data-sw]");
+  const color = chip ? chip.dataset.color : sw ? currentOf(sw.closest(".tok").dataset.token) : null;
+  if (color) { e.dataTransfer.setData("text/plain", color); e.dataTransfer.effectAllowed = "copy"; }
+});
+document.addEventListener("dragover", (e) => { const sw = e.target.closest?.("[data-sw]"); if (sw) { e.preventDefault(); sw.classList.add("drop"); } });
+document.addEventListener("dragleave", (e) => e.target.closest?.("[data-sw]")?.classList.remove("drop"));
+document.addEventListener("drop", (e) => {
+  const sw = e.target.closest?.("[data-sw]");
+  if (!sw) return;
+  e.preventDefault(); sw.classList.remove("drop");
+  const color = e.dataTransfer.getData("text/plain");
+  if (/^#[0-9a-f]{6}$/i.test(color)) setColor(sw.closest(".tok").dataset.token, color.toLowerCase());
+});
+tokensHost.addEventListener("input", (e) => {
+  const row = e.target.closest(".tok"); if (!row) return;
+  const token = row.dataset.token;
+  if (e.target.type === "color") setColor(token, e.target.value);
+  if (e.target.dataset.hsl !== undefined) {
+    const hsl = [...row.querySelectorAll("[data-hsl]")].map((i) => Number(i.value));
+    setColor(token, hsl2hex(...hsl));
+  }
+});
+let flashTimer = null;
+tokensHost.addEventListener("click", (e) => {
+  const act = e.target.dataset?.act; if (!act) return;
+  const token = e.target.closest(".tok").dataset.token;
+  const def = defs.find((d) => d.token === token);
+  if (act === "follow") { delete state.own[token]; apply(); }
+  if (act === "old" && def) setColor(token, def.old);
+  if (act === "locate") {
+    clearTimeout(flashTimer);
+    root.style.setProperty(token, "#ff00ff");
+    drawTrend();
+    document.getElementById("note").textContent = `${token} 暫時顯示成洋紅色`;
+    flashTimer = setTimeout(() => { document.getElementById("note").textContent = ""; apply(); }, 1500);
+  }
+});
+document.getElementById("resetAll").onclick = () => { state.own = {}; state.master = { ...masterDefault }; apply(); };
+document.getElementById("restoreOld").onclick = () => { state.own = Object.fromEntries(defs.map((d) => [d.token, d.old])); apply(); };
+document.getElementById("copy").onclick = async () => {
+  await navigator.clipboard.writeText(document.getElementById("out").value);
+  document.getElementById("note").textContent = "已複製";
+  setTimeout(() => { document.getElementById("note").textContent = ""; }, 1500);
+};
+
+function writeOutput() {
+  const own = defs.filter((d) => state.own[d.token]);
+  const lines = [
+    "【紅綠調色結果】",
+    `主色・紅 ${state.master.red}（HSL ${hex2hsl(state.master.red).join(", ")}）`,
+    `主色・綠 ${state.master.green}（HSL ${hex2hsl(state.master.green).join(", ")}）`,
+    own.length ? `個別調整 ${own.length} 個（其餘 ${defs.length - own.length} 個跟主色）：` : `沒有個別調整，${defs.length} 個色票全部跟主色。`,
+    ...own.map((d) => `  ${d.token} ${state.own[d.token]}（原 ${d.old}；${(where[d.token] || []).length} 處${aliasOf[d.token] ? `；${aliasOf[d.token].map((a) => ALIAS[a]).join("、")}` : ""}）`),
+    "",
+    ":root {",
+    `  --market-red: ${state.master.red};`,
+    `  --market-green: ${state.master.green};`,
+    ...defs.map((d) => `  ${d.token}: ${state.own[d.token] || `var(--market-${d.family})`};`),
+    "}",
+  ];
+  document.getElementById("out").value = lines.join("\n");
+}
+
+// ---------- preview: real components
+globalThis.localStorage ??= { getItem: () => null, setItem: () => {} };
+const { OrderBookComponent } = await import(`${BASE}js/core/components/orderbook_component.js`);
+const { TickDetailsComponent } = await import(`${BASE}js/core/components/tick_details_component.js`);
+const { createDashboardContext } = await import(`${BASE}js/core/dashboard_context.js`);
+const { renderLargeSmallLadder } = await import(`${BASE}js/core/price_flow_ladder.js`);
+const { renderRealtimePriceCell } = await import(`${BASE}js/features/realtime/components/realtime_quote_table.js`);
+const context = createDashboardContext({ id: "color-tuner", mode: "live" });
+const REF = 625, UP = 687, DOWN = 563;
+
+function book(host, { last, bids, asks, outside, high, low }) {
+  const ob = new OrderBookComponent({ manual: true });
+  ob.mount({ host, context });
+  ob.update({ availability: "AVAILABLE", code: "2327", displayLabel: "國巨", titlePrimary: "國巨", titleSecondary: "2327",
+    lastPrice: last, prevClose: REF, priceReference: REF, limitUp: UP, limitDown: DOWN, dayHigh: high, dayLow: low,
+    bidLevels: bids.map(([price, volume]) => ({ price, volume, quoteState: price ? "PRICE" : "EMPTY" })),
+    askLevels: asks.map(([price, volume]) => ({ price, volume, quoteState: price ? "PRICE" : "EMPTY" })),
+    outsideRatioPct: outside, insideTradeVolume: 100 - outside, outsideTradeVolume: outside,
+    depthBidTotal: bids.reduce((s, [, v]) => s + v, 0), depthAskTotal: asks.reduce((s, [, v]) => s + v, 0), bookDepth: 5, showDepthTotals: true });
+}
+book(document.getElementById("obUp"), { last: UP, high: UP, low: 640, outside: 72.4,
+  bids: [[686, 375], [685, 312], [684, 591], [683, 146], [682, 360]], asks: [[UP, 43], [0, 0], [0, 0], [0, 0], [0, 0]] });
+book(document.getElementById("obDown"), { last: DOWN, high: 598, low: DOWN, outside: 18.2,
+  bids: [[DOWN, 8812], [0, 0], [0, 0], [0, 0], [0, 0]], asks: [[564, 120], [565, 88], [566, 240], [567, 61], [568, 95]] });
+
+const tick = new TickDetailsComponent({ manual: true });
+tick.mount({ host: document.getElementById("ticks"), context });
+const tickRows = [[UP, 120, "BUY", true], [686, 2, "SELL"], [686, 13, "BUY"], [641, 5, "SELL"], [625, 1, "BUY"], [619, 31, "SELL", true], [DOWN, 88, "SELL"], [600, 9, "BUY"]];
+tick.update({ logicalCode: "2327", referencePrice: REF, limitUp: UP, limitDown: DOWN,
+  rows: tickRows.map(([price, volume, side, large], i) => ({ ingest_sequence: 100 - i, datetime: `2026-10-08T13:24:${String(59 - i).padStart(2, "0")}+08:00`, price, volume, trade_side: side, isLarge: Boolean(large) })) });
+
+const mk = (price, ls, lb, ss, sb) => ({ price, largeSell: ls, largeBuy: lb, smallSell: ss, smallBuy: sb, out: 0, in: 0, otherBuy: 0, otherSell: 0 });
+document.getElementById("flow").innerHTML = renderLargeSmallLadder(
+  [mk(UP, 0, 553, 0, 163), mk(684, 85, 269, 119, 322), mk(652, 204, 719, 525, 910), mk(641, 296, 277, 822, 779), mk(625, 335, 84, 276, 309), mk(601, 375, 25, 130, 120), mk(DOWN, 626, 30, 234, 0)],
+  { currentPrice: 641, referencePrice: REF });
+
+document.getElementById("strip").innerHTML = [641, 610, REF, UP, DOWN].map((p) => renderRealtimePriceCell(p, REF, UP, DOWN)).join("");
+
+// ---------- trend: a simple canvas that reads the same variables the real chart does
+function cssVar(name) { return getComputedStyle(root).getPropertyValue(name).trim(); }
+function drawTrend() {
+  const canvas = document.getElementById("trend");
+  const w = canvas.clientWidth, h = canvas.clientHeight, dpr = window.devicePixelRatio || 1;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = "#07111f"; ctx.fillRect(0, 0, w, h);
+  const up = cssVar("--price-up-color"), down = cssVar("--price-down-color"), upBg = cssVar("--limit-up-bg"), downBg = cssVar("--limit-down-bg");
+  const left = 10, right = w - 56, top = 14, bottom = h - 70, vb = h - 8;
+  const pts = [625, 631, 640, 652, 660, 668, 679, 687, 687, 684, 670, 655, 640, 628, 619, 605, 590, 578, 566, 563, 563, 571, 584, 597, 610, 622, 633, 641];
+  const y = (p) => top + (UP - p) / (UP - DOWN) * (bottom - top);
+  const x = (i) => left + i * (right - left) / (pts.length - 1);
+  const dash = (py, color) => { ctx.setLineDash([4, 4]); ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(left, py); ctx.lineTo(right, py); ctx.stroke(); ctx.setLineDash([]); };
+  dash(y(UP), upBg); dash(y(DOWN), downBg); dash(y(REF), "#64748b");
+  ctx.lineWidth = 1.8;
+  for (let i = 1; i < pts.length; i++) {
+    ctx.strokeStyle = (pts[i - 1] + pts[i]) / 2 >= REF ? up : down;
+    ctx.beginPath(); ctx.moveTo(x(i - 1), y(pts[i - 1])); ctx.lineTo(x(i), y(pts[i])); ctx.stroke();
+  }
+  const label = (p, bg) => { ctx.fillStyle = bg; ctx.fillRect(right + 6, y(p) - 9, 44, 18); ctx.fillStyle = "#fff"; ctx.font = "bold 11px Segoe UI"; ctx.textAlign = "center"; ctx.fillText(String(p), right + 28, y(p) + 4); };
+  label(UP, upBg); label(DOWN, downBg);
+  ctx.fillStyle = "#cbd5e1"; ctx.font = "11px Segoe UI"; ctx.textAlign = "center"; ctx.fillText(String(REF), right + 28, y(REF) + 4);
+  pts.forEach((p, i) => { const vh = 6 + ((i * 37) % 44); ctx.fillStyle = i && p < pts[i - 1] ? down : up; ctx.fillRect(x(i) - 5, vb - vh, 10, vh); });
+}
+window.addEventListener("resize", drawTrend);
+apply();
+</script>
+</body></html>

@@ -1,0 +1,531 @@
+/* Resizable workspaces: splitters, panes and their drag states, dashboard slots, pop-out and detached component hosts. */
+
+/* Shared Slot/Component hosts and detached renderer shell. */
+[data-component-slot] {
+  min-width: 0;
+  min-height: 0;
+}
+
+.dashboard-slot-state {
+  width: 100%;
+  height: 100%;
+  min-height: 120px;
+  display: grid;
+  place-items: center;
+  background: var(--surface-panel);
+}
+
+.detached-component-page {
+  margin: 0;
+  min-width: 100vw;
+  min-height: 100vh;
+  overflow: hidden;
+  background: var(--surface-panel);
+}
+
+.detached-component-host {
+  width: 100vw;
+  height: 100vh;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.detached-component-host > * {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  border-radius: 0;
+  box-sizing: border-box;
+}
+
+.dashboard-slot-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dashboard-add-page {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  padding: 8px 9px 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  background: var(--surface-panel);
+  color: var(--blue-100);
+}
+
+.dashboard-add-title {
+  margin: 0 2px 7px;
+  color: var(--blue-100);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .025em;
+}
+
+.dashboard-add-matrix {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  border: 1px solid var(--blue-800x-20);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--surface-subrow);
+  box-shadow: inset 0 1px 0 var(--white-a02);
+}
+
+.dashboard-add-row {
+  display: contents;
+}
+
+.dashboard-add-cell {
+  min-width: 0;
+  min-height: 34px;
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--blue-700x-a58);
+  background: var(--blue-900x-a72);
+}
+
+.dashboard-add-cell:nth-child(2n) {
+  border-left: 1px solid var(--blue-800x-20);
+}
+
+.dashboard-add-header {
+  min-height: 27px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  color: var(--sky-300x);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .025em;
+  background: var(--blue-900x-4);
+}
+
+.dashboard-add-feature-btn {
+  flex: 1 1 68px;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 25px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border: 1px solid var(--blue-700x-5);
+  border-radius: 4px;
+  background: var(--blue-900x-13);
+  color: var(--sky-50x);
+  font-size: 10.5px;
+  font-weight: 650;
+  line-height: 1.15;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color .12s ease, background-color .12s ease, color .12s ease;
+}
+
+.dashboard-add-feature-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dashboard-add-feature-btn:hover:not(:disabled),
+.dashboard-add-feature-btn:focus-visible:not(:disabled) {
+  border-color: var(--sky-400);
+  background: var(--sky-800x-3);
+  color: var(--white);
+  outline: none;
+}
+
+.dashboard-add-feature-btn.is-added,
+.dashboard-add-feature-btn:disabled {
+  border-color: var(--sky-800x-10);
+  background: var(--surface-header);
+  color: var(--slate-500x);
+  cursor: default;
+  opacity: .72;
+}
+
+.dashboard-add-feature-state {
+  flex: 0 0 auto;
+  color: var(--sky-600x-6);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.dashboard-add-cell-empty {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 1px;
+}
+
+/* ================================================================
+   Multi-symbol realtime workspace (workspace_view.html/.js)
+   ================================================================ */
+body.workspace-page {
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-app);
+  color: var(--gray-200);
+  overflow: hidden;
+}
+
+/* The columns start in the window's centre and grow outwards; six fill it. */
+.workspace-columns {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  justify-content: safe center;
+  gap: 8px;
+  padding: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.workspace-columns > * {
+  flex: 0 0 calc((100% - 40px) / 6);
+  min-width: 240px;
+  box-sizing: border-box;
+}
+
+.workspace-columns.is-drop-target {
+  outline: 2px dashed var(--blue-400);
+  outline-offset: -5px;
+  border-radius: var(--pane-radius);
+}
+
+/* What the window says with no column at all. */
+.workspace-empty-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--slate-600);
+  border-radius: var(--pane-radius);
+  color: var(--slate-400);
+  font-size: 13px;
+}
+
+/* One product, one card: 走勢 (with the product's header), 買賣報價 and 成交明細, a hairline between them. */
+.workspace-column {
+  --product-quote-header-end: 18px;
+  position: relative;
+}
+
+.workspace-column.is-drop-target {
+  outline: 2px solid var(--blue-400);
+  outline-offset: -2px;
+}
+
+.workspace-column.is-moving {
+  opacity: .45;
+}
+
+.workspace-column-remove {
+  position: absolute;
+  top: 8px;
+  right: 2px;
+  z-index: 2;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--slate-400);
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.workspace-column-remove:hover {
+  background: var(--slate-800);
+  color: var(--slate-100);
+}
+
+.workspace-column-panel {
+  overflow: hidden;
+  min-height: 0;
+  flex-basis: 0;
+  flex-shrink: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace-column-panel + .workspace-column-panel {
+  border-top: 1px solid var(--pane-border);
+}
+
+.workspace-column-trend {
+  flex-grow: 1.12;
+}
+
+.workspace-column-orderbook {
+  flex-grow: 1.08;
+}
+
+.workspace-column-trades {
+  flex-grow: 1.05;
+}
+
+/* Workspace-only recent trades: no Title/splitter/page rail is created. */
+.workspace-trades-root {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface-panel);
+  box-sizing: border-box;
+}
+
+.workspace-trades-scroll {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.workspace-trades-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.workspace-trades-table td {
+  width: 33.333%;
+  padding: 0 5px;
+  font-size: 11px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The bottom row: a fixed height, the product cards moving sideways, and the add box over the 盤中事件 switch at its end. */
+.workspace-dock {
+  flex: none;
+  height: 56px;
+  margin: 0 8px 8px;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+.workspace-dock-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 100%;
+  padding: 0 12px;
+}
+
+.workspace-dock-cards {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  height: 100%;
+  align-items: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.workspace-dock-cards > * {
+  flex: none;
+}
+
+.workspace-dock-tools {
+  --product-quote-search-width: 124px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 124px;
+}
+
+.pane-drop-indicator {
+  position: absolute;
+  z-index: 60;
+  pointer-events: none;
+  box-sizing: border-box;
+  border: 2px solid var(--blue-400x-2);
+  border-radius: var(--pane-radius);
+  background: var(--blue-400x-a16);
+}
+
+.pane-drop-indicator[data-kind="row"] {
+  border-style: dashed;
+}
+
+/* The frame of every slot and pane: a dashboard-card. The component inside it has no frame of its own. */
+.dashboard-card {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--pane-border);
+  border-radius: var(--pane-radius);
+  background: var(--surface-panel);
+}
+
+/* A slot's content area gives its component the whole remaining height. */
+.dashboard-slot-content > * {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ===== Pane workspace (core/pane_workspace.js) =====
+ * Rows of panes the user can rearrange by dragging tabs. The workspace sets every row's height and every pane's width
+ * in whole pixels; the 8 px between them is exactly the splitter, so nothing here may add gaps or margins. */
+.pane-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  position: relative;
+}
+
+.pane-mode > .pane-row {
+  display: flex;
+  flex: none;
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+
+.pane-mode > .pane-row > [data-pane-id] {
+  flex: none;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+/* A pane tree (core/tree_workspace.js): every split and pane is sized inline, the 8 px between them is the splitter. */
+.pane-tree-split {
+  display: flex;
+  flex: none;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pane-tree-split[data-dir="column"] {
+  flex-direction: column;
+}
+
+.pane-tree-split > [data-pane-id] {
+  flex: none;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+.pane-mode .pane-splitter {
+  flex: none;
+  position: relative;
+  background: transparent;
+  touch-action: none;
+}
+
+.pane-mode .pane-splitter-col {
+  width: 8px;
+  cursor: col-resize;
+}
+
+.pane-mode .pane-splitter-row {
+  height: 8px;
+  width: 100%;
+  cursor: row-resize;
+}
+
+.pane-mode .pane-splitter::after {
+  content: "";
+  position: absolute;
+  border-radius: 2px;
+  background: transparent;
+  transition: background 0.12s;
+}
+
+.pane-mode .pane-splitter-col::after {
+  left: 3px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+}
+
+.pane-mode .pane-splitter-row::after {
+  top: 3px;
+  left: 0;
+  right: 0;
+  height: 2px;
+}
+
+.pane-mode .pane-splitter:hover::after,
+body.workspace-resizing .pane-mode .pane-splitter::after {
+  background: var(--blue-600x);
+}
+
+.pane-mode.pane-dragging .pane-splitter {
+  pointer-events: none;
+}
+
+/* While any splitter is dragged (core/splitter_drag.js): no text selection, and its cursor over the whole window. */
+body.workspace-resizing,
+body.workspace-resizing * {
+  user-select: none;
+}
+
+body.workspace-resizing[data-resize-cursor="col-resize"] {
+  cursor: col-resize;
+}
+
+body.workspace-resizing[data-resize-cursor="row-resize"] {
+  cursor: row-resize;
+}
+
+.dashboard-tabbed-slot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--pane-border);
+  border-radius: var(--pane-radius);
+  background: var(--surface-panel);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+/* A workspace column gives its component the whole column. */
+.workspace-column-panel > * {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+}

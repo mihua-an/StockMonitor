@@ -1,0 +1,60 @@
+import assert from 'node:assert/strict';
+import {RealtimeViewStore} from '../ui/renderer/js/market_data/realtime_view_store.js';
+import {normalizeMinuteTrendSeries,upsertMinuteTrendPoint} from '../ui/renderer/js/market_data/minute_trend.js';
+import {PresentationRevisionGate} from '../ui/renderer/js/core/display_frame_gate.js';
+import {MarketDataGateway} from '../ui/renderer/js/market_data/market_data_gateway.js';
+const events=[], sent=[], metrics=[];
+const spec={market:'STK',code:'2330',session:'DAY',trading_date:'2026-09-04'};
+const key={market:'STK',logical_code:'2330',session:'DAY',trading_date:'2026-09-04'};
+const store=new RealtimeViewStore({send:m=>{sent.push(m);return true;},onMetric:m=>metrics.push(m)});
+store.subscribe(spec,e=>events.push(e),{stateDelivery:'snapshot-only'}); store.onConnected();
+const request_id=sent[0].payload.request_id;
+store.handleAccepted({request_id,subscription_id:'s',stream_id:'stream',watermark:0});
+const snapshot={request_id,subscription_id:'s',stream_id:'stream',session_key:key,session_generation:1,watermark:0,trades:[]};
+store.handleSnapshot(snapshot);events.length=0;metrics.length=0;
+const delta=n=>({subscription_id:'s',stream_id:'stream',session_key:key,session_generation:1,sequence:n,delta_type:'trade.append',payload:{price:n,ingest_sequence:n}});
+store.handleDeltaBatch({items:Array.from({length:100},(_,i)=>delta(i+1))});
+assert.equal(events.length,1);
+assert.equal(events[0].type,'batch');
+assert.equal(events[0].state,undefined);
+assert.deepEqual(store.snapshot(spec).trades.map(r=>r.ingest_sequence),Array.from({length:100},(_,i)=>i+1));
+assert.equal(events[0].batch.accepted,100);
+assert.equal(metrics.filter(m=>m.name==='delta_applied').length,1);
+assert.equal(metrics.find(m=>m.name==='delta_applied').count,100);
+store.handleDeltaBatch({items:[delta(101),delta(103),delta(104)]});
+assert.equal(store.snapshot(spec).watermark,101);
+assert.equal(store.snapshot(spec).resync_required,true);
+assert.equal(store.handleDelta(delta(102)),false);
+assert.equal(sent.filter(m=>m.type==='view.resync').length,1);
+store.handleSnapshot({...snapshot,watermark:104,trades:[{ingest_sequence:104}]});
+assert.equal(store.handleDelta(delta(105)),true);
+for(const mismatch of [{trading_date:'2026-09-03'},{session:'NIGHT'},{logical_code:'9999'},{market:'FUT'}]){
+ assert.equal(store.handleDelta({...delta(106),session_key:{...key,...mismatch}}),false);
+}
+assert.equal(store.handleDelta({...delta(106),stream_id:'old'}),false);
+assert.equal(store.snapshot(spec).watermark,105);
+let points=normalizeMinuteTrendSeries([{timestamp:'2026-09-04T09:02:00',price:2},{timestamp:'2026-09-04T09:01:00',price:1}]);
+points=upsertMinuteTrendPoint(points,{timestamp:'2026-09-04T09:02:01',price:3});
+assert.deepEqual(points.map(p=>p.price),[1,3]);
+// Frames reach a component in the data source's presentation order.
+const gate=new PresentationRevisionGate();
+assert.equal(gate.accept({presentationRevision:10,displaySymbol:'2330'}),true);
+assert.equal(gate.accept({presentationRevision:9,displaySymbol:'9999'}),false);
+assert.equal(gate.accept({presentationRevision:11,displaySymbol:'2330'}),true);
+
+const wire=[], projected=[];
+const rawStore=new RealtimeViewStore({send:m=>{wire.push(m);return true;}});
+const gateway=new MarketDataGateway({subscribeView:rawStore.subscribe.bind(rawStore),getSnapshot:rawStore.snapshot.bind(rawStore)});
+gateway.subscribe(spec,event=>projected.push(event));rawStore.onConnected();
+const req=wire[0].payload.request_id;
+rawStore.handleAccepted({request_id:req,subscription_id:'g',stream_id:'gstream',watermark:0});
+rawStore.handleSnapshot({request_id:req,subscription_id:'g',stream_id:'gstream',session_key:key,watermark:0,trend:[],trades:[]});
+projected.length=0;
+const trendDelta=(sequence,minute)=>({subscription_id:'g',stream_id:'gstream',session_key:key,sequence,delta_type:'trend.upsert',
+ payload:{timestamp:`2026-09-04T09:0${minute}:00`,price:100+minute}});
+rawStore.handleDeltaBatch({items:[trendDelta(1,1),trendDelta(2,2)]});
+assert.equal(projected.length,1);
+assert.equal(projected[0].type,'batch');
+assert.equal(projected[0].deltas.length,2);
+assert.deepEqual(projected[0].changedChannels,['trend']);
+console.log('renderer delivery contract passed');

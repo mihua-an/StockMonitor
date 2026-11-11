@@ -1,0 +1,9 @@
+/* 即時報價: one pane workspace filling the page. core/pane_workspace.js places and sizes every pane (layout/
+ * workspace.css draws the rows, panes and splitters); the components inside the panes style themselves. */
+.realtime-workspace {
+  width: 100%;
+  height: 100%;
+  min-width: 1286px;
+  overflow: hidden;
+  background: var(--surface-page);
+}

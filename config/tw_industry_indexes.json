@@ -1,0 +1,1792 @@
+{
+  "schema": "tw-industry-indexes-v1",
+  "about": "台股個股的產業代碼（var/data/reference/shioaji/security_master.csv 的 industry_code，證交所／櫃買中心的產業類別）對應到它所在市場的產業類股指數（Shioaji 指數合約代號）。給模型的產業指數特徵用（BACKLOG 模型「產業指數特徵」）。check.how：data＝成分股走勢驗證過；name＝照產業名稱對照，資料分不出來；proxy＝該市場沒有自己的指數，用另一市場同名指數；00（無產業別）不在表內。",
+  "verified": {
+    "date": "2026-10-17",
+    "source": "Shioaji 1.7.2 唯讀登入：api.Contracts.Indexs 名稱；1 分 K 取每日收盤",
+    "method": "每個市場×產業代碼取前一交易日成交金額最大的 8 檔，等權日報酬扣掉該市場大盤（IX0001／IX0043）後，與每個產業指數扣掉大盤後的日報酬算相關（2026-08-01～10-16）"
+  },
+  "industries": [
+    {
+      "code": "01",
+      "name": "水泥工業",
+      "tse": {
+        "index": "IX0010",
+        "index_name": "水泥類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.938,
+          "note": "不扣大盤的日報酬相關第一名",
+          "stocks": 8,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0038",
+              "name": "觀光餐旅類指數",
+              "corr": 0.924
+            },
+            {
+              "index": "IX0040",
+              "name": "貿易百貨類指數",
+              "corr": 0.9
+            },
+            {
+              "index": "IX0048",
+              "name": "櫃買營建類指數",
+              "corr": 0.895
+            }
+          ]
+        }
+      },
+      "otc": null
+    },
+    {
+      "code": "02",
+      "name": "食品工業",
+      "tse": {
+        "index": "IX0011",
+        "index_name": "食品類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.947,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 24,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0011",
+              "name": "食品類指數",
+              "corr": 0.947
+            },
+            {
+              "index": "IX0040",
+              "name": "貿易百貨類指數",
+              "corr": 0.91
+            },
+            {
+              "index": "IX0048",
+              "name": "櫃買營建類指數",
+              "corr": 0.902
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0011",
+        "index_name": "食品類指數",
+        "check": {
+          "how": "proxy",
+          "note": "這個市場沒有自己的產業指數，用另一個市場的同名指數",
+          "stocks": 17,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0050",
+              "name": "櫃買觀光餐旅類指數",
+              "corr": 0.925
+            },
+            {
+              "index": "IX0042",
+              "name": "其他類指數",
+              "corr": 0.922
+            },
+            {
+              "index": "IX0048",
+              "name": "櫃買營建類指數",
+              "corr": 0.912
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "03",
+      "name": "塑膠工業",
+      "tse": {
+        "index": "IX0012",
+        "index_name": "塑膠類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.854,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 22,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0012",
+              "name": "塑膠類指數",
+              "corr": 0.854
+            },
+            {
+              "index": "IX0014",
+              "name": "塑膠化工類指數",
+              "corr": 0.853
+            },
+            {
+              "index": "IX0041",
+              "name": "油電燃氣類指數",
+              "corr": 0.579
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0012",
+        "index_name": "塑膠類指數",
+        "check": {
+          "how": "proxy",
+          "note": "這個市場沒有自己的產業指數，用另一個市場的同名指數",
+          "stocks": 4,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0038",
+              "name": "觀光餐旅類指數",
+              "corr": 0.627
+            },
+            {
+              "index": "IX0023",
+              "name": "造紙類指數",
+              "corr": 0.625
+            },
+            {
+              "index": "IX0040",
+              "name": "貿易百貨類指數",
+              "corr": 0.623
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "04",
+      "name": "紡織纖維",
+      "tse": {
+        "index": "IX0016",
+        "index_name": "紡織纖維類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.907,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 42,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0016",
+              "name": "紡織纖維類指數",
+              "corr": 0.907
+            },
+            {
+              "index": "IX0023",
+              "name": "造紙類指數",
+              "corr": 0.77
+            },
+            {
+              "index": "IX0025",
+              "name": "橡膠類指數",
+              "corr": 0.769
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0044",
+        "index_name": "櫃買紡纖類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.99,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 11,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0044",
+              "name": "櫃買紡纖類指數",
+              "corr": 0.99
+            },
+            {
+              "index": "IX0048",
+              "name": "櫃買營建類指數",
+              "corr": 0.936
+            },
+            {
+              "index": "IX0050",
+              "name": "櫃買觀光餐旅類指數",
+              "corr": 0.935
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "05",
+      "name": "電機機械",
+      "tse": {
+        "index": "IX0017",
+        "index_name": "電機機械類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.852,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 49,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0017",
+              "name": "電機機械類指數",
+              "corr": 0.852
+            },
+            {
+              "index": "IX0047",
+              "name": "櫃買電子類指數",
+              "corr": 0.553
+            },
+            {
+              "index": "IX0035",
+              "name": "其他電子類指數",
+              "corr": 0.504
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0045",
+        "index_name": "櫃買機械類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.504,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 68,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0045",
+              "name": "櫃買機械類指數",
+              "corr": 0.504
+            },
+            {
+              "index": "IX0189",
+              "name": "櫃買綠能環保類指數",
+              "corr": 0.373
+            },
+            {
+              "index": "IX0044",
+              "name": "櫃買紡纖類指數",
+              "corr": 0.327
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "06",
+      "name": "電器電纜",
+      "tse": {
+        "index": "IX0018",
+        "index_name": "電器電纜類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.805,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 16,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0018",
+              "name": "電器電纜類指數",
+              "corr": 0.805
+            },
+            {
+              "index": "IX0045",
+              "name": "櫃買機械類指數",
+              "corr": 0.693
+            },
+            {
+              "index": "IX0013",
+              "name": "水泥窯製類指數",
+              "corr": 0.633
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0018",
+        "index_name": "電器電纜類指數",
+        "check": {
+          "how": "proxy",
+          "note": "這個市場沒有自己的產業指數，用另一個市場的同名指數",
+          "stocks": 1,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0054",
+              "name": "櫃買電腦及週邊類指數",
+              "corr": 0.284
+            },
+            {
+              "index": "IX0051",
+              "name": "櫃買化工類指數",
+              "corr": 0.279
+            },
+            {
+              "index": "IX0020",
+              "name": "化學類指數",
+              "corr": 0.268
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "08",
+      "name": "玻璃陶瓷",
+      "tse": {
+        "index": "IX0022",
+        "index_name": "玻璃陶瓷類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.776,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 5,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0022",
+              "name": "玻璃陶瓷類指數",
+              "corr": 0.776
+            },
+            {
+              "index": "IX0013",
+              "name": "水泥窯製類指數",
+              "corr": 0.742
+            },
+            {
+              "index": "IX0045",
+              "name": "櫃買機械類指數",
+              "corr": 0.638
+            }
+          ]
+        }
+      },
+      "otc": null
+    },
+    {
+      "code": "09",
+      "name": "造紙工業",
+      "tse": {
+        "index": "IX0023",
+        "index_name": "造紙類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.971,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 7,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0023",
+              "name": "造紙類指數",
+              "corr": 0.971
+            },
+            {
+              "index": "IX0040",
+              "name": "貿易百貨類指數",
+              "corr": 0.853
+            },
+            {
+              "index": "IX0038",
+              "name": "觀光餐旅類指數",
+              "corr": 0.839
+            }
+          ]
+        }
+      },
+      "otc": null
+    },
+    {
+      "code": "10",
+      "name": "鋼鐵工業",
+      "tse": {
+        "index": "IX0024",
+        "index_name": "鋼鐵類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.935,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 32,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0024",
+              "name": "鋼鐵類指數",
+              "corr": 0.935
+            },
+            {
+              "index": "IX0023",
+              "name": "造紙類指數",
+              "corr": 0.737
+            },
+            {
+              "index": "IX0025",
+              "name": "橡膠類指數",
+              "corr": 0.735
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0046",
+        "index_name": "櫃買鋼鐵類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.836,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 21,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0046",
+              "name": "櫃買鋼鐵類指數",
+              "corr": 0.836
+            },
+            {
+              "index": "IX0050",
+              "name": "櫃買觀光餐旅類指數",
+              "corr": 0.769
+            },
+            {
+              "index": "IX0025",
+              "name": "橡膠類指數",
+              "corr": 0.719
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "11",
+      "name": "橡膠工業",
+      "tse": {
+        "index": "IX0025",
+        "index_name": "橡膠類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.958,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 11,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0025",
+              "name": "橡膠類指數",
+              "corr": 0.958
+            },
+            {
+              "index": "IX0016",
+              "name": "紡織纖維類指數",
+              "corr": 0.808
+            },
+            {
+              "index": "IX0023",
+              "name": "造紙類指數",
+              "corr": 0.803
+            }
+          ]
+        }
+      },
+      "otc": null
+    },
+    {
+      "code": "12",
+      "name": "汽車工業",
+      "tse": {
+        "index": "IX0026",
+        "index_name": "汽車類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.699,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 44,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0026",
+              "name": "汽車類指數",
+              "corr": 0.699
+            },
+            {
+              "index": "IX0050",
+              "name": "櫃買觀光餐旅類指數",
+              "corr": 0.694
+            },
+            {
+              "index": "IX0048",
+              "name": "櫃買營建類指數",
+              "corr": 0.674
+            }
+          ]
+        }
+      },
+      "otc": null
+    },
+    {
+      "code": "14",
+      "name": "建材營造",
+      "tse": {
+        "index": "IX0036",
+        "index_name": "建材營造類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.905,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 55,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0036",
+              "name": "建材營造類指數",
+              "corr": 0.905
+            },
+            {
+              "index": "IX0026",
+              "name": "汽車類指數",
+              "corr": 0.801
+            },
+            {
+              "index": "IX0024",
+              "name": "鋼鐵類指數",
+              "corr": 0.795
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0048",
+        "index_name": "櫃買營建類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.949,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 35,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0048",
+              "name": "櫃買營建類指數",
+              "corr": 0.949
+            },
+            {
+              "index": "IX0050",
+              "name": "櫃買觀光餐旅類指數",
+              "corr": 0.928
+            },
+            {
+              "index": "IX0040",
+              "name": "貿易百貨類指數",
+              "corr": 0.91
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "15",
+      "name": "航運業",
+      "tse": {
+        "index": "IX0037",
+        "index_name": "航運類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.982,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 28,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0037",
+              "name": "航運類指數",
+              "corr": 0.982
+            },
+            {
+              "index": "IX0049",
+              "name": "櫃買航運類指數",
+              "corr": 0.779
+            },
+            {
+              "index": "IX0038",
+              "name": "觀光餐旅類指數",
+              "corr": 0.639
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0049",
+        "index_name": "櫃買航運類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.971,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 8,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0049",
+              "name": "櫃買航運類指數",
+              "corr": 0.971
+            },
+            {
+              "index": "IX0040",
+              "name": "貿易百貨類指數",
+              "corr": 0.934
+            },
+            {
+              "index": "IX0038",
+              "name": "觀光餐旅類指數",
+              "corr": 0.924
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "16",
+      "name": "觀光餐旅",
+      "tse": {
+        "index": "IX0038",
+        "index_name": "觀光餐旅類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.994,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 19,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0038",
+              "name": "觀光餐旅類指數",
+              "corr": 0.994
+            },
+            {
+              "index": "IX0049",
+              "name": "櫃買航運類指數",
+              "corr": 0.902
+            },
+            {
+              "index": "IX0040",
+              "name": "貿易百貨類指數",
+              "corr": 0.885
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0050",
+        "index_name": "櫃買觀光餐旅類指數",
+        "check": {
+          "how": "name",
+          "note": "資料上是第 2 名，照名稱對照",
+          "stocks": 45,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0049",
+              "name": "櫃買航運類指數",
+              "corr": 0.609
+            },
+            {
+              "index": "IX0050",
+              "name": "櫃買觀光餐旅類指數",
+              "corr": 0.591
+            },
+            {
+              "index": "IX0038",
+              "name": "觀光餐旅類指數",
+              "corr": 0.579
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "17",
+      "name": "金融保險",
+      "tse": {
+        "index": "IX0039",
+        "index_name": "金融保險類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.988,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 48,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0039",
+              "name": "金融保險類指數",
+              "corr": 0.988
+            },
+            {
+              "index": "IX0040",
+              "name": "貿易百貨類指數",
+              "corr": 0.623
+            },
+            {
+              "index": "IX0049",
+              "name": "櫃買航運類指數",
+              "corr": 0.604
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0039",
+        "index_name": "金融保險類指數",
+        "check": {
+          "how": "proxy",
+          "note": "這個市場沒有自己的產業指數，用另一個市場的同名指數，資料上也是第一名",
+          "stocks": 14,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0039",
+              "name": "金融保險類指數",
+              "corr": 0.796
+            },
+            {
+              "index": "IX0042",
+              "name": "其他類指數",
+              "corr": 0.724
+            },
+            {
+              "index": "IX0040",
+              "name": "貿易百貨類指數",
+              "corr": 0.723
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "18",
+      "name": "貿易百貨",
+      "tse": {
+        "index": "IX0040",
+        "index_name": "貿易百貨類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.899,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 18,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0040",
+              "name": "貿易百貨類指數",
+              "corr": 0.899
+            },
+            {
+              "index": "IX0038",
+              "name": "觀光餐旅類指數",
+              "corr": 0.841
+            },
+            {
+              "index": "IX0048",
+              "name": "櫃買營建類指數",
+              "corr": 0.836
+            }
+          ]
+        }
+      },
+      "otc": null
+    },
+    {
+      "code": "20",
+      "name": "其他",
+      "tse": {
+        "index": "IX0042",
+        "index_name": "其他類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.887,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 58,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0042",
+              "name": "其他類指數",
+              "corr": 0.887
+            },
+            {
+              "index": "IX0050",
+              "name": "櫃買觀光餐旅類指數",
+              "corr": 0.767
+            },
+            {
+              "index": "IX0040",
+              "name": "貿易百貨類指數",
+              "corr": 0.756
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0100",
+        "index_name": "櫃買其他類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.536,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 61,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0100",
+              "name": "櫃買其他類指數",
+              "corr": 0.536
+            },
+            {
+              "index": "IX0020",
+              "name": "化學類指數",
+              "corr": 0.425
+            },
+            {
+              "index": "IX0024",
+              "name": "鋼鐵類指數",
+              "corr": 0.411
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "21",
+      "name": "化學工業",
+      "tse": {
+        "index": "IX0020",
+        "index_name": "化學類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.846,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 28,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0020",
+              "name": "化學類指數",
+              "corr": 0.846
+            },
+            {
+              "index": "IX0051",
+              "name": "櫃買化工類指數",
+              "corr": 0.506
+            },
+            {
+              "index": "IX0054",
+              "name": "櫃買電腦及週邊類指數",
+              "corr": 0.502
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0051",
+        "index_name": "櫃買化工類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.758,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 21,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0051",
+              "name": "櫃買化工類指數",
+              "corr": 0.758
+            },
+            {
+              "index": "IX0045",
+              "name": "櫃買機械類指數",
+              "corr": 0.585
+            },
+            {
+              "index": "IX0020",
+              "name": "化學類指數",
+              "corr": 0.567
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "22",
+      "name": "生技醫療",
+      "tse": {
+        "index": "IX0021",
+        "index_name": "生技醫療類指數",
+        "check": {
+          "how": "name",
+          "note": "資料上是第 2 名，照名稱對照",
+          "stocks": 61,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0019",
+              "name": "化學生技醫療類指數",
+              "corr": 0.673
+            },
+            {
+              "index": "IX0021",
+              "name": "生技醫療類指數",
+              "corr": 0.658
+            },
+            {
+              "index": "IX0052",
+              "name": "櫃買生技醫療類指數",
+              "corr": 0.59
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0052",
+        "index_name": "櫃買生技醫療類指數",
+        "check": {
+          "how": "name",
+          "note": "資料上是第一名但相關偏低（0.46），照名稱對照",
+          "stocks": 191,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0052",
+              "name": "櫃買生技醫療類指數",
+              "corr": 0.46
+            },
+            {
+              "index": "IX0021",
+              "name": "生技醫療類指數",
+              "corr": 0.436
+            },
+            {
+              "index": "IX0019",
+              "name": "化學生技醫療類指數",
+              "corr": 0.424
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "23",
+      "name": "油電燃氣",
+      "tse": {
+        "index": "IX0041",
+        "index_name": "油電燃氣類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.936,
+          "note": "不扣大盤的日報酬相關第一名",
+          "stocks": 9,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0048",
+              "name": "櫃買營建類指數",
+              "corr": 0.83
+            },
+            {
+              "index": "IX0038",
+              "name": "觀光餐旅類指數",
+              "corr": 0.808
+            },
+            {
+              "index": "IX0011",
+              "name": "食品類指數",
+              "corr": 0.808
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0041",
+        "index_name": "油電燃氣類指數",
+        "check": {
+          "how": "proxy",
+          "note": "這個市場沒有自己的產業指數，用另一個市場的同名指數",
+          "stocks": 4,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0050",
+              "name": "櫃買觀光餐旅類指數",
+              "corr": 0.707
+            },
+            {
+              "index": "IX0038",
+              "name": "觀光餐旅類指數",
+              "corr": 0.698
+            },
+            {
+              "index": "IX0049",
+              "name": "櫃買航運類指數",
+              "corr": 0.685
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "24",
+      "name": "半導體",
+      "tse": {
+        "index": "IX0028",
+        "index_name": "半導體類指數",
+        "check": {
+          "how": "name",
+          "note": "台積電佔大盤很重，半導體類指數扣掉大盤後幾乎沒剩訊號",
+          "stocks": 96,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0015",
+              "name": "機電類指數",
+              "corr": 0.618
+            },
+            {
+              "index": "IX0027",
+              "name": "電子工業類指數",
+              "corr": 0.607
+            },
+            {
+              "index": "IX0047",
+              "name": "櫃買電子類指數",
+              "corr": 0.606
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0053",
+        "index_name": "櫃買半導體類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.759,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 147,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0053",
+              "name": "櫃買半導體類指數",
+              "corr": 0.759
+            },
+            {
+              "index": "IX0047",
+              "name": "櫃買電子類指數",
+              "corr": 0.667
+            },
+            {
+              "index": "IX0056",
+              "name": "櫃買通信網路類指數",
+              "corr": 0.092
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "25",
+      "name": "電腦及週邊設備",
+      "tse": {
+        "index": "IX0029",
+        "index_name": "電腦及週邊設備類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.785,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 64,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0029",
+              "name": "電腦及週邊設備類指數",
+              "corr": 0.785
+            },
+            {
+              "index": "IX0099",
+              "name": "櫃買其他電子類指數",
+              "corr": 0.408
+            },
+            {
+              "index": "IX0032",
+              "name": "電子零組件類指數",
+              "corr": 0.383
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0054",
+        "index_name": "櫃買電腦及週邊類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.764,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 61,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0054",
+              "name": "櫃買電腦及週邊類指數",
+              "corr": 0.764
+            },
+            {
+              "index": "IX0020",
+              "name": "化學類指數",
+              "corr": 0.477
+            },
+            {
+              "index": "IX0191",
+              "name": "櫃買居家生活類指數",
+              "corr": 0.448
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "26",
+      "name": "光電",
+      "tse": {
+        "index": "IX0030",
+        "index_name": "光電類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.92,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 68,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0030",
+              "name": "光電類指數",
+              "corr": 0.92
+            },
+            {
+              "index": "IX0056",
+              "name": "櫃買通信網路類指數",
+              "corr": 0.699
+            },
+            {
+              "index": "IX0017",
+              "name": "電機機械類指數",
+              "corr": 0.459
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0055",
+        "index_name": "櫃買光電業類指數",
+        "check": {
+          "how": "name",
+          "note": "走勢平穩或成分股少，資料分不出來，照名稱對照",
+          "stocks": 68,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0030",
+              "name": "光電類指數",
+              "corr": 0.517
+            },
+            {
+              "index": "IX0045",
+              "name": "櫃買機械類指數",
+              "corr": 0.437
+            },
+            {
+              "index": "IX0189",
+              "name": "櫃買綠能環保類指數",
+              "corr": 0.402
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "27",
+      "name": "通信網路",
+      "tse": {
+        "index": "IX0031",
+        "index_name": "通信網路類指數",
+        "check": {
+          "how": "name",
+          "note": "資料上是第 3 名，照名稱對照",
+          "stocks": 47,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0056",
+              "name": "櫃買通信網路類指數",
+              "corr": 0.66
+            },
+            {
+              "index": "IX0030",
+              "name": "光電類指數",
+              "corr": 0.578
+            },
+            {
+              "index": "IX0031",
+              "name": "通信網路類指數",
+              "corr": 0.513
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0056",
+        "index_name": "櫃買通信網路類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.893,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 56,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0056",
+              "name": "櫃買通信網路類指數",
+              "corr": 0.893
+            },
+            {
+              "index": "IX0030",
+              "name": "光電類指數",
+              "corr": 0.447
+            },
+            {
+              "index": "IX0047",
+              "name": "櫃買電子類指數",
+              "corr": 0.433
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "28",
+      "name": "電子零組件",
+      "tse": {
+        "index": "IX0032",
+        "index_name": "電子零組件類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.876,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 104,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0032",
+              "name": "電子零組件類指數",
+              "corr": 0.876
+            },
+            {
+              "index": "IX0057",
+              "name": "櫃買電子零組件類指數",
+              "corr": 0.704
+            },
+            {
+              "index": "IX0047",
+              "name": "櫃買電子類指數",
+              "corr": 0.644
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0057",
+        "index_name": "櫃買電子零組件類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.655,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 126,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0057",
+              "name": "櫃買電子零組件類指數",
+              "corr": 0.655
+            },
+            {
+              "index": "IX0022",
+              "name": "玻璃陶瓷類指數",
+              "corr": 0.311
+            },
+            {
+              "index": "IX0047",
+              "name": "櫃買電子類指數",
+              "corr": 0.288
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "29",
+      "name": "電子通路",
+      "tse": {
+        "index": "IX0033",
+        "index_name": "電子通路類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.798,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 23,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0033",
+              "name": "電子通路類指數",
+              "corr": 0.798
+            },
+            {
+              "index": "IX0051",
+              "name": "櫃買化工類指數",
+              "corr": 0.48
+            },
+            {
+              "index": "IX0058",
+              "name": "櫃買電子通路類指數",
+              "corr": 0.45
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0058",
+        "index_name": "櫃買電子通路類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.842,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 18,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0058",
+              "name": "櫃買電子通路類指數",
+              "corr": 0.842
+            },
+            {
+              "index": "IX0023",
+              "name": "造紙類指數",
+              "corr": 0.674
+            },
+            {
+              "index": "IX0025",
+              "name": "橡膠類指數",
+              "corr": 0.664
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "30",
+      "name": "資訊服務",
+      "tse": {
+        "index": "IX0034",
+        "index_name": "資訊服務類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.879,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 11,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0034",
+              "name": "資訊服務類指數",
+              "corr": 0.879
+            },
+            {
+              "index": "IX0059",
+              "name": "櫃買資訊服務類指數",
+              "corr": 0.829
+            },
+            {
+              "index": "IX0042",
+              "name": "其他類指數",
+              "corr": 0.677
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0059",
+        "index_name": "櫃買資訊服務類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.896,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 48,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0059",
+              "name": "櫃買資訊服務類指數",
+              "corr": 0.896
+            },
+            {
+              "index": "IX0034",
+              "name": "資訊服務類指數",
+              "corr": 0.702
+            },
+            {
+              "index": "IX0048",
+              "name": "櫃買營建類指數",
+              "corr": 0.65
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "31",
+      "name": "其他電子",
+      "tse": {
+        "index": "IX0035",
+        "index_name": "其他電子類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.674,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 46,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0035",
+              "name": "其他電子類指數",
+              "corr": 0.674
+            },
+            {
+              "index": "IX0047",
+              "name": "櫃買電子類指數",
+              "corr": 0.657
+            },
+            {
+              "index": "IX0053",
+              "name": "櫃買半導體類指數",
+              "corr": 0.593
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0099",
+        "index_name": "櫃買其他電子類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.51,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 62,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0099",
+              "name": "櫃買其他電子類指數",
+              "corr": 0.51
+            },
+            {
+              "index": "IX0029",
+              "name": "電腦及週邊設備類指數",
+              "corr": 0.467
+            },
+            {
+              "index": "IX0055",
+              "name": "櫃買光電業類指數",
+              "corr": 0.383
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "32",
+      "name": "文化創意",
+      "tse": null,
+      "otc": {
+        "index": "IX0075",
+        "index_name": "櫃買文化創意業類指數",
+        "check": {
+          "how": "name",
+          "note": "走勢平穩或成分股少，資料分不出來，照名稱對照",
+          "stocks": 34,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0050",
+              "name": "櫃買觀光餐旅類指數",
+              "corr": 0.906
+            },
+            {
+              "index": "IX0038",
+              "name": "觀光餐旅類指數",
+              "corr": 0.9
+            },
+            {
+              "index": "IX0048",
+              "name": "櫃買營建類指數",
+              "corr": 0.894
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "33",
+      "name": "農業科技",
+      "tse": null,
+      "otc": null
+    },
+    {
+      "code": "35",
+      "name": "綠能環保",
+      "tse": {
+        "index": "IX0185",
+        "index_name": "綠能環保類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.77,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 27,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0185",
+              "name": "綠能環保類指數",
+              "corr": 0.77
+            },
+            {
+              "index": "IX0025",
+              "name": "橡膠類指數",
+              "corr": 0.502
+            },
+            {
+              "index": "IX0023",
+              "name": "造紙類指數",
+              "corr": 0.501
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0189",
+        "index_name": "櫃買綠能環保類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.673,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 47,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0189",
+              "name": "櫃買綠能環保類指數",
+              "corr": 0.673
+            },
+            {
+              "index": "IX0049",
+              "name": "櫃買航運類指數",
+              "corr": 0.552
+            },
+            {
+              "index": "IX0039",
+              "name": "金融保險類指數",
+              "corr": 0.552
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "36",
+      "name": "數位雲端",
+      "tse": {
+        "index": "IX0186",
+        "index_name": "數位雲端類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.832,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 13,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0186",
+              "name": "數位雲端類指數",
+              "corr": 0.832
+            },
+            {
+              "index": "IX0050",
+              "name": "櫃買觀光餐旅類指數",
+              "corr": 0.748
+            },
+            {
+              "index": "IX0048",
+              "name": "櫃買營建類指數",
+              "corr": 0.745
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0190",
+        "index_name": "櫃買數位雲端類指數",
+        "check": {
+          "how": "name",
+          "note": "資料上是第 2 名，照名稱對照",
+          "stocks": 41,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0059",
+              "name": "櫃買資訊服務類指數",
+              "corr": 0.85
+            },
+            {
+              "index": "IX0190",
+              "name": "櫃買數位雲端類指數",
+              "corr": 0.797
+            },
+            {
+              "index": "IX0048",
+              "name": "櫃買營建類指數",
+              "corr": 0.771
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "37",
+      "name": "運動休閒",
+      "tse": {
+        "index": "IX0187",
+        "index_name": "運動休閒類指數",
+        "check": {
+          "how": "data",
+          "corr": 0.974,
+          "note": "扣掉大盤後的日報酬相關第一名",
+          "stocks": 18,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0187",
+              "name": "運動休閒類指數",
+              "corr": 0.974
+            },
+            {
+              "index": "IX0025",
+              "name": "橡膠類指數",
+              "corr": 0.718
+            },
+            {
+              "index": "IX0011",
+              "name": "食品類指數",
+              "corr": 0.716
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0187",
+        "index_name": "運動休閒類指數",
+        "check": {
+          "how": "proxy",
+          "note": "這個市場沒有自己的產業指數，用另一個市場的同名指數",
+          "stocks": 13,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0050",
+              "name": "櫃買觀光餐旅類指數",
+              "corr": 0.92
+            },
+            {
+              "index": "IX0038",
+              "name": "觀光餐旅類指數",
+              "corr": 0.908
+            },
+            {
+              "index": "IX0048",
+              "name": "櫃買營建類指數",
+              "corr": 0.904
+            }
+          ]
+        }
+      }
+    },
+    {
+      "code": "38",
+      "name": "居家生活",
+      "tse": {
+        "index": "IX0188",
+        "index_name": "居家生活類指數",
+        "check": {
+          "how": "name",
+          "note": "走勢平穩或成分股少，資料分不出來，照名稱對照",
+          "stocks": 11,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0048",
+              "name": "櫃買營建類指數",
+              "corr": 0.907
+            },
+            {
+              "index": "IX0050",
+              "name": "櫃買觀光餐旅類指數",
+              "corr": 0.902
+            },
+            {
+              "index": "IX0011",
+              "name": "食品類指數",
+              "corr": 0.886
+            }
+          ]
+        }
+      },
+      "otc": {
+        "index": "IX0191",
+        "index_name": "櫃買居家生活類指數",
+        "check": {
+          "how": "name",
+          "note": "走勢平穩或成分股少，資料分不出來，照名稱對照",
+          "stocks": 29,
+          "days": 51,
+          "top": [
+            {
+              "index": "IX0050",
+              "name": "櫃買觀光餐旅類指數",
+              "corr": 0.906
+            },
+            {
+              "index": "IX0044",
+              "name": "櫃買紡纖類指數",
+              "corr": 0.893
+            },
+            {
+              "index": "IX0038",
+              "name": "觀光餐旅類指數",
+              "corr": 0.893
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

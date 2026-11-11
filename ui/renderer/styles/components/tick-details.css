@@ -1,0 +1,304 @@
+/* Tick details: the tick table, new-tick count and return-to-latest. */
+
+.tick-table td {
+  text-align: center;
+}
+
+.tick-details .tick-table-wrap {
+  flex:1;
+}
+
+.tick-table th,.tick-table td {
+  padding:4px 5px;
+  font-size:11px;
+  white-space:nowrap;
+}
+
+/* ===== Canonical market color semantics ===== */
+/* 成交明細：價格欄由 price-vs-reference 決定；單量才由 aggressor side 決定。 */
+.tick-table td.tick-details-volume-buy {
+  color: var(--price-up-color);
+  font-weight: 700;
+}
+
+.tick-table td.tick-details-volume-sell {
+  color: var(--price-down-color);
+  font-weight: 700;
+}
+
+.tick-table td.tick-details-volume-neutral {
+  color: var(--slate-400);
+  font-weight: 700;
+}
+
+.tick-table td.tick-details-volume-unknown {
+  color: var(--blue-50x);
+  font-weight: 700;
+}
+
+.tick-table tbody tr {
+  height: var(--row-height-trade-detail);
+}
+
+.tick-table tbody td {
+  height: var(--row-height-trade-detail);
+  box-sizing:border-box;
+}
+
+/* The time is clipped by its own span, never by the cell: a cell with overflow: hidden clips its background inside the
+   collapsed border, and the transparent row line under every time showed through as a dark seam. */
+.tick-table tbody td.tick-details-time-cell {
+  white-space: nowrap;
+  letter-spacing: 0;
+}
+
+.tick-details-time-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+/* The list's controls: laid out as items of whichever actions box holds them (its own title bar, or a slot's). */
+.tick-details-actions {
+  display: contents;
+}
+
+/* 過濾: ≥ N 張 in the title bar, before the other actions. */
+.tick-details-filter {
+  flex: 0 0 auto;
+  order: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--slate-400);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* As wide as four digits (4ch + padding); a filled pill like the card's tabs, no frame. */
+.tick-details-filter-input {
+  width: calc(4ch + 14px);
+  height: 22px;
+  box-sizing: border-box;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 11px;
+  background: var(--slate-800);
+  color: var(--slate-100);
+  font: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.tick-details-filter-input:focus {
+  outline: none;
+  background: var(--slate-700);
+}
+
+.tick-details-popout {
+  flex: 0 0 auto;
+  order: 3;
+  height: 22px;
+  min-width: 22px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--slate-400);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.tick-details-popout:hover {
+  background: var(--slate-800);
+  color: var(--slate-100);
+}
+
+.tick-details-popout-icon {
+  position: relative;
+  display: inline-block;
+  width: 13px;
+  height: 11px;
+  vertical-align: middle;
+}
+
+.tick-details-popout-icon::before,
+.tick-details-popout-icon::after {
+  content: "";
+  position: absolute;
+  width: 8px;
+  height: 7px;
+  border: 1px solid currentColor;
+  border-radius: 1px;
+  box-sizing: border-box;
+}
+
+.tick-details-popout-icon::before {
+  left: 1px;
+  top: 3px;
+  opacity: .72;
+}
+
+.tick-details-popout-icon::after {
+  right: 1px;
+  top: 1px;
+  background: var(--surface-panel);
+}
+
+.tick-details-popout:hover .tick-details-popout-icon::after {
+  background: var(--surface-tab-active);
+}
+
+.tick-details-trade-price {
+  vertical-align: middle;
+}
+
+/* 成交明細's only visible scrollbar is its PageRail inside the data area. The grid body stays the scroll owner
+ * (wheel, keyboard, row snap and the rail share its scrollTop), but its native scrollbar lane is moved outside the
+ * visible wrapper and clipped, so Chromium never paints a second, native thumb beside the rail. */
+.tick-table-wrap[data-standard-grid-overlay-scrollbar="1"] {
+  --tick-native-scrollbar-clip: var(--app-scrollbar-size);
+}
+
+/* 成交明細 marks share one height: the 漲停/跌停 price box and the stacked 大單 badge. */
+td .tick-details-trade-price.limit-up-price,
+td .tick-details-trade-price.limit-down-price {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 2px;
+  height: var(--tick-mark-height);
+  line-height: var(--tick-mark-height);
+  vertical-align: middle;
+}
+
+td .tick-details-large-badge {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  min-width: 13px;
+  height: var(--tick-mark-height);
+  margin-left: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: var(--slate-500);
+  color: var(--white);
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 9px;
+  vertical-align: middle;
+}
+
+td .tick-details-large-badge i {
+  font-style: normal;
+  display: block;
+}
+
+td .tick-details-large-badge.buy {
+  background: var(--price-up-color);
+}
+
+td .tick-details-large-badge.sell {
+  background: var(--price-down-color);
+}
+
+/* Every 成交 price sits in the same fixed box (the 漲停/跌停 colour box included), so the 大單 badge beside it
+   lines up from row to row whatever the price or its limit state. */
+td .tick-details-price-anchor > .tick-details-trade-price {
+  display: inline-block;
+  box-sizing: border-box;
+  min-width: calc(7ch + 8px);
+  padding: 0 4px;
+  text-align: center;
+}
+
+/* The 大單 badge's slot is on the price's right only; 成交's title carries the same right inset, so the title and the
+   prices share one centre and the column holds exactly its 84 px minimum (4 + price box + slot + 4). A slot on both
+   sides would make the box 12 px wider than that minimum: it would overflow the cell, read as a blank beside 時間 and keep the
+   splitter from narrowing 成交. */
+/* The 大單 badge takes no room: prices stay aligned whether or not a row is large. */
+td .tick-details-price-anchor {
+  position: relative;
+  display: inline-block;
+  padding: 0 17px 0 0;
+}
+
+td .tick-details-price-anchor > .tick-details-large-badge {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 0;
+  left: auto;
+  right: 0;
+}
+
+.tick-table > thead > tr > th:nth-child(2) {
+  padding-right: calc(4px + 17px);
+}
+
+/* The line under the titles is the overlay header band's (data-grid.css), not each title cell's. */
+.tick-table th {
+  border-bottom: 0;
+  color: var(--slate-500);
+  font-weight: 600;
+}
+
+/* TickDetails deliberately uses an ultra-compact inset rail. Keep this
+ * override local so other paged-list controls retain their normal hit area. */
+.tick-details {
+  position:relative;
+  --paged-rail-height: 30px;
+  --paged-rail-control-size: 10px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface-panel);
+}
+
+/* TickDetails owns one ultra-compact custom rail that visually lives INSIDE
+ * the DataGrid data body. The rail is overlaid at the body's right edge; no
+ * dedicated header/body gutter is reserved for it. Native scrollbar stays hidden. */
+.tick-table-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.tick-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.tick-table > thead > tr > th {
+  box-sizing: border-box;
+  height: calc(var(--product-quote-header-height) - 1px);
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: 18px;
+  vertical-align: middle;
+}
+
+.tick-table > thead > tr > th,
+.tick-table > tbody > tr > td {
+  padding-left: 4px;
+  padding-right: 4px;
+  text-align: center;
+}
+
+/* 成交明細: its column titles stay in view while the rows scroll. */
+:where(.tick-table) > thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}

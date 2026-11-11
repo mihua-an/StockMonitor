@@ -1,0 +1,653 @@
+/* The trend chart: canvas area, controls, event markers, lookup card, technical analysis. */
+
+/* The trend chart's root: a column of titlebar, controls, chart and info rows, on the panel surface. */
+.trend-chart {
+  position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface-panel);
+}
+
+.trend-chart-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background:
+    linear-gradient(to right, var(--pane-border) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--pane-border) 1px, transparent 1px);
+  background-size: 80px 48px;
+}
+
+/* Configurable trend tabs reuse one canvas, but detached/custom layouts may
+ * create it without the legacy id. Keep the same bounded sizing contract. */
+.trend-chart [data-role="trend-canvas"] {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ===== Trend chart crosshair / docked lookup ===== */
+.trend-lookup-host {
+  position: relative;
+}
+
+.trend-lookup-host canvas {
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.trend-lookup-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: none;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.trend-lookup-layer.active {
+  display: block;
+}
+
+.trend-lookup-vline,
+.trend-lookup-hline {
+  position: absolute;
+  pointer-events: none;
+}
+
+.trend-lookup-vline {
+  width: 1px;
+  border-left: 1px solid var(--yellow-400);
+  transform: translateX(-0.5px);
+}
+
+.trend-lookup-hline {
+  height: 1px;
+  border-top: 1px solid var(--sky-400);
+  transform: translateY(-0.5px);
+}
+
+.trend-lookup-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--slate-50);
+  border-radius: 999px;
+  background: var(--sky-500);
+  box-shadow: 0 0 0 2px var(--blue-950x-a72);
+  transform: translate(-50%, -50%);
+}
+
+.trend-lookup-card {
+  position: fixed;
+  z-index: var(--z-lookup-card);
+  display: none;
+  width: 214px;
+  min-height: 196px;
+  padding: 10px 12px 11px;
+  border: 2px solid var(--sky-500x);
+  border-radius: 7px;
+  background: var(--blue-950x-a97);
+  box-shadow: 0 8px 24px var(--black-a48);
+  color: var(--slate-50);
+  font-family: Consolas, "Microsoft JhengHei", monospace;
+  font-size: 13px;
+  line-height: 1.25;
+  pointer-events: none;
+}
+
+.trend-lookup-card.active {
+  display: block;
+}
+
+.trend-lookup-card.pinned {
+  border-color: var(--sky-400);
+  box-shadow: 0 0 0 1px var(--sky-400-a22), 0 8px 24px var(--black-a50);
+}
+
+.trend-lookup-card-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--slate-600-a68);
+  white-space: nowrap;
+}
+
+.trend-lookup-card-title b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--slate-50);
+  font-size: 14px;
+}
+
+.trend-lookup-card-title span:last-child {
+  margin-left: auto;
+  color: var(--blue-300);
+  font-weight: 900;
+}
+
+.trend-lookup-bullet {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 999px;
+  background: var(--amber-400);
+}
+
+.trend-lookup-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+}
+
+.trend-lookup-row > span {
+  color: var(--blue-100);
+}
+
+.trend-lookup-row > b {
+  text-align: right;
+  color: var(--slate-50);
+  font-weight: 900;
+}
+
+.trend-lookup-row > b.trend-lookup-up {
+  color: var(--price-up-color);
+}
+
+.trend-lookup-row > b.trend-lookup-down {
+  color: var(--price-down-color);
+}
+
+.trend-lookup-row > b.trend-lookup-flat {
+  color: var(--price-flat-color);
+}
+
+/* ===== Trend crosshair axis labels ===== */
+.trend-lookup-axis-label {
+  position: absolute;
+  z-index: 13;
+  pointer-events: none;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: var(--blue-950x-a94);
+  border: 1px solid var(--sky-300-a72);
+  color: var(--slate-50);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.15;
+  white-space: nowrap;
+  box-shadow: 0 2px 7px var(--black-a28);
+}
+
+.trend-lookup-x-label {
+  transform: translate(-50%, 3px);
+}
+
+.trend-lookup-y-label {
+  transform: translate(calc(-100% - 4px), -50%);
+}
+
+.trend-area {
+  flex:1;
+  min-height:120px;
+}
+
+.trend-info-lines {
+  padding-top: 2px;
+}
+
+/* ===== Canonical trend controls ===== */
+/* 疊圖 (加權 / 期貨) and the session choice: a pill-switch (base.css) at the chart's top right. */
+.trend-session-control {
+  position: absolute;
+  z-index: 18;
+  top: 5px;
+  right: 7px;
+}
+
+/* Moomoo A panels now reuse the canonical Taiwan renderers.  No standalone
+ * grey status strip is kept between the outer A tab and the actual data. */
+.trend-variant-us-stock {
+  height:100%;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+
+.trend-variant-us-stock .trend-chart-stage {
+  position:relative;
+  flex:1 1 auto;
+  min-height:120px;
+}
+
+.trend-us-info {
+  flex:0 0 auto;
+}
+
+/* ===== Realtime layout + trade-only details ===== */
+.technical-analysis {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-panel);
+}
+
+/* Workspace always reserves all six slots. Adding a symbol therefore fills a
+   stable slot instead of resizing every existing column. Every mounted
+   component must also fill its assigned grid row; without this rule a chart's
+   intrinsic canvas height leaves a false gap above the order book. */
+
+.trend-titlebar > :first-child {
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Workspace trend is chart-only below its retained product header. */
+.trend-chart[data-info-lines="hidden"] > .trend-info-lines {
+  display: none;
+}
+
+/* 個股走勢「盤中事件」switch: bottom-right corner of the chart, above the time axis (same control as 歷史回放). */
+.trend-chart-stage > .trend-event-marker-toggle {
+  position: absolute;
+  right: 8px;
+  bottom: 24px;
+  z-index: 3;
+}
+
+:is(.trend-chart-stage, .trend-control-row) > .trend-event-marker-toggle[hidden] {
+  display: none;
+}
+
+/* 個股走勢「盤中事件」switch -- its own look (the 歷史回放 toggles keep theirs). Off: muted grey, thumb left.
+ * On: sky-blue border, label and track, thumb right. */
+:is(.trend-chart-stage, .trend-control-row) > .trend-event-marker-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 24px;
+  padding: 0 8px 0 10px;
+  border-radius: 12px;
+  border: 1px solid var(--slate-400-a35);
+  background: var(--blue-900x-a88);
+  color: var(--slate-500x-3);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 1px 4px var(--black-a45);
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+/* `wide` (eventMarkerToggleHtml): the row's whole width, the label at the start and the switch at the end. */
+:is(.trend-chart-stage, .trend-control-row) > .trend-event-marker-toggle.wide {
+  width: 100%;
+  box-sizing: border-box;
+  justify-content: space-between;
+}
+
+:is(.trend-chart-stage, .trend-control-row) > .trend-event-marker-toggle:hover {
+  border-color: var(--sky-300-a60);
+  color: var(--slate-300);
+}
+
+:is(.trend-chart-stage, .trend-control-row) > .trend-event-marker-toggle.active {
+  border-color: var(--sky-400-a85);
+  color: var(--sky-100);
+  background: var(--sky-800x-a92);
+}
+
+/* 技術分析: the 個股走勢 surface with candlesticks in place of the line. */
+.technical-analysis .trend-chart-stage > canvas[data-role="trend-canvas"],
+.technical-analysis .trend-chart-stage > [data-role="trend-overlay-toolbar"],
+.technical-analysis .trend-chart-stage > .trend-event-marker-toggle,
+.technical-analysis .trend-chart-stage > [data-role="txf-session-control"],
+.technical-analysis [data-role="trend-control-row"] {
+  display: none;
+}
+
+.technical-analysis .trend-chart-stage {
+  position: relative;
+}
+
+.technical-analysis-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: crosshair;
+}
+
+.technical-analysis-toolbar {
+  flex: 0 0 var(--product-quote-header-height);
+  height: var(--product-quote-header-height);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.technical-analysis-ohlcv {
+  display: flex;
+  gap: 8px;
+  color: var(--slate-500);
+  font-weight: 600;
+}
+
+.technical-analysis-ohlcv b {
+  font-weight: 600;
+}
+
+.technical-analysis-date {
+  color: var(--gray-200);
+}
+
+.technical-analysis-older {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 3;
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: var(--blue-900x-a90);
+  color: var(--blue-50x);
+  font-size: 12px;
+}
+
+.technical-analysis-older[hidden] {
+  display: none;
+}
+
+.technical-analysis-ohlcv .technical-analysis-volume {
+  color: var(--amber-400x-2);
+}
+
+.technical-analysis-latest {
+  position: absolute;
+  left: 6px;
+  bottom: 24px;
+  z-index: 3;
+  width: 26px;
+  height: 22px;
+  border: 1px solid var(--sky-700x-5);
+  border-radius: 3px;
+  background: var(--blue-900x-a90);
+  color: var(--blue-50x);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.technical-analysis-latest[hidden] {
+  display: none;
+}
+
+/* The trend controls (盤中事件 + 疊圖, or the session buttons), never on top of the chart. data-placement says where
+ * they sit (trend_chart_component.js _placeControlRow): "header" -- 期貨走勢's header, between name and price; "tabs"
+ * -- the slot's tab bar; "row" -- their own band between the header and the chart. */
+.trend-control-row {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.trend-control-row[data-placement="row"] {
+  gap: 8px;
+  flex-wrap: wrap;
+  min-height: 30px;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--blue-800x-19);
+  background: var(--blue-950x-4);
+}
+
+/* In a header or a tab bar the controls are as tall as the bar's other buttons. */
+.trend-control-row:not([data-placement="row"]) > .trend-event-marker-toggle {
+  height: 20px;
+  padding: 0 6px 0 8px;
+  gap: 5px;
+}
+
+/* Futu 日盤's part trading now (盤前 / 盤中 / 盤後), small on its button. */
+.trend-session-note {
+  margin-left: 4px;
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--sky-300);
+}
+
+.trend-session-control button.active .trend-session-note {
+  color: inherit;
+  opacity: .8;
+}
+
+/* 期貨走勢's 日 / 夜 / 全: one character each. */
+.trend-session-control-short button {
+  min-width: 24px;
+  padding: 0 7px;
+}
+
+.trend-control-row > .trend-event-marker-toggle,
+.trend-control-row > .trend-session-control {
+  position: static;
+  box-shadow: none;
+}
+
+/* A row with nothing to offer (a crypto trend: one 24H session) takes no space. */
+.trend-control-row[hidden] {
+  display: none;
+}
+
+/* The three rows under the chart: 預測 (one line of four), 個股資訊 (two lines of four), 上漲下跌家數. Both rows keep
+ * .trend-stock-metrics: the 漲停 / 跌停 chips and the prediction colours are styled through it. */
+
+.trend-chart-stage > [data-role="trend-canvas"] {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* The 盤中事件 switch's track and thumb: grey and left when off, sky-blue and right when on. */
+:is(.trend-chart-stage, .trend-control-row) > .trend-event-marker-toggle .trend-event-marker-toggle-label {
+  color: inherit;
+}
+
+:is(.trend-chart-stage, .trend-control-row) > .trend-event-marker-toggle .trend-event-marker-toggle-track {
+  position: relative;
+  display: inline-block;
+  width: 26px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--slate-700);
+  box-shadow: inset 0 0 0 1px var(--white-a08);
+  transition: background 0.15s ease;
+}
+
+:is(.trend-chart-stage, .trend-control-row) > .trend-event-marker-toggle .trend-event-marker-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--slate-400);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+:is(.trend-chart-stage, .trend-control-row) > .trend-event-marker-toggle.active .trend-event-marker-toggle-track {
+  background: var(--sky-500);
+}
+
+:is(.trend-chart-stage, .trend-control-row) > .trend-event-marker-toggle.active .trend-event-marker-toggle-thumb {
+  transform: translateX(12px);
+  background: var(--control-selected-fg);
+}
+
+
+/* The facts under the chart, on the card's own colour: a grid of cells, each the label on the left and its value on
+ * the right; then 上漲 / 下跌 / 漲停 / 跌停 / 平盤 as a row of chips (.trend-market-metrics). */
+.trend-info-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-flow: row;
+  gap: 2px 10px;
+  box-sizing: border-box;
+  padding: 4px 12px;
+  background: transparent;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--slate-500);
+}
+
+.trend-info-row b {
+  font-weight: 600;
+}
+
+.trend-stock-metrics {
+  min-height: 0;
+}
+
+/* Provider names can have very different lengths, so no Shioaji/Futu column may
+   change the chart or time-axis height. The height itself is the shared product
+   header token (see CANONICAL PRODUCT HEADER); this only pins the row's flex. */
+.trend-titlebar {
+  flex: 0 0 var(--product-quote-header-height);
+  box-sizing: border-box;
+}
+
+.trend-stock-metrics > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* A figure's default colour, at element weight: a market colour on the figure (base.css .price-up ...) decides. */
+:where(.trend-stock-metrics) b {
+  color: var(--slate-100);
+}
+
+.trend-stock-metrics b.metric-limit-up,
+.trend-stock-metrics b.metric-limit-down {
+  padding: 0 5px;
+  border-radius: 4px;
+  color: var(--white);
+  font-weight: 700;
+}
+
+.trend-stock-metrics b.metric-limit-up {
+  background: var(--limit-up-bg);
+}
+
+.trend-stock-metrics b.metric-limit-down {
+  background: var(--limit-down-bg);
+}
+
+/* 期貨走勢 / 加權走勢: three facts a line (no 漲停 / 跌停). */
+.trend-info-row.trend-session-info {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* 上漲 / 下跌 / 漲停 / 跌停 / 平盤: one chip each, the count coloured; 漲停 / 跌停 a filled count. */
+.trend-market-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  box-sizing: border-box;
+  padding: 4px 12px 8px;
+  overflow: hidden;
+  background: transparent;
+  color: var(--slate-400);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.trend-market-metrics > div {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 2px 4px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--surface-inset);
+  white-space: nowrap;
+}
+
+.trend-market-metrics b {
+  color: var(--slate-100);
+  font-weight: 700;
+}
+
+.trend-market-metrics b.metric-breadth-up {
+  color: var(--price-up-color);
+}
+
+.trend-market-metrics b.metric-breadth-down {
+  color: var(--price-down-color);
+}
+
+.trend-market-metrics b.metric-breadth-flat {
+  color: var(--price-flat-color);
+}
+
+.trend-market-metrics b.metric-breadth-limit-up,
+.trend-market-metrics b.metric-breadth-limit-down {
+  padding: 0 5px;
+  border-radius: 4px;
+  color: var(--white);
+}
+
+.trend-market-metrics b.metric-breadth-limit-up {
+  background: var(--limit-up-bg);
+}
+
+.trend-market-metrics b.metric-breadth-limit-down {
+  background: var(--limit-down-bg);
+}
+/* ===== 歷史回放's surface (replayTrendShell): the loading veil ===== */
+/* The chart keeps its surface while its history loads; a non-blocking veil says so. */
+.trend-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  background: var(--blue-950x-a62);
+  color: var(--sky-100x);
+  font-size: 12px;
+  font-weight: 800;
+  pointer-events: none;
+  backdrop-filter: blur(1px);
+}
+
+.trend-loading[hidden] {
+  display: none;
+}
+

@@ -1,0 +1,376 @@
+/* The 商品頁設定 window (watch_pages_window.html): three columns -- the pages, the page's products, 加入商品 -- in the
+   settings components (components/settings.css: rows, pills, icon buttons, search, actions, toast). Each column is a
+   header row of one height and a card filling the rest, so the three cards line up. Lists scroll one row at a time
+   (row_snap.js) with the shared discrete rail drawn over the card (discrete_row_scrollbar.js). */
+
+html,
+body:where(.watch-window) {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+.watch-window {
+  --row-height-watch-editor: 44px;
+  --row-height-watch-editor-min: var(--row-height-watch-editor);
+  --row-height-watch-editor-max: var(--row-height-watch-editor);
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  background: var(--surface-page);
+  color: var(--slate-100);
+}
+
+.watch-cols {
+  display: grid;
+  grid-template-columns: 310px minmax(0, 1fr) clamp(280px, 24vw, 340px);
+  grid-template-areas: "pages items add";
+  gap: 16px;
+  padding: 12px 16px 0;
+  min-height: 0;
+}
+
+.watch-col {
+  display: grid;
+  grid-template-rows: 44px minmax(0, 1fr);
+  min-height: 0;
+}
+
+.watch-col-pages {
+  grid-area: pages;
+}
+
+.watch-col-items {
+  grid-area: items;
+}
+
+.watch-col-add {
+  grid-area: add;
+}
+
+.watch-col-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 6px;
+  min-width: 0;
+}
+
+.watch-col-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--slate-100);
+  white-space: nowrap;
+}
+
+.watch-col-page-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--slate-100);
+  cursor: text;
+}
+
+.watch-col-count {
+  font-size: 13px;
+  color: var(--slate-400);
+  white-space: nowrap;
+}
+
+/* The source choice is the settings segmented control (settings-seg); the column head places it at the right. */
+.watch-segmented {
+  margin-left: auto;
+}
+
+.watch-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: 12px;
+  background: var(--slate-900);
+  overflow: hidden;
+}
+
+/* The list: whole rows, the native scrollbar hidden (the discrete rail is drawn over the card's edge). */
+.watch-card-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.watch-card-body::-webkit-scrollbar {
+  display: none;
+}
+
+.watch-card-top {
+  flex: none;
+  box-shadow: inset 0 -1px 0 var(--pane-border);
+}
+
+.watch-card-bar {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px;
+  box-shadow: inset 0 1px 0 var(--pane-border);
+}
+
+.watch-card-rail {
+  z-index: 2;
+}
+
+.watch-search-box {
+  padding: 10px 12px;
+}
+
+.watch-empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--slate-500);
+}
+
+/* A page of the list and a search result: one settings row of the list's height. */
+.watch-list-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--row-height-watch-editor);
+  padding: 0 14px 0 8px;
+  font-size: 14px;
+  color: var(--slate-100);
+}
+
+.watch-list-row + .watch-list-row {
+  box-shadow: inset 0 1px 0 var(--pane-border);
+}
+
+.watch-list-row.is-clickable {
+  cursor: pointer;
+}
+
+.watch-list-row.is-clickable:hover {
+  background: var(--row-hover-bg);
+}
+
+.watch-list-row.is-selected,
+.watch-list-row.is-selected:hover {
+  background: var(--row-active-bg);
+}
+
+.watch-list-row.is-drag-over {
+  box-shadow: inset 0 2px 0 var(--blue-400);
+}
+
+.watch-list-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.watch-list-detail {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--slate-400);
+}
+
+.watch-list-count {
+  color: var(--slate-400);
+  font-size: 13px;
+}
+
+/* The page's products: the header row and every row share one set of column widths. */
+.watch-row {
+  display: grid;
+  grid-template-columns: 24px 64px minmax(0, 1fr) 80px 80px 56px 56px 56px 26px;
+  align-items: center;
+  column-gap: 6px;
+  height: var(--row-height-watch-editor);
+  padding: 0 10px 0 8px;
+  font-size: 14px;
+  color: var(--slate-100);
+}
+
+.watch-row + .watch-row,
+.watch-row-months + .watch-row {
+  box-shadow: inset 0 1px 0 var(--pane-border);
+}
+
+.watch-item:hover {
+  background: var(--row-hover-bg);
+}
+
+.watch-row.is-drag-over {
+  box-shadow: inset 0 2px 0 var(--blue-400);
+}
+
+.watch-row-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 32px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--slate-400);
+  background: var(--slate-900);
+  box-shadow: inset 0 -1px 0 var(--pane-border);
+}
+
+.watch-cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.watch-cell-code {
+  color: var(--slate-400);
+  font-size: 13px;
+}
+
+.watch-cell-name {
+  font-weight: 600;
+}
+
+.watch-cell-num {
+  text-align: right;
+  padding-right: 6px;
+}
+
+.watch-cell-center {
+  text-align: center;
+}
+
+/* 高價 and the pills after it: a little room between numbers and buttons. */
+.watch-cell-high {
+  margin-right: 14px;
+}
+
+.watch-cell-pill {
+  min-width: 0;
+  width: 100%;
+  padding: 4px 0;
+}
+
+/* 低價／高價: text until clicked, then an input. */
+.watch-num {
+  display: block;
+  padding: 4px 6px;
+  border-radius: 6px;
+  text-align: right;
+  color: var(--slate-200);
+  cursor: text;
+}
+
+.watch-num:hover {
+  background: var(--slate-800);
+}
+
+.watch-num.is-empty {
+  color: var(--slate-600);
+}
+
+.watch-num-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 6px;
+  background: var(--slate-800);
+  color: var(--slate-100);
+  font-size: 14px;
+  text-align: right;
+  box-shadow: inset 0 0 0 1px var(--blue-400);
+}
+
+.watch-name-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  border-radius: 7px;
+  padding: 5px 8px;
+  background: var(--slate-800);
+  color: var(--slate-100);
+  font-size: 18px;
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px var(--blue-400);
+}
+
+/* A stock's futures months: one row high (whole-row scrolling stays aligned), under the stock, no line between. */
+.watch-row-months {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--row-height-watch-editor);
+  padding: 0 10px 0 38px;
+  background: var(--surface-subrow);
+  overflow: hidden;
+}
+
+.watch-months-code {
+  flex: none;
+  margin-right: 4px;
+  color: var(--slate-400);
+  font-size: 12px;
+}
+
+.watch-months-lanes {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.watch-footer {
+  margin: 0;
+  padding: 12px 16px;
+}
+
+/* Medium: the side columns narrow first. */
+@media (max-width: 1240px) {
+  .watch-cols {
+    grid-template-columns: 240px minmax(0, 1fr) 260px;
+    gap: 12px;
+  }
+
+  .watch-row {
+    grid-template-columns: 22px 56px minmax(64px, 1fr) 64px 64px 48px 48px 48px 24px;
+    column-gap: 4px;
+  }
+}
+
+/* Narrow: 加入商品 moves above the products as a short search card; the pages column spans both rows. */
+@media (max-width: 1000px) {
+  .watch-cols {
+    grid-template-columns: 200px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "pages add" "pages items";
+  }
+
+  .watch-col-add {
+    grid-template-rows: 44px auto;
+  }
+
+  .watch-add-card {
+    max-height: 170px;
+  }
+
+  .watch-col-items {
+    margin-top: 10px;
+  }
+
+  .watch-row {
+    grid-template-columns: 20px 52px minmax(60px, 1fr) 56px 56px 44px 44px 44px 22px;
+    padding: 0 6px;
+  }
+}

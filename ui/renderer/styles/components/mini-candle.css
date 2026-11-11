@@ -1,0 +1,38 @@
+/* One day's small candle (core/mini_candle.js). The cell that holds it may set --mini-candle-height. */
+.mini-candle {
+  width: 14px;
+  height: var(--mini-candle-height, 34px);
+  overflow: visible;
+}
+
+.mini-candle line {
+  stroke-width: 1.5;
+}
+
+.mini-candle rect {
+  stroke-width: 1;
+}
+
+.mini-candle.up line,
+.mini-candle.up rect {
+  stroke: var(--price-up-color);
+  fill: var(--price-up-color);
+}
+
+.mini-candle.down line,
+.mini-candle.down rect {
+  stroke: var(--price-down-color);
+  fill: var(--price-down-color);
+}
+
+.mini-candle.flat line,
+.mini-candle.flat rect {
+  stroke: var(--price-flat-color);
+  fill: var(--price-flat-color);
+}
+
+.mini-candle.is-empty {
+  width: 2px;
+  height: 22px;
+  background: var(--slate-700);
+}

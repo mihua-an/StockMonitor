@@ -1,0 +1,65 @@
+/* The 模擬下單 popover beside a 買賣報價 (features/realtime/components/paper_order_popover.js): 模擬 and the stock, the
+ * order ticket (order-ticket.css), what was sent or refused. Placed by its script next to the 買賣報價. */
+
+.paper-order-popover {
+  position: fixed;
+  z-index: var(--z-popover-top);
+  width: 300px;
+  padding: 8px 10px 4px;
+  border: 1px solid var(--focus-ring-color);
+  border-radius: var(--pane-radius);
+  background: var(--surface-panel);
+  font-size: 13px;
+}
+
+.paper-order-popover[hidden] {
+  display: none;
+}
+
+.paper-order-popover-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.paper-order-popover-tag {
+  padding: 1px 6px;
+  border: 1px solid var(--ledger-paper);
+  border-radius: 4px;
+  background: var(--ledger-paper-bg);
+  color: var(--ledger-paper);
+  font-size: 11px;
+}
+
+.paper-order-popover-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--price-flat-color);
+  font-weight: 700;
+}
+
+.paper-order-popover-close {
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--gray-400);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.paper-order-popover-message {
+  padding: 0 0 6px;
+  font-size: 12px;
+  color: var(--ledger-paper);
+}
+
+.paper-order-popover-message:empty {
+  display: none;
+}
+
+.paper-order-popover-message.error {
+  color: var(--price-up-color);
+}

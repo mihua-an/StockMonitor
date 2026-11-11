@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' __STOCKMONITOR_CONNECT_SOURCES__; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-src 'none';">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>商品頁設定</title>
+  <link rel="stylesheet" href="./styles/index.css">
+  <link rel="stylesheet" href="./styles/windows/watch-pages.css">
+</head>
+<body class="watch-window">
+<div class="watch-cols">
+  <section class="watch-col watch-col-pages">
+    <header class="watch-col-head">
+      <span class="watch-col-title">商品頁</span>
+      <span id="watchSourceSeg" class="settings-seg watch-segmented" role="group" aria-label="切換商品資料來源">
+        <button type="button" class="settings-seg-btn" data-watch-source="shioaji">永豐</button>
+        <button type="button" class="settings-seg-btn" data-watch-source="futu">富途</button>
+      </span>
+    </header>
+    <div class="watch-card">
+      <label id="futuMarketRow" class="settings-item watch-card-top" hidden>
+        <span class="settings-item-main"><b>市場</b></span>
+        <span class="settings-select"><select id="futuMarketFilter" aria-label="篩選 Futu 商品市場">
+          <option value="all">全部市場</option>
+          <option value="us">US</option>
+          <option value="cc">Crypto CC</option>
+        </select></span>
+      </label>
+      <div id="watchPageList" class="watch-card-body"></div>
+      <div class="watch-card-bar">
+        <button id="addWatchPageBtn" type="button" class="settings-icon-btn" aria-label="新增商品頁">＋</button>
+        <button id="deletePageBtn" type="button" class="settings-icon-btn" aria-label="刪除這個商品頁">−</button>
+      </div>
+      <div id="watchPageListRail" class="shared-discrete-row-rail watch-card-rail"></div>
+    </div>
+  </section>
+
+  <section class="watch-col watch-col-items">
+    <header id="watchPageNameHead" class="watch-col-head"></header>
+    <div class="watch-card">
+      <div id="watchPageItems" class="watch-card-body"></div>
+      <div id="watchPageItemsRail" class="shared-discrete-row-rail watch-card-rail"></div>
+    </div>
+  </section>
+
+  <section class="watch-col watch-col-add">
+    <header class="watch-col-head"><span class="watch-col-title">加入商品</span></header>
+    <div class="watch-card watch-add-card">
+      <div class="watch-card-top watch-search-box"><input id="watchPageSearchInput" class="settings-search" type="search" placeholder="股號或股名" autocomplete="off"></div>
+      <div id="watchPageSearchResults" class="watch-card-body"></div>
+      <div id="watchPageSearchRail" class="shared-discrete-row-rail watch-card-rail"></div>
+    </div>
+  </section>
+</div>
+
+<div class="settings-actions watch-footer">
+  <span id="watchPagesStatus" role="status" aria-live="polite" aria-atomic="true" class="settings-actions-note"></span>
+  <button id="cancelWatchPagesBtn" class="btn is-compact secondary" type="button">取消</button>
+  <button id="saveWatchPagesBtn" class="btn is-compact primary" type="button">儲存設定</button>
+</div>
+<div id="settingsToast" class="settings-toast-stack" role="status" aria-live="polite" hidden></div>
+<script type="module" src="./watch_pages_window.js"></script>
+</body>
+</html>

@@ -1,0 +1,100 @@
+/* 「Shioaji產業指數」 (features/realtime/components/industry_index_list_component.js): the current index on one line, then
+ * the 上市 and 上櫃 indexes as a grid of buttons; the current one is marked. */
+
+.industry-index-list {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--surface-panel);
+  font-size: 12px;
+}
+
+.industry-index-list-current {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--pane-border);
+  background: var(--surface-panel);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Nothing chosen yet: no line. */
+.industry-index-list-current:empty {
+  display: none;
+}
+
+.industry-index-list-current-name {
+  font-weight: 700;
+}
+
+.industry-index-list-origin {
+  margin-left: 8px;
+  color: var(--gray-400);
+}
+
+.industry-index-list-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 8px 8px;
+}
+
+.industry-index-list-group + .industry-index-list-group {
+  margin-top: 8px;
+}
+
+.industry-index-list-group-title {
+  padding: 2px 2px 4px;
+  color: var(--gray-400);
+  font-weight: 700;
+}
+
+.industry-index-list-grid {
+  display: grid;
+  /* The longest name (電腦及週邊設備類指數, 10 characters) fits one button. */
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 4px;
+}
+
+.industry-index-list-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--pane-border);
+  border-radius: 4px;
+  background: var(--surface-panel);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.industry-index-list-item:hover {
+  background: var(--surface-tab-active);
+}
+
+.industry-index-list-item.current {
+  border-color: var(--control-selected-bg);
+  background: var(--row-active-bg);
+}
+
+.industry-index-list-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.industry-index-list-empty {
+  padding: 12px 4px;
+  color: var(--gray-400);
+}
+
+.industry-index-list-empty.error {
+  color: var(--price-up-color);
+}

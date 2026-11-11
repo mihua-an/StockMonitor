@@ -1,0 +1,522 @@
+/* 帳務 配對回放 (features/account/pair_replay_view.js): the replay panel opened under a trade -- two rows of three
+ * cards (走勢資訊｜買賣報價｜成交明細, 技術分析｜價量｜大單流向), each row the same height, and the play bar. */
+
+.pair-replay {
+  display: grid;
+  gap: 12px;
+  padding: 4px 16px 16px;
+}
+
+.pair-replay-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* The top row as low as 買賣報價's five levels allow; the bottom row keeps 大單流向's two charts at their least
+   * height (110px each, trade-flow.css) without a scrollbar. */
+  grid-template-rows: 280px 350px;
+  gap: 12px;
+}
+
+.pair-replay-card {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  padding: 10px 12px 8px;
+  /* 即時報價's pane: 價量 and 大單流向 inside are drawn on this same surface. */
+  border: 1px solid var(--pane-border);
+  border-radius: var(--pane-radius);
+  background: var(--surface-panel);
+}
+
+/* The title on the left, the card's quote (價格 漲跌 漲跌幅) or its switch on the right. */
+.pair-replay-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  color: var(--slate-300);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The card's name is never cut: what sits beside it (走勢資訊's legend) gives way instead. */
+.pair-replay-title > span:first-child {
+  flex: none;
+}
+
+.pair-replay-quote {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pair-replay-quote b {
+  font-size: 13px;
+}
+
+.pair-replay-quote span {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* A chart fills what the card has left; the 買 / 賣 marks are HTML over it, so they stay round however it stretches. */
+.pair-replay-plot {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.pair-replay-chart {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.pair-replay-kline {
+  position: absolute;
+  inset: 0;
+}
+
+/* 走勢資訊's three lines (and their legend dots): the stock bright, the two indexes behind it. */
+.pair-replay-line {
+  fill: none;
+  stroke: var(--pair-replay-line);
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.pair-replay .is-stock-up {
+  --pair-replay-line: var(--price-up-color);
+}
+
+.pair-replay .is-stock-down {
+  --pair-replay-line: var(--price-down-color);
+}
+
+.pair-replay .is-market {
+  --pair-replay-line: var(--sky-400);
+}
+
+.pair-replay .is-industry {
+  --pair-replay-line: var(--amber-400);
+}
+
+/* 走勢資訊 is the stock's chart: its line bold and bright, the two indexes thin and faded behind it for reference. */
+.pair-replay-line.is-stock-up,
+.pair-replay-line.is-stock-down {
+  stroke-width: 2.4;
+}
+
+.pair-replay-legend-item.is-stock {
+  color: var(--slate-100);
+}
+
+.pair-replay-line.is-market,
+.pair-replay-line.is-industry {
+  stroke-width: 1.1;
+  stroke-opacity: .45;
+}
+
+/* The legend: a dot in the line's colour, the name, and its change in percent (or why the index has no line). */
+.pair-replay-legend {
+  display: inline-flex;
+  min-width: 0;
+  gap: 10px;
+  overflow: hidden;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pair-replay-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--slate-400);
+  font-weight: 600;
+}
+
+.pair-replay-legend-item i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--pair-replay-line);
+}
+
+.pair-replay-legend-item em {
+  color: var(--slate-500);
+  font-style: normal;
+  font-weight: 400;
+}
+
+.pair-replay-ref {
+  stroke: var(--slate-500);
+  stroke-dasharray: 3 4;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.pair-replay-hold {
+  fill: color-mix(in srgb, var(--blue-400) 10%, transparent);
+}
+
+/* The cursor: faint, and drawn under the line. */
+.pair-replay-cursor {
+  stroke: var(--slate-200);
+  stroke-opacity: .35;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.pair-replay-sep {
+  stroke: var(--pane-border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.pair-replay-mark {
+  position: absolute;
+  bottom: 4px;
+  display: grid;
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--white);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.pair-replay-mark.is-buy {
+  background: var(--price-up-color);
+}
+
+.pair-replay-mark.is-sell {
+  background: var(--price-down-color);
+}
+
+.pair-replay-axis {
+  display: flex;
+  justify-content: space-between;
+  color: var(--slate-500);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pair-replay-note {
+  display: flex;
+  height: 100%;
+  min-height: 60px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  color: var(--slate-400);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* 技術分析 (its K period is the shared .expand-picker): candles, and under them the same bar's volume
+ * in its colour. */
+
+.pair-replay-kline .is-up {
+  fill: var(--price-up-color);
+  stroke: var(--price-up-color);
+}
+
+.pair-replay-kline .is-down {
+  fill: var(--price-down-color);
+  stroke: var(--price-down-color);
+}
+
+.pair-replay-kline .is-flat {
+  fill: var(--price-flat-color);
+  stroke: var(--price-flat-color);
+}
+
+.pair-replay-wick {
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.pair-replay-kvol {
+  opacity: .55;
+}
+
+.pair-replay-plot.is-probe {
+  cursor: crosshair;
+}
+
+.pair-replay-hover {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--slate-200) 12%, transparent);
+  pointer-events: none;
+}
+
+.pair-replay-hover[hidden] {
+  display: none;
+}
+
+/* 時間 開 高 低 收 量 of the bar in focus; wraps when the card is narrow. */
+.pair-replay-ohlc {
+  display: flex;
+  min-height: 16px;
+  flex-wrap: wrap;
+  column-gap: 6px;
+  margin-bottom: 4px;
+  color: var(--slate-500);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pair-replay-ohlc b {
+  font-weight: 600;
+}
+
+/* 五檔: 買量｜買價｜賣價｜賣量, the volume bars growing outwards from the prices; the two sides' totals under it. */
+/* The book fills the card down to the position line: its five rows share the height (never under 28px). */
+.pair-replay-book-host {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.pair-replay-book {
+  display: grid;
+  flex: 1;
+  grid-template-rows: 20px repeat(5, minmax(28px, 1fr));
+  gap: 2px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pair-replay-book-head,
+.pair-replay-book-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 58px 58px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 4px;
+}
+
+.pair-replay-book-head {
+  height: 20px;
+  color: var(--slate-500);
+  font-size: 11px;
+}
+
+.pair-replay-book-head span:nth-child(1) {
+  padding-left: 8px;
+}
+
+.pair-replay-book-head span:nth-child(2),
+.pair-replay-book-head span:nth-child(3) {
+  text-align: center;
+}
+
+.pair-replay-book-head span:nth-child(4) {
+  padding-right: 8px;
+  text-align: right;
+}
+
+.pair-replay-book-row {
+  height: 100%;
+}
+
+.pair-replay-book-vol {
+  position: relative;
+  display: flex;
+  height: calc(100% - 4px);
+  align-items: center;
+  padding: 0 8px;
+  overflow: hidden;
+  border-radius: 6px;
+  color: var(--slate-300);
+}
+
+.pair-replay-book-vol i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 6px;
+  transition: width .38s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.pair-replay-book-vol span {
+  position: relative;
+}
+
+.pair-replay-book-vol.is-bid {
+  justify-content: flex-end;
+}
+
+/* The same pills as 買賣報價's levels (--orderbook-bid-bar / --orderbook-ask-bar). */
+.pair-replay-book-vol.is-bid i {
+  right: 0;
+  background: var(--orderbook-bid-bar);
+}
+
+.pair-replay-book-vol.is-ask i {
+  left: 0;
+  background: var(--orderbook-ask-bar);
+}
+
+.pair-replay-book-price {
+  display: flex;
+  height: calc(100% - 4px);
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+}
+
+.pair-replay-book-price.is-last {
+  background: color-mix(in srgb, var(--slate-400) 10%, transparent);
+  box-shadow: inset 0 0 0 1px var(--slate-400);
+}
+
+.pair-replay-book-total {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--slate-400);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pair-replay-book-total-bar {
+  display: flex;
+  height: 6px;
+  flex: 1;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--slate-800);
+}
+
+.pair-replay-book-total-bar .is-bid {
+  background: var(--price-up-color);
+}
+
+.pair-replay-book-total-bar .is-ask {
+  background: var(--price-down-color);
+}
+
+/* The position under the book: 狀態, 張數, 價差, 總收益 (總報酬率). */
+.pair-replay-position {
+  display: flex;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 8px;
+  box-shadow: inset 0 1px 0 var(--pane-border);
+  color: var(--slate-400);
+  font-size: 12px;
+}
+
+.pair-replay-position-nums {
+  display: inline-flex;
+  gap: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 成交明細: the newest first; 成交價 / 漲跌 coloured by 昨收, 單量 by 外盤 (red) / 內盤 (green). */
+.pair-replay-volume {
+  color: var(--slate-500);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pair-replay-volume b {
+  color: var(--slate-100);
+  font-size: 13px;
+}
+
+.pair-replay-tape {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The prints under the fixed head scroll; the newest is on top. */
+.pair-replay-tape-rows {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.pair-replay-tape-head,
+.pair-replay-tape-row {
+  display: grid;
+  grid-template-columns: 64px repeat(2, minmax(0, 1fr));
+  align-items: center;
+  column-gap: 6px;
+  padding: 0 4px;
+}
+
+.pair-replay-tape-head {
+  height: 20px;
+  color: var(--slate-500);
+  font-size: 11px;
+}
+
+.pair-replay-tape-row {
+  height: 24px;
+  color: var(--slate-300);
+}
+
+.pair-replay-tape-head span + span,
+.pair-replay-tape-row span + span {
+  text-align: right;
+}
+
+.pair-replay-tape-row.is-large {
+  font-weight: 700;
+}
+
+.pair-replay-tape-row + .pair-replay-tape-row {
+  box-shadow: inset 0 1px 0 var(--pane-border);
+}
+
+
+/* 價量 and 大單流向: 即時報價's own drawings (components/price-flow.css, trade-flow.css: 100% of this box) fill the
+ * rest of their card. */
+.pair-replay-fill {
+  min-height: 0;
+  flex: 1;
+  /* Into the card's side padding: 價量's seven columns need every pixel of a third of the panel. */
+  margin: 0 -6px;
+}
+
+
+/* Where the panel is placed: under a 個股數據 trade, under a 當沖分析 row, or in the ranking's host. */
+.account-stock-inline-replay-row > td,
+.account-daytrade-row-replay-row > td {
+  padding: 0;
+  white-space: normal;
+  background: var(--surface-subrow);
+}
+
+.account-daytrade-replay-host:not(:empty) {
+  margin: 12px 0 14px;
+}
+
+/* A replay put in or taken out does not take part in the browser's scroll anchoring: the replay's scroll helper moves
+ * the page. */
+.account-stock-inline-replay-row,
+.account-daytrade-row-replay-row,
+.account-daytrade-replay-host,
+.pair-replay {
+  overflow-anchor: none;
+}

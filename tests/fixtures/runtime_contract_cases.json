@@ -1,0 +1,196 @@
+[
+ {
+  "name": "the shipped contract",
+  "contract": {
+   "backend": {
+    "architecture": "shioaji-market-runtime",
+    "runtime_version": "fastapi-realtime-v4-closed-session-repair",
+    "renderer_protocol_version": 2,
+    "canonical_frame_protocol_version": 1
+   },
+   "market_daemon": {
+    "identity": "stock-monitor-market-daemon",
+    "protocol_version": 1,
+    "runtime_version": "market-daemon-runtime-v40-daily-tick-coverage"
+   },
+   "moomoo_daemon": {
+    "identity": "stock-monitor-moomoo-daemon",
+    "protocol_version": 1,
+    "runtime_version": "moomoo-daemon-runtime-v18-watchlist-name-authority"
+   }
+  },
+  "problems": []
+ },
+ {
+  "name": "not an object",
+  "contract": [
+   1
+  ],
+  "problems": [
+   "contract must be a JSON object"
+  ]
+ },
+ {
+  "name": "a missing section",
+  "contract": {
+   "backend": {
+    "architecture": "shioaji-market-runtime",
+    "runtime_version": "fastapi-realtime-v4-closed-session-repair",
+    "renderer_protocol_version": 2,
+    "canonical_frame_protocol_version": 1
+   },
+   "market_daemon": {
+    "identity": "stock-monitor-market-daemon",
+    "protocol_version": 1,
+    "runtime_version": "market-daemon-runtime-v40-daily-tick-coverage"
+   }
+  },
+  "problems": [
+   "moomoo_daemon.identity must be a non-empty string",
+   "moomoo_daemon.protocol_version must be a positive integer",
+   "moomoo_daemon.runtime_version must be a non-empty string"
+  ]
+ },
+ {
+  "name": "a section that is not an object",
+  "contract": {
+   "backend": {
+    "architecture": "shioaji-market-runtime",
+    "runtime_version": "fastapi-realtime-v4-closed-session-repair",
+    "renderer_protocol_version": 2,
+    "canonical_frame_protocol_version": 1
+   },
+   "market_daemon": "x",
+   "moomoo_daemon": {
+    "identity": "stock-monitor-moomoo-daemon",
+    "protocol_version": 1,
+    "runtime_version": "moomoo-daemon-runtime-v18-watchlist-name-authority"
+   }
+  },
+  "problems": [
+   "market_daemon.identity must be a non-empty string",
+   "market_daemon.protocol_version must be a positive integer",
+   "market_daemon.runtime_version must be a non-empty string"
+  ]
+ },
+ {
+  "name": "a version given as a string",
+  "contract": {
+   "backend": {
+    "architecture": "shioaji-market-runtime",
+    "runtime_version": "fastapi-realtime-v4-closed-session-repair",
+    "renderer_protocol_version": 2,
+    "canonical_frame_protocol_version": 1
+   },
+   "market_daemon": {
+    "identity": "stock-monitor-market-daemon",
+    "protocol_version": "1",
+    "runtime_version": "market-daemon-runtime-v40-daily-tick-coverage"
+   },
+   "moomoo_daemon": {
+    "identity": "stock-monitor-moomoo-daemon",
+    "protocol_version": 1,
+    "runtime_version": "moomoo-daemon-runtime-v18-watchlist-name-authority"
+   }
+  },
+  "problems": [
+   "market_daemon.protocol_version must be a positive integer"
+  ]
+ },
+ {
+  "name": "a boolean version",
+  "contract": {
+   "backend": {
+    "architecture": "shioaji-market-runtime",
+    "runtime_version": "fastapi-realtime-v4-closed-session-repair",
+    "renderer_protocol_version": true,
+    "canonical_frame_protocol_version": 1
+   },
+   "market_daemon": {
+    "identity": "stock-monitor-market-daemon",
+    "protocol_version": 1,
+    "runtime_version": "market-daemon-runtime-v40-daily-tick-coverage"
+   },
+   "moomoo_daemon": {
+    "identity": "stock-monitor-moomoo-daemon",
+    "protocol_version": 1,
+    "runtime_version": "moomoo-daemon-runtime-v18-watchlist-name-authority"
+   }
+  },
+  "problems": [
+   "backend.renderer_protocol_version must be a positive integer"
+  ]
+ },
+ {
+  "name": "a zero version",
+  "contract": {
+   "backend": {
+    "architecture": "shioaji-market-runtime",
+    "runtime_version": "fastapi-realtime-v4-closed-session-repair",
+    "renderer_protocol_version": 2,
+    "canonical_frame_protocol_version": 0
+   },
+   "market_daemon": {
+    "identity": "stock-monitor-market-daemon",
+    "protocol_version": 1,
+    "runtime_version": "market-daemon-runtime-v40-daily-tick-coverage"
+   },
+   "moomoo_daemon": {
+    "identity": "stock-monitor-moomoo-daemon",
+    "protocol_version": 1,
+    "runtime_version": "moomoo-daemon-runtime-v18-watchlist-name-authority"
+   }
+  },
+  "problems": [
+   "backend.canonical_frame_protocol_version must be a positive integer"
+  ]
+ },
+ {
+  "name": "an empty identity",
+  "contract": {
+   "backend": {
+    "architecture": "shioaji-market-runtime",
+    "runtime_version": "fastapi-realtime-v4-closed-session-repair",
+    "renderer_protocol_version": 2,
+    "canonical_frame_protocol_version": 1
+   },
+   "market_daemon": {
+    "identity": "stock-monitor-market-daemon",
+    "protocol_version": 1,
+    "runtime_version": "market-daemon-runtime-v40-daily-tick-coverage"
+   },
+   "moomoo_daemon": {
+    "identity": "",
+    "protocol_version": 1,
+    "runtime_version": "moomoo-daemon-runtime-v18-watchlist-name-authority"
+   }
+  },
+  "problems": [
+   "moomoo_daemon.identity must be a non-empty string"
+  ]
+ },
+ {
+  "name": "a numeric runtime version",
+  "contract": {
+   "backend": {
+    "architecture": "shioaji-market-runtime",
+    "runtime_version": 4,
+    "renderer_protocol_version": 2,
+    "canonical_frame_protocol_version": 1
+   },
+   "market_daemon": {
+    "identity": "stock-monitor-market-daemon",
+    "protocol_version": 1,
+    "runtime_version": "market-daemon-runtime-v40-daily-tick-coverage"
+   },
+   "moomoo_daemon": {
+    "identity": "stock-monitor-moomoo-daemon",
+    "protocol_version": 1,
+    "runtime_version": "moomoo-daemon-runtime-v18-watchlist-name-authority"
+   }
+  },
+  "problems": [
+   "backend.runtime_version must be a non-empty string"
+  ]
+ }
+]

@@ -1,0 +1,2009 @@
+{
+  "schema": "feature-spec-v1",
+  "spec_id": "online-v3",
+  "feature_version": "online-v3.1",
+  "preprocessing_version": "prep-online-v3.1",
+  "test_only": false,
+  "time_boundary": "sample = after folding one market event of the key, in durable order; windowed columns use completed minutes <= L only (L = the scope's newest minute - 1); the *_this_minute columns are the minute in progress (L + 1) up to the sample",
+  "sampling": "one sample per trade/quote/minute_bar/orderbook event of the key",
+  "trading": "continuous trading only: call-auction matches (trade.auction), 盤後定價 (trade.after_hours) and simtrade prints never enter a column; large = one print >= 50 lots, small = < 10 lots",
+  "windows_minutes": [
+    1,
+    3,
+    5,
+    10,
+    15,
+    30,
+    60
+  ],
+  "session_open_minute": 540,
+  "minute_states": {
+    "TRADED": "the key carried a price in that minute",
+    "NO_TRADE": "no price for the key, but the scope had events that minute: the close carries forward, volume 0",
+    "NO_DATA": "the scope itself had no event that minute: missing data, never a zero",
+    "BEFORE": "before the key's first priced minute: history insufficient"
+  },
+  "day_context": "the daily summaries (native/analysis_runtime/src/daily_summary.rs) of the sessions before the sample's trading date; fewer sessions than a column needs = NaN; the stock_* behaviour columns use the newest 22 sessions and need 10 of them (stock_gap_up_fade_60d: the newest 60, at least 5 gap-up days)",
+  "generation_rule": "a higher generation for a key resets that key's state; a lower one is ignored",
+  "rollover_rule": "a newer trading_date for (source, market, session) retires older scopes; events of a retired date are ignored",
+  "columns": [
+    {
+      "name": "last_price",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "price",
+      "group": "價格位置",
+      "source": "newest continuous-trading print (trade.price; call auctions, 盤後定價 and simtrade excluded); an index's quote.current",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "session_minute",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "minutes",
+      "group": "價格位置",
+      "source": "L - 09:00 + 1: minutes of the session completed (L = the scope's newest minute - 1)",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "day_range_position",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "價格位置",
+      "source": "(last_price - day low) / (day high - day low), today's continuous prints",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "open_gap",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "價格位置",
+      "source": "the exchange's open (trade.open) / prev_close - 1",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "minutes_since_day_high",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "minutes",
+      "group": "價格位置",
+      "source": "L - the minute of today's high",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "minutes_since_day_low",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "minutes",
+      "group": "價格位置",
+      "source": "L - the minute of today's low",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "ret_1m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "報酬",
+      "source": "close(L) / close(L-1) - 1; NaN if the window starts before 09:00 or any minute in it is NO_DATA/BEFORE",
+      "lookback_minutes": 1,
+      "missing": "NAN"
+    },
+    {
+      "name": "ret_3m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "報酬",
+      "source": "close(L) / close(L-3) - 1; NaN if the window starts before 09:00 or any minute in it is NO_DATA/BEFORE",
+      "lookback_minutes": 3,
+      "missing": "NAN"
+    },
+    {
+      "name": "ret_5m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "報酬",
+      "source": "close(L) / close(L-5) - 1; NaN if the window starts before 09:00 or any minute in it is NO_DATA/BEFORE",
+      "lookback_minutes": 5,
+      "missing": "NAN"
+    },
+    {
+      "name": "ret_10m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "報酬",
+      "source": "close(L) / close(L-10) - 1; NaN if the window starts before 09:00 or any minute in it is NO_DATA/BEFORE",
+      "lookback_minutes": 10,
+      "missing": "NAN"
+    },
+    {
+      "name": "ret_15m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "報酬",
+      "source": "close(L) / close(L-15) - 1; NaN if the window starts before 09:00 or any minute in it is NO_DATA/BEFORE",
+      "lookback_minutes": 15,
+      "missing": "NAN"
+    },
+    {
+      "name": "ret_30m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "報酬",
+      "source": "close(L) / close(L-30) - 1; NaN if the window starts before 09:00 or any minute in it is NO_DATA/BEFORE",
+      "lookback_minutes": 30,
+      "missing": "NAN"
+    },
+    {
+      "name": "ret_60m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "報酬",
+      "source": "close(L) / close(L-60) - 1; NaN if the window starts before 09:00 or any minute in it is NO_DATA/BEFORE",
+      "lookback_minutes": 60,
+      "missing": "NAN"
+    },
+    {
+      "name": "ret_today",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "報酬",
+      "source": "last_price / prev_close - 1",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "range_1m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "振幅",
+      "source": "(max high - min low of minutes L-1+1..L) / last_price; same window rule",
+      "lookback_minutes": 1,
+      "missing": "NAN"
+    },
+    {
+      "name": "range_3m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "振幅",
+      "source": "(max high - min low of minutes L-3+1..L) / last_price; same window rule",
+      "lookback_minutes": 3,
+      "missing": "NAN"
+    },
+    {
+      "name": "range_5m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "振幅",
+      "source": "(max high - min low of minutes L-5+1..L) / last_price; same window rule",
+      "lookback_minutes": 5,
+      "missing": "NAN"
+    },
+    {
+      "name": "range_10m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "振幅",
+      "source": "(max high - min low of minutes L-10+1..L) / last_price; same window rule",
+      "lookback_minutes": 10,
+      "missing": "NAN"
+    },
+    {
+      "name": "range_15m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "振幅",
+      "source": "(max high - min low of minutes L-15+1..L) / last_price; same window rule",
+      "lookback_minutes": 15,
+      "missing": "NAN"
+    },
+    {
+      "name": "range_30m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "振幅",
+      "source": "(max high - min low of minutes L-30+1..L) / last_price; same window rule",
+      "lookback_minutes": 30,
+      "missing": "NAN"
+    },
+    {
+      "name": "range_60m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "振幅",
+      "source": "(max high - min low of minutes L-60+1..L) / last_price; same window rule",
+      "lookback_minutes": 60,
+      "missing": "NAN"
+    },
+    {
+      "name": "range_today",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "振幅",
+      "source": "(day high - day low) / last_price",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "ret_std_5m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "報酬標準差",
+      "source": "sample std of the 1-minute returns in L-5+1..L (at least 3); same window rule",
+      "lookback_minutes": 5,
+      "missing": "NAN"
+    },
+    {
+      "name": "ret_std_10m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "報酬標準差",
+      "source": "sample std of the 1-minute returns in L-10+1..L (at least 3); same window rule",
+      "lookback_minutes": 10,
+      "missing": "NAN"
+    },
+    {
+      "name": "ret_std_15m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "報酬標準差",
+      "source": "sample std of the 1-minute returns in L-15+1..L (at least 3); same window rule",
+      "lookback_minutes": 15,
+      "missing": "NAN"
+    },
+    {
+      "name": "ret_std_30m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "報酬標準差",
+      "source": "sample std of the 1-minute returns in L-30+1..L (at least 3); same window rule",
+      "lookback_minutes": 30,
+      "missing": "NAN"
+    },
+    {
+      "name": "ret_std_60m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "報酬標準差",
+      "source": "sample std of the 1-minute returns in L-60+1..L (at least 3); same window rule",
+      "lookback_minutes": 60,
+      "missing": "NAN"
+    },
+    {
+      "name": "ret_std_today",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "報酬標準差",
+      "source": "sample std of every 1-minute return since 09:00",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "vol_1m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "lots",
+      "group": "成交量",
+      "source": "continuous-trading volume of minutes L-1+1..L; same window rule",
+      "lookback_minutes": 1,
+      "missing": "NAN"
+    },
+    {
+      "name": "vol_3m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "lots",
+      "group": "成交量",
+      "source": "continuous-trading volume of minutes L-3+1..L; same window rule",
+      "lookback_minutes": 3,
+      "missing": "NAN"
+    },
+    {
+      "name": "vol_5m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "lots",
+      "group": "成交量",
+      "source": "continuous-trading volume of minutes L-5+1..L; same window rule",
+      "lookback_minutes": 5,
+      "missing": "NAN"
+    },
+    {
+      "name": "vol_10m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "lots",
+      "group": "成交量",
+      "source": "continuous-trading volume of minutes L-10+1..L; same window rule",
+      "lookback_minutes": 10,
+      "missing": "NAN"
+    },
+    {
+      "name": "vol_15m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "lots",
+      "group": "成交量",
+      "source": "continuous-trading volume of minutes L-15+1..L; same window rule",
+      "lookback_minutes": 15,
+      "missing": "NAN"
+    },
+    {
+      "name": "vol_30m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "lots",
+      "group": "成交量",
+      "source": "continuous-trading volume of minutes L-30+1..L; same window rule",
+      "lookback_minutes": 30,
+      "missing": "NAN"
+    },
+    {
+      "name": "vol_60m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "lots",
+      "group": "成交量",
+      "source": "continuous-trading volume of minutes L-60+1..L; same window rule",
+      "lookback_minutes": 60,
+      "missing": "NAN"
+    },
+    {
+      "name": "vol_today",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "lots",
+      "group": "成交量",
+      "source": "continuous-trading volume since 09:00",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "vol_ratio_1m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "量比",
+      "source": "vol_1m / (vol_today / session_minute * 1)",
+      "lookback_minutes": 1,
+      "missing": "NAN"
+    },
+    {
+      "name": "vol_ratio_3m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "量比",
+      "source": "vol_3m / (vol_today / session_minute * 3)",
+      "lookback_minutes": 3,
+      "missing": "NAN"
+    },
+    {
+      "name": "vol_ratio_5m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "量比",
+      "source": "vol_5m / (vol_today / session_minute * 5)",
+      "lookback_minutes": 5,
+      "missing": "NAN"
+    },
+    {
+      "name": "vol_ratio_10m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "量比",
+      "source": "vol_10m / (vol_today / session_minute * 10)",
+      "lookback_minutes": 10,
+      "missing": "NAN"
+    },
+    {
+      "name": "vol_ratio_15m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "量比",
+      "source": "vol_15m / (vol_today / session_minute * 15)",
+      "lookback_minutes": 15,
+      "missing": "NAN"
+    },
+    {
+      "name": "vol_ratio_30m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "量比",
+      "source": "vol_30m / (vol_today / session_minute * 30)",
+      "lookback_minutes": 30,
+      "missing": "NAN"
+    },
+    {
+      "name": "vol_ratio_60m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "量比",
+      "source": "vol_60m / (vol_today / session_minute * 60)",
+      "lookback_minutes": 60,
+      "missing": "NAN"
+    },
+    {
+      "name": "trades_1m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "count",
+      "group": "成交筆數",
+      "source": "continuous-trading prints of minutes L-1+1..L; same window rule",
+      "lookback_minutes": 1,
+      "missing": "NAN"
+    },
+    {
+      "name": "trades_3m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "count",
+      "group": "成交筆數",
+      "source": "continuous-trading prints of minutes L-3+1..L; same window rule",
+      "lookback_minutes": 3,
+      "missing": "NAN"
+    },
+    {
+      "name": "trades_5m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "count",
+      "group": "成交筆數",
+      "source": "continuous-trading prints of minutes L-5+1..L; same window rule",
+      "lookback_minutes": 5,
+      "missing": "NAN"
+    },
+    {
+      "name": "trades_10m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "count",
+      "group": "成交筆數",
+      "source": "continuous-trading prints of minutes L-10+1..L; same window rule",
+      "lookback_minutes": 10,
+      "missing": "NAN"
+    },
+    {
+      "name": "trades_15m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "count",
+      "group": "成交筆數",
+      "source": "continuous-trading prints of minutes L-15+1..L; same window rule",
+      "lookback_minutes": 15,
+      "missing": "NAN"
+    },
+    {
+      "name": "trades_30m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "count",
+      "group": "成交筆數",
+      "source": "continuous-trading prints of minutes L-30+1..L; same window rule",
+      "lookback_minutes": 30,
+      "missing": "NAN"
+    },
+    {
+      "name": "trades_60m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "count",
+      "group": "成交筆數",
+      "source": "continuous-trading prints of minutes L-60+1..L; same window rule",
+      "lookback_minutes": 60,
+      "missing": "NAN"
+    },
+    {
+      "name": "trades_today",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "count",
+      "group": "成交筆數",
+      "source": "continuous-trading prints since 09:00",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "vol_today_vs_5d",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "日量與金額",
+      "source": "vol_today / mean daily continuous volume of the 5 previous sessions (daily summaries); NaN with fewer",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "vol_today_vs_22d",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "日量與金額",
+      "source": "vol_today / mean daily continuous volume of the 22 previous sessions (daily summaries); NaN with fewer",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "vol_today_vs_88d",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "日量與金額",
+      "source": "vol_today / mean daily continuous volume of the 88 previous sessions (daily summaries); NaN with fewer",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "vol_same_time_vs_1d",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "日量與金額",
+      "source": "vol_today / the previous session's continuous volume through the same minute L",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "vol_same_time_vs_5d",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "日量與金額",
+      "source": "vol_today / the mean of the 5 previous sessions' continuous volume through minute L",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "log_amount_today",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "log_ntd",
+      "group": "日量與金額",
+      "source": "ln(1 + continuous-trading amount since 09:00)",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "buy_ratio_1m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "外盤比",
+      "source": "outer (side +1) volume / (outer + inner) volume of minutes L-1+1..L; same window rule",
+      "lookback_minutes": 1,
+      "missing": "NAN"
+    },
+    {
+      "name": "buy_ratio_3m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "外盤比",
+      "source": "outer (side +1) volume / (outer + inner) volume of minutes L-3+1..L; same window rule",
+      "lookback_minutes": 3,
+      "missing": "NAN"
+    },
+    {
+      "name": "buy_ratio_5m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "外盤比",
+      "source": "outer (side +1) volume / (outer + inner) volume of minutes L-5+1..L; same window rule",
+      "lookback_minutes": 5,
+      "missing": "NAN"
+    },
+    {
+      "name": "buy_ratio_10m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "外盤比",
+      "source": "outer (side +1) volume / (outer + inner) volume of minutes L-10+1..L; same window rule",
+      "lookback_minutes": 10,
+      "missing": "NAN"
+    },
+    {
+      "name": "buy_ratio_15m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "外盤比",
+      "source": "outer (side +1) volume / (outer + inner) volume of minutes L-15+1..L; same window rule",
+      "lookback_minutes": 15,
+      "missing": "NAN"
+    },
+    {
+      "name": "buy_ratio_30m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "外盤比",
+      "source": "outer (side +1) volume / (outer + inner) volume of minutes L-30+1..L; same window rule",
+      "lookback_minutes": 30,
+      "missing": "NAN"
+    },
+    {
+      "name": "buy_ratio_60m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "外盤比",
+      "source": "outer (side +1) volume / (outer + inner) volume of minutes L-60+1..L; same window rule",
+      "lookback_minutes": 60,
+      "missing": "NAN"
+    },
+    {
+      "name": "buy_ratio_today",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "外盤比",
+      "source": "the same since 09:00",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "price_level_buy_ratio",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "價位帶",
+      "source": "outer / (outer + inner) volume today at the last price",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "above_buy_ratio",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "價位帶",
+      "source": "outer / (outer + inner) volume today at prices above the last price",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "below_buy_ratio",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "價位帶",
+      "source": "outer / (outer + inner) volume today at prices below the last price",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "above_volume_share",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "價位帶",
+      "source": "volume today at prices above the last price / vol_today (套牢)",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "dist_max_volume_price",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "價位帶",
+      "source": "(last_price - the price with today's largest volume) / last_price",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "bid5_traded_vs_queue",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "價位帶",
+      "source": "volume traded today at the 5 bid prices / their queued volume",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "ask5_traded_vs_queue",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "價位帶",
+      "source": "volume traded today at the 5 ask prices / their queued volume",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "bid5_large_sell_share",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "價位帶",
+      "source": "large (>= 50 lots) inner volume today at the 5 bid prices / vol_today",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "ask5_large_buy_share",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "價位帶",
+      "source": "large (>= 50 lots) outer volume today at the 5 ask prices / vol_today",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "dist_upper_node",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "壓力支撐",
+      "source": "(last_price - the nearest of today's 3 largest-volume prices above the last price) / last_price: > 0 support below, < 0 resistance above",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "dist_lower_node",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "壓力支撐",
+      "source": "(last_price - the nearest of today's 3 largest-volume prices below the last price) / last_price: > 0 support below, < 0 resistance above",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "dist_open",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "壓力支撐",
+      "source": "(last_price - the exchange's open) / last_price: > 0 support below, < 0 resistance above",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "dist_vwap",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "壓力支撐",
+      "source": "(last_price - the exchange's average price (均價)) / last_price: > 0 support below, < 0 resistance above",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "dist_day_high",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "壓力支撐",
+      "source": "(last_price - today's high) / last_price: > 0 support below, < 0 resistance above",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "dist_day_low",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "壓力支撐",
+      "source": "(last_price - today's low) / last_price: > 0 support below, < 0 resistance above",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "dist_ma5",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "壓力支撐",
+      "source": "(last_price - mean close of the 5 previous sessions) / last_price: > 0 support below, < 0 resistance above",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "dist_ma22",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "壓力支撐",
+      "source": "(last_price - mean close of the 22 previous sessions) / last_price: > 0 support below, < 0 resistance above",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "dist_ma88",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "壓力支撐",
+      "source": "(last_price - mean close of the 88 previous sessions) / last_price: > 0 support below, < 0 resistance above",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "nearest_resistance",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "壓力支撐",
+      "source": "smallest (level - last_price) / last_price over the 10 levels above the last price",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "nearest_support",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "壓力支撐",
+      "source": "smallest (last_price - level) / last_price over the 10 levels below the last price",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "levels_within_1pct",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "count",
+      "group": "壓力支撐",
+      "source": "how many of the 10 levels are within 1% of the last price",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "upper_node_volume_share",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "壓力支撐",
+      "source": "volume today at upper_node / vol_today",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "lower_node_volume_share",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "壓力支撐",
+      "source": "volume today at lower_node / vol_today",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "minutes_since_cross_open",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "minutes",
+      "group": "壓力支撐",
+      "source": "minutes since the last print crossed open; > 0 above it (站上), < 0 below it (跌破); NaN never crossed today",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "minutes_since_cross_vwap",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "minutes",
+      "group": "壓力支撐",
+      "source": "minutes since the last print crossed vwap; > 0 above it (站上), < 0 below it (跌破); NaN never crossed today",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "minutes_since_cross_prev_close",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "minutes",
+      "group": "壓力支撐",
+      "source": "minutes since the last print crossed prev_close; > 0 above it (站上), < 0 below it (跌破); NaN never crossed today",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "large_net_1m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "(large outer - large inner volume) / volume of minutes L-1+1..L; large = one print >= 50 lots",
+      "lookback_minutes": 1,
+      "missing": "NAN"
+    },
+    {
+      "name": "large_net_3m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "(large outer - large inner volume) / volume of minutes L-3+1..L; large = one print >= 50 lots",
+      "lookback_minutes": 3,
+      "missing": "NAN"
+    },
+    {
+      "name": "large_net_5m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "(large outer - large inner volume) / volume of minutes L-5+1..L; large = one print >= 50 lots",
+      "lookback_minutes": 5,
+      "missing": "NAN"
+    },
+    {
+      "name": "large_net_10m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "(large outer - large inner volume) / volume of minutes L-10+1..L; large = one print >= 50 lots",
+      "lookback_minutes": 10,
+      "missing": "NAN"
+    },
+    {
+      "name": "large_net_15m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "(large outer - large inner volume) / volume of minutes L-15+1..L; large = one print >= 50 lots",
+      "lookback_minutes": 15,
+      "missing": "NAN"
+    },
+    {
+      "name": "large_net_30m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "(large outer - large inner volume) / volume of minutes L-30+1..L; large = one print >= 50 lots",
+      "lookback_minutes": 30,
+      "missing": "NAN"
+    },
+    {
+      "name": "large_net_60m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "(large outer - large inner volume) / volume of minutes L-60+1..L; large = one print >= 50 lots",
+      "lookback_minutes": 60,
+      "missing": "NAN"
+    },
+    {
+      "name": "large_net_today",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "the same since 09:00",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "large_share_1m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "(large outer + large inner volume) / volume, same window",
+      "lookback_minutes": 1,
+      "missing": "NAN"
+    },
+    {
+      "name": "large_share_3m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "(large outer + large inner volume) / volume, same window",
+      "lookback_minutes": 3,
+      "missing": "NAN"
+    },
+    {
+      "name": "large_share_5m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "(large outer + large inner volume) / volume, same window",
+      "lookback_minutes": 5,
+      "missing": "NAN"
+    },
+    {
+      "name": "large_share_10m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "(large outer + large inner volume) / volume, same window",
+      "lookback_minutes": 10,
+      "missing": "NAN"
+    },
+    {
+      "name": "large_share_15m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "(large outer + large inner volume) / volume, same window",
+      "lookback_minutes": 15,
+      "missing": "NAN"
+    },
+    {
+      "name": "large_share_30m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "(large outer + large inner volume) / volume, same window",
+      "lookback_minutes": 30,
+      "missing": "NAN"
+    },
+    {
+      "name": "large_share_60m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "(large outer + large inner volume) / volume, same window",
+      "lookback_minutes": 60,
+      "missing": "NAN"
+    },
+    {
+      "name": "large_share_today",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "the same since 09:00",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "small_net_1m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "(small outer - small inner volume) / volume, same window; small = one print < 10 lots",
+      "lookback_minutes": 1,
+      "missing": "NAN"
+    },
+    {
+      "name": "small_net_3m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "(small outer - small inner volume) / volume, same window; small = one print < 10 lots",
+      "lookback_minutes": 3,
+      "missing": "NAN"
+    },
+    {
+      "name": "small_net_5m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "(small outer - small inner volume) / volume, same window; small = one print < 10 lots",
+      "lookback_minutes": 5,
+      "missing": "NAN"
+    },
+    {
+      "name": "small_net_10m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "(small outer - small inner volume) / volume, same window; small = one print < 10 lots",
+      "lookback_minutes": 10,
+      "missing": "NAN"
+    },
+    {
+      "name": "small_net_15m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "(small outer - small inner volume) / volume, same window; small = one print < 10 lots",
+      "lookback_minutes": 15,
+      "missing": "NAN"
+    },
+    {
+      "name": "small_net_30m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "(small outer - small inner volume) / volume, same window; small = one print < 10 lots",
+      "lookback_minutes": 30,
+      "missing": "NAN"
+    },
+    {
+      "name": "small_net_60m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "(small outer - small inner volume) / volume, same window; small = one print < 10 lots",
+      "lookback_minutes": 60,
+      "missing": "NAN"
+    },
+    {
+      "name": "small_net_today",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "the same since 09:00",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "flow_divergence_1m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "large_net - small_net, same window",
+      "lookback_minutes": 1,
+      "missing": "NAN"
+    },
+    {
+      "name": "flow_divergence_3m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "large_net - small_net, same window",
+      "lookback_minutes": 3,
+      "missing": "NAN"
+    },
+    {
+      "name": "flow_divergence_5m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "large_net - small_net, same window",
+      "lookback_minutes": 5,
+      "missing": "NAN"
+    },
+    {
+      "name": "flow_divergence_10m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "large_net - small_net, same window",
+      "lookback_minutes": 10,
+      "missing": "NAN"
+    },
+    {
+      "name": "flow_divergence_15m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "large_net - small_net, same window",
+      "lookback_minutes": 15,
+      "missing": "NAN"
+    },
+    {
+      "name": "flow_divergence_30m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "large_net - small_net, same window",
+      "lookback_minutes": 30,
+      "missing": "NAN"
+    },
+    {
+      "name": "flow_divergence_60m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "large_net - small_net, same window",
+      "lookback_minutes": 60,
+      "missing": "NAN"
+    },
+    {
+      "name": "flow_divergence_today",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "the same since 09:00",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "large_net_positive_minute_ratio",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "share of today's completed minutes whose large outer volume exceeded large inner",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "large_buy_ratio_today",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大單小單",
+      "source": "large outer / (large outer + large inner) volume today",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "large_trades_today",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "count",
+      "group": "大單小單",
+      "source": "large prints today",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "minutes_since_large",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "minutes",
+      "group": "大單小單",
+      "source": "L - the minute of the last large print",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "spread_bp",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "bp",
+      "group": "五檔",
+      "source": "(ask1 - bid1) / mid * 10000",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "book_imbalance_1",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "五檔",
+      "source": "(bid1 vol - ask1 vol) / (bid1 vol + ask1 vol)",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "book_imbalance_5",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "五檔",
+      "source": "(sum bid 5 vol - sum ask 5 vol) / their sum",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "book_flow_1m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "lots",
+      "group": "五檔",
+      "source": "change of the 5 bid levels' queued volume minus that of the 5 ask levels, from the end of minute L-1 to the end of L",
+      "lookback_minutes": 1,
+      "missing": "NAN"
+    },
+    {
+      "name": "book_flow_3m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "lots",
+      "group": "五檔",
+      "source": "change of the 5 bid levels' queued volume minus that of the 5 ask levels, from the end of minute L-3 to the end of L",
+      "lookback_minutes": 3,
+      "missing": "NAN"
+    },
+    {
+      "name": "book_flow_5m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "lots",
+      "group": "五檔",
+      "source": "change of the 5 bid levels' queued volume minus that of the 5 ask levels, from the end of minute L-5 to the end of L",
+      "lookback_minutes": 5,
+      "missing": "NAN"
+    },
+    {
+      "name": "book_flow_10m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "lots",
+      "group": "五檔",
+      "source": "change of the 5 bid levels' queued volume minus that of the 5 ask levels, from the end of minute L-10 to the end of L",
+      "lookback_minutes": 10,
+      "missing": "NAN"
+    },
+    {
+      "name": "book_flow_15m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "lots",
+      "group": "五檔",
+      "source": "change of the 5 bid levels' queued volume minus that of the 5 ask levels, from the end of minute L-15 to the end of L",
+      "lookback_minutes": 15,
+      "missing": "NAN"
+    },
+    {
+      "name": "book_flow_30m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "lots",
+      "group": "五檔",
+      "source": "change of the 5 bid levels' queued volume minus that of the 5 ask levels, from the end of minute L-30 to the end of L",
+      "lookback_minutes": 30,
+      "missing": "NAN"
+    },
+    {
+      "name": "book_flow_60m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "lots",
+      "group": "五檔",
+      "source": "change of the 5 bid levels' queued volume minus that of the 5 ask levels, from the end of minute L-60 to the end of L",
+      "lookback_minutes": 60,
+      "missing": "NAN"
+    },
+    {
+      "name": "book_flow_today",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "lots",
+      "group": "五檔",
+      "source": "the same from the first book of the day",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "index_ret_1m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大盤",
+      "source": "TAIEX ret_1m",
+      "lookback_minutes": 1,
+      "missing": "NAN"
+    },
+    {
+      "name": "index_ret_3m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大盤",
+      "source": "TAIEX ret_3m",
+      "lookback_minutes": 3,
+      "missing": "NAN"
+    },
+    {
+      "name": "index_ret_5m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大盤",
+      "source": "TAIEX ret_5m",
+      "lookback_minutes": 5,
+      "missing": "NAN"
+    },
+    {
+      "name": "index_ret_10m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大盤",
+      "source": "TAIEX ret_10m",
+      "lookback_minutes": 10,
+      "missing": "NAN"
+    },
+    {
+      "name": "index_ret_15m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大盤",
+      "source": "TAIEX ret_15m",
+      "lookback_minutes": 15,
+      "missing": "NAN"
+    },
+    {
+      "name": "index_ret_30m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大盤",
+      "source": "TAIEX ret_30m",
+      "lookback_minutes": 30,
+      "missing": "NAN"
+    },
+    {
+      "name": "index_ret_60m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大盤",
+      "source": "TAIEX ret_60m",
+      "lookback_minutes": 60,
+      "missing": "NAN"
+    },
+    {
+      "name": "index_ret_today",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大盤",
+      "source": "TAIEX last / prev_close - 1",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "index_fresh",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "flag",
+      "group": "大盤",
+      "source": "1 when the TAIEX scope has reached the stock's minute",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "index_advance_ratio",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大盤",
+      "source": "TAIEX advance / (advance + decline + flat) issues",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "index_limit_up_count",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "count",
+      "group": "大盤",
+      "source": "TAIEX limit-up issues",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "index_limit_down_count",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "count",
+      "group": "大盤",
+      "source": "TAIEX limit-down issues",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "index_amount_vs_1d",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "大盤",
+      "source": "TAIEX cumulative amount now / the previous session's at the same minute (daily summary)",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "industry_ret_1m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "產業",
+      "source": "the stock's industry index ret_1m (config/tw_industry_indexes.json by its market and industry_code)",
+      "lookback_minutes": 1,
+      "missing": "NAN"
+    },
+    {
+      "name": "industry_ret_3m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "產業",
+      "source": "the stock's industry index ret_3m (config/tw_industry_indexes.json by its market and industry_code)",
+      "lookback_minutes": 3,
+      "missing": "NAN"
+    },
+    {
+      "name": "industry_ret_5m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "產業",
+      "source": "the stock's industry index ret_5m (config/tw_industry_indexes.json by its market and industry_code)",
+      "lookback_minutes": 5,
+      "missing": "NAN"
+    },
+    {
+      "name": "industry_ret_10m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "產業",
+      "source": "the stock's industry index ret_10m (config/tw_industry_indexes.json by its market and industry_code)",
+      "lookback_minutes": 10,
+      "missing": "NAN"
+    },
+    {
+      "name": "industry_ret_15m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "產業",
+      "source": "the stock's industry index ret_15m (config/tw_industry_indexes.json by its market and industry_code)",
+      "lookback_minutes": 15,
+      "missing": "NAN"
+    },
+    {
+      "name": "industry_ret_30m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "產業",
+      "source": "the stock's industry index ret_30m (config/tw_industry_indexes.json by its market and industry_code)",
+      "lookback_minutes": 30,
+      "missing": "NAN"
+    },
+    {
+      "name": "industry_ret_60m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "產業",
+      "source": "the stock's industry index ret_60m (config/tw_industry_indexes.json by its market and industry_code)",
+      "lookback_minutes": 60,
+      "missing": "NAN"
+    },
+    {
+      "name": "industry_ret_today",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "產業",
+      "source": "the industry index last / prev_close - 1",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "excess_ret_1m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "產業",
+      "source": "ret_1m - industry_ret_1m",
+      "lookback_minutes": 1,
+      "missing": "NAN"
+    },
+    {
+      "name": "excess_ret_3m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "產業",
+      "source": "ret_3m - industry_ret_3m",
+      "lookback_minutes": 3,
+      "missing": "NAN"
+    },
+    {
+      "name": "excess_ret_5m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "產業",
+      "source": "ret_5m - industry_ret_5m",
+      "lookback_minutes": 5,
+      "missing": "NAN"
+    },
+    {
+      "name": "excess_ret_10m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "產業",
+      "source": "ret_10m - industry_ret_10m",
+      "lookback_minutes": 10,
+      "missing": "NAN"
+    },
+    {
+      "name": "excess_ret_15m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "產業",
+      "source": "ret_15m - industry_ret_15m",
+      "lookback_minutes": 15,
+      "missing": "NAN"
+    },
+    {
+      "name": "excess_ret_30m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "產業",
+      "source": "ret_30m - industry_ret_30m",
+      "lookback_minutes": 30,
+      "missing": "NAN"
+    },
+    {
+      "name": "excess_ret_60m",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "產業",
+      "source": "ret_60m - industry_ret_60m",
+      "lookback_minutes": 60,
+      "missing": "NAN"
+    },
+    {
+      "name": "excess_ret_today",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "產業",
+      "source": "ret_today - industry_ret_today",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "industry_advance_ratio",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "產業",
+      "source": "industry index advance / (advance + decline + flat) issues",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "industry_limit_up_ratio",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "產業",
+      "source": "industry limit-up issues / issues",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "industry_limit_down_ratio",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "產業",
+      "source": "industry limit-down issues / issues",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "industry_fresh",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "flag",
+      "group": "產業",
+      "source": "1 when the industry index scope has reached the stock's minute",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "prev_day_return",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "日K",
+      "source": "the previous session's close / its prev_close - 1",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "ret_5d",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "日K",
+      "source": "the previous session's close / the close 5 sessions before it - 1",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "ret_22d",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "日K",
+      "source": "the previous session's close / the close 22 sessions before it - 1",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "dist_20d_high",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "日K",
+      "source": "(last_price - the highest high of the 20 previous sessions) / last_price",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "dist_20d_low",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "日K",
+      "source": "(last_price - the lowest low of the 20 previous sessions) / last_price",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "atr_14d",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "日K",
+      "source": "mean true range of the 14 previous sessions / last_price",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "minutes_observed",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "count",
+      "group": "資料品質",
+      "source": "minutes with a continuous-trading print of the key",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "intraday_auction",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "flag",
+      "group": "資料品質",
+      "source": "1 once the key had a call auction today outside the opening and closing auctions (處置 / 緩漲緩跌)",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "minute_elapsed_seconds",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "seconds",
+      "group": "這一分鐘",
+      "source": "seconds of the sample's exchange time into its minute",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "ret_this_minute",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "這一分鐘",
+      "source": "last_price / close(L) - 1: the minute in progress so far (NaN when L is not usable)",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "vol_this_minute",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "lots",
+      "group": "這一分鐘",
+      "source": "continuous-trading volume of the minute in progress so far (0 without a print)",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "buy_ratio_this_minute",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "這一分鐘",
+      "source": "outer / (outer + inner) volume of the minute in progress so far; NaN without either",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "large_net_this_minute",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "這一分鐘",
+      "source": "(large outer - large inner) / volume of the minute in progress so far; NaN without volume",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "stock_log_amount_22d",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "log",
+      "group": "個股性格",
+      "source": "ln(1 + mean continuous-trading amount) over the newest 22 sessions",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "stock_ret_std_22d",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "個股性格",
+      "source": "sample std of close / prev_close - 1 over the newest 22 sessions",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "stock_no_trade_ratio_22d",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "個股性格",
+      "source": "mean share of the 265 continuous minutes (09:00-13:24) without a print",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "stock_limit_up_days_22d",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "days",
+      "group": "個股性格",
+      "source": "sessions of the newest 22 whose high reached limit_up",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "stock_gap_up_fade_60d",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "個股性格",
+      "source": "of the newest 60 sessions' gap-ups (open >= prev_close x 1.01), the share that closed below the open; NaN with fewer than 5",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "stock_up_burst_ret_5m_22d",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "個股性格",
+      "source": "mean return 5 minutes after a minute of at least 3x the day's average minute volume that rose (vs the previous minute's close, else the open)",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "stock_down_burst_ret_5m_22d",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "個股性格",
+      "source": "the same after a burst minute that fell",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "stock_tail_ret_22d",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "個股性格",
+      "source": "mean of close(13:24) / close(12:54) - 1: 12:55 to 13:25",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "stock_morning_ret_22d",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "個股性格",
+      "source": "mean of close(09:29) / open - 1: 09:00 to 09:30",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "stock_ret_5m_autocorr_22d",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "correlation",
+      "group": "個股性格",
+      "source": "correlation of adjacent 5-minute returns (09:00-09:04 from the open, ...) pooled over the sessions: + continues, - reverses",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    },
+    {
+      "name": "stock_large_buy_ret_5m_22d",
+      "dtype": "f64",
+      "shape": [],
+      "unit": "ratio",
+      "group": "個股性格",
+      "source": "mean return 5 minutes after a minute whose large outer volume exceeded its large inner",
+      "lookback_minutes": 0,
+      "missing": "NAN"
+    }
+  ],
+  "missing_policy": {
+    "version": "missing-v2",
+    "numeric": {
+      "none": "NAN",
+      "nan": "NAN",
+      "infinite": "NAN"
+    },
+    "categorical": "none: __MISSING__; a value outside a model's vocabulary is the model's __OTHER__ (model manifest io.category_vocab)"
+  },
+  "excluded_event_kinds": [
+    "analysis_signals",
+    "monitor_event"
+  ],
+  "schema_digest": "45883645ae4a7c3f90427f616535323690a914ef0a8adacf67cfa932c7c5ec1b",
+  "category_columns": [
+    {
+      "name": "industry",
+      "dtype": "category",
+      "source": "the stock's market and industry_code in the Shioaji security master (`tse:24`)",
+      "missing": "__MISSING__"
+    },
+    {
+      "name": "stock",
+      "dtype": "category",
+      "source": "the instrument code",
+      "missing": "__MISSING__"
+    }
+  ]
+}

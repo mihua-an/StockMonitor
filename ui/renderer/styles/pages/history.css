@@ -1,0 +1,512 @@
+/* 歷史回放: the page's own layout -- the replay workspace (trend | events / trade details over the five tool panels,
+ * with draggable splitters), the stock sidebar on the right and the timeline under the workspace. The components in
+ * the slots (event feed, trade details, order book, tick details, trade flow, price flow, technical analysis) style
+ * themselves; this file only places and sizes the slots, and styles the page's own elements. */
+
+/* ===== Page grid: main column | stock sidebar ===== */
+.history-replay-layout {
+  --history-work-top-height: 61%;
+  --history-work-top-left: 61%;
+  --history-work-bottom-1: 24%;
+  --history-work-bottom-2: 20%;
+  --history-work-bottom-3: 17%;
+  --history-work-bottom-4: 18%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 210px;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 8px;
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
+.history-main-column {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  align-content: stretch;
+  gap: 8px;
+  overflow: hidden;
+}
+
+/* ===== Replay workspace: top (trend | right stack), splitter, bottom tools ===== */
+.history-dashboard {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(250px, var(--history-work-top-height)) 6px minmax(230px, 1fr);
+  gap: 0;
+  align-content: stretch;
+  overflow: hidden;
+}
+
+.history-top-workspace {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(420px, var(--history-work-top-left)) 6px minmax(340px, 1fr);
+  gap: 0;
+  overflow: hidden;
+}
+
+@media (max-width: 1450px) {
+  .history-top-workspace {
+    grid-template-columns: minmax(400px, var(--history-work-top-left)) 6px minmax(320px, 1fr);
+  }
+}
+
+.history-right-stack {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+  overflow: hidden;
+}
+
+.history-right-stack > .history-dashboard-card {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+/* The lower row: a pane workspace (core/pane_workspace.js lays its panes out; layout/workspace.css styles them). */
+.history-bottom-tools {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* The workspace splitters: draggable, drawn as nothing (the gap between the panels is the handle). */
+.history-workspace-splitter {
+  position: relative;
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  user-select: none;
+  touch-action: none;
+  z-index: 8;
+  background: transparent;
+}
+
+.history-workspace-splitter-vertical {
+  width: 6px;
+  min-width: 6px;
+  cursor: col-resize;
+}
+
+.history-workspace-splitter-horizontal {
+  height: 6px;
+  min-height: 6px;
+  cursor: row-resize;
+}
+
+/* ===== The trend card (replayPrimary): TrendChart's replay surface; the page styles only its own row ===== */
+.history-chart-card {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+/* ===== The play bar (components/replay-bar.css) as a card under the panes; its timeline is the track below ===== */
+.history-timeline-panel {
+  margin: 0;
+  padding: 8px 14px;
+  border: 1px solid var(--pane-border);
+  border-radius: var(--pane-radius);
+  background: var(--surface-panel);
+}
+
+/* The bar; the time its thumb stands on is .replay-bar-now beside the transport. */
+.history-time-track {
+  position: relative;
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+/* The time under the pointer while it is over the bar (YouTube-like), just above the bar. */
+.history-time-hover {
+  position: absolute;
+  bottom: calc(100% - 4px);
+  left: calc(6.5px + var(--history-hover-ratio, 0) * (100% - 13px));
+  transform: translateX(-50%);
+  padding: 1px 6px;
+  border: 1px solid var(--slate-600);
+  border-radius: 3px;
+  background: var(--slate-900);
+  color: var(--slate-50);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.history-time-hover[hidden] {
+  display: none;
+}
+
+/* The bar is one rail (YouTube-like): the times not built yet, those whose Rust B analysis is built (a drag there
+   shows it at once), and the part played to the thumb; the range input above it only takes the pointer and keys. */
+.history-time-bar {
+  display: grid;
+  align-items: center;
+  min-width: 0;
+}
+
+.history-time-bar > * {
+  grid-area: 1 / 1;
+}
+
+.history-time-rail {
+  position: relative;
+  height: 4px;
+  /* The thumb's centre travels from half its width to the end less half its width. */
+  margin: 0 6.5px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--slate-500) 35%, transparent);
+  pointer-events: none;
+  transition: height 0.12s ease;
+}
+
+.history-time-bar:hover .history-time-rail {
+  height: 7px;
+}
+
+.history-time-buffer > span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--slate-300) 55%, transparent);
+}
+
+.history-time-played {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: calc(var(--history-thumb-ratio, 0) * 100%);
+  background: var(--sky-400);
+}
+
+.history-time-range {
+  width: 100%;
+  min-width: 0;
+  height: 16px;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.history-time-range::-webkit-slider-runnable-track {
+  height: 16px;
+  background: transparent;
+}
+
+.history-time-range::-webkit-slider-thumb {
+  width: 13px;
+  height: 13px;
+  margin-top: 1.5px;
+  border-radius: 50%;
+  appearance: none;
+  background: var(--sky-400);
+  box-shadow: 0 0 0 2px var(--surface-panel);
+}
+
+.history-time-bar:hover .history-time-range::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+
+.history-time-range:disabled {
+  cursor: default;
+}
+
+.history-time-range:disabled::-webkit-slider-thumb {
+  visibility: hidden;
+}
+
+
+/* ===== Stock sidebar: date picker, load status, the day's stock list ===== */
+.history-stock-sidebar {
+  width: 210px;
+  min-width: 210px;
+  max-width: 210px;
+  min-height: 0;
+  margin-right: 0;
+  padding: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--surface-panel);
+  border: 1px solid var(--pane-border);
+  border-radius: var(--pane-radius);
+}
+
+/* The date chooser is a DOM popup over the native <select> (the select stays the state owner): the select's
+ * Windows / Chromium popup cannot take the App's scrollbar styling. */
+.history-date-select-wrap {
+  position: relative;
+  z-index: 30;
+  padding: 10px 10px 6px;
+}
+
+.history-native-date-select {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.history-select {
+  width: 100%;
+  min-height: 35px;
+  padding: 7px 10px;
+  border-radius: 6px;
+}
+
+.history-select option {
+  background: var(--slate-900);
+  color: var(--gray-200);
+}
+
+.history-sidebar-date-picker {
+  position: relative;
+  width: 100%;
+}
+
+.history-sidebar-date {
+  width: 100%;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--slate-800);
+  color: var(--slate-100);
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.history-sidebar-date-chevron {
+  flex: 0 0 auto;
+  color: var(--slate-400);
+  transition: transform .12s ease;
+}
+
+.history-sidebar-date-picker.open .history-sidebar-date-chevron {
+  transform: rotate(180deg);
+}
+
+/* The date menu's look is event-feed.css's (.event-feed-date-*); this page places it and sizes its list. */
+.history-sidebar-date-menu {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  right: 0;
+  z-index: 90;
+}
+
+.history-sidebar-date-list {
+  max-height: 220px;
+}
+
+/* The product list's own state, in the list's cell of the sidebar grid and over it: nothing once loaded, a spinner in
+   the middle while a day's products load, the reason at the foot when a read failed. */
+.history-product-load-status {
+  grid-row: 2;
+  grid-column: 1;
+  z-index: 2;
+  display: none;
+  pointer-events: none;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.history-product-load-status[data-state="loading"] {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  align-self: center;
+  justify-self: center;
+  gap: 8px;
+  color: var(--sky-300);
+}
+
+.history-product-load-status:not([data-state="loading"]) > .loading-spinner {
+  display: none;
+}
+
+.history-product-load-status[data-state="error"] {
+  display: block;
+  align-self: end;
+  margin: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--status-error);
+  border-radius: 5px;
+  background: var(--blue-900x-5);
+  color: var(--status-error);
+}
+
+/* The stock being opened turns a small spinner at the right end of its title row until its replay data is in: an item
+   of that row, so the name gives it room (ellipsis) and the right-aligned 漲跌 under it is never covered. */
+.history-stock-loading-spinner {
+  display: none;
+  align-self: center;
+  margin-left: auto;
+}
+
+.history-stock-item-loading .history-stock-loading-spinner {
+  display: inline-block;
+}
+
+.history-stock-list[aria-busy="true"] {
+  opacity: .72;
+}
+
+.history-stock-list-empty {
+  padding: 18px 12px;
+  color: var(--slate-500x-2);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* One row: the day's mini candle in its own column beside two lines (code and name; close and change). */
+.history-stock-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: var(--history-stock-item-width, 100%);
+  height: var(--row-height-history-product);
+  min-height: var(--row-height-history-product);
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--slate-200);
+  text-align: left;
+  cursor: pointer;
+}
+
+/* A product a list has already used (Workspace's dock). */
+.history-stock-item.is-dimmed {
+  filter: grayscale(1);
+  opacity: .4;
+}
+
+.history-stock-item:hover {
+  background: var(--row-hover-bg);
+}
+
+.history-stock-item.active {
+  background: color-mix(in srgb, var(--blue-400) 14%, transparent);
+  box-shadow: inset 2px 0 0 var(--blue-400);
+}
+
+.history-stock-meta {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.history-stock-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Room for what sits at the card's top right (a product's 現／月份). */
+.history-stock-title-row-reserved {
+  padding-right: 52px;
+}
+
+.history-stock-kline {
+  width: 14px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+}
+
+.history-stock-row {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+}
+
+.history-stock-code {
+  flex: 0 0 auto;
+  color: var(--slate-100);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.history-stock-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--slate-100);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.history-stock-price-row {
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.history-stock-close,
+.history-stock-change {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.history-stock-close {
+  font-size: 12px;
+}
+
+/* The price's box at 漲停 / 跌停; its colours and weight are base.css's .limit-up-price / .limit-down-price. */
+.history-stock-close.limit-up-price,
+.history-stock-close.limit-down-price {
+  padding: 0 4px;
+  border-radius: 2px;
+}
+
+.history-stock-change {
+  font-size: 12px;
+  text-align: right;
+}
+
+
+.history-stock-list {
+  grid-row: 2;   /* shares its cell with the load status drawn over it */
+  grid-column: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--surface-panel);
+  scrollbar-gutter: stable;
+}
+

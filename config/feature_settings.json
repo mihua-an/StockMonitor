@@ -1,0 +1,6 @@
+{
+  "shioaji": {
+    "model_inference": true,
+    "model_training": true
+  }
+}

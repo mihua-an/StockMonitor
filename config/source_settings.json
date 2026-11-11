@@ -1,0 +1,12 @@
+{
+  "contract_version": 1,
+  "enabled_sources": ["shioaji", "futu"],
+  "sources": {
+    "shioaji": {
+      "api_prefixes": ["/api/shioaji/", "/api/settings/shioaji/", "/api/market-daemon/", "/api/security-master/", "/api/history/", "/api/data-center/", "/api/trade-detail/", "/api/training/", "/api/model/", "/api/replay/", "/api/diagnostics/startup-realtime-freshness", "/api/diagnostics/restart-trade-detail-timezone"]
+    },
+    "futu": {
+      "api_prefixes": ["/api/futu/", "/api/futu-daemon/"]
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "schema": "stock-monitor-installed-flavor-v1",
+  "generated_from": "config/var_layout.json flavors.installed",
+  "user_data_dir": "StockMonitor",
+  "auth_root_dir": "StockMonitor",
+  "provider_sdk_dir": [
+    "StockMonitor",
+    "provider-sdk"
+  ]
+}

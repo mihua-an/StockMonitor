@@ -1,0 +1,377 @@
+/* The application frame: page container, bottom dock, page scroll rail, full-page panels. */
+
+.app,
+.app-bottom-nav {
+  display: block;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* The page area: what the bottom dock leaves of the window's flex column (.app.app-bottom-nav below). */
+.main-with-bottom-nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 8px 8px 0;
+  background: var(--surface-app);
+}
+
+/* ===== Page Layout ===== */
+.page-container {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ======================
+   Training page
+====================== */
+.full-page-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* ===== Cards / Panels ===== */
+.panel {
+  background: var(--surface-panel);
+  border: 1px solid var(--gray-800);
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 0;
+}
+
+/* ===== Bottom Dock ===== */
+.bottom-dock {
+  flex: 0 0 auto;
+  min-height: 34px;
+  box-sizing: border-box;
+  background: var(--surface-app);
+  border-top: 1px solid var(--slate-700);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.bottom-nav {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dock-nav-item {
+  border: none;
+  background: transparent;
+  color: var(--slate-300);
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.dock-nav-item:hover {
+  background: var(--gray-800);
+}
+
+.dock-nav-item.active {
+  background: var(--blue-700);
+  color: var(--white);
+}
+
+/* The screens of 即時報價 (features/layouts/dock_screen_switcher.js): offered only while that page is shown. */
+.dock-screens {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  margin-right: auto;
+  overflow: hidden;
+}
+
+body[data-active-page="realtime"] .dock-screens {
+  display: flex;
+}
+
+/* The 版型 editor window is this page without the App's dock. */
+body[data-layout-editor] .bottom-dock {
+  display: none;
+}
+
+.dock-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.dock-time {
+  font-family: Consolas, "Microsoft JhengHei", monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gray-200);
+  min-width: 62px;
+  text-align: right;
+}
+
+@media (max-width: 1200px) {
+  .dock-nav-item {
+    padding: 4px 6px;
+    font-size: 11px;
+  }
+  .dock-time {
+    font-size: 12px;
+  }
+}
+
+/* ===== 新版提示 (features/app_update/update_notice.js): shown only while a newer release exists ===== */
+.dock-update-btn {
+  min-height: 24px;
+  padding: 4px 10px;
+  /* The App's accent, not a market colour: green and red mean 漲／跌 here. */
+  border: 1px solid var(--focus-ring-color);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--focus-ring-color) 18%, transparent);
+  color: var(--white);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dock-update-btn:hover {
+  background: color-mix(in srgb, var(--focus-ring-color) 40%, transparent);
+}
+
+/* ===== Google Form trade entry ===== */
+.dock-add-trade-btn {
+  min-height: 24px;
+  padding: 4px 10px;
+  border: 1px solid var(--blue-500-a72);
+  border-radius: 6px;
+  background: var(--blue-600-a18);
+  color: var(--blue-200);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dock-add-trade-btn:hover {
+  background: var(--blue-600);
+  border-color: var(--blue-500);
+  color: var(--white);
+}
+
+.dock-workspace-btn {
+  min-height: 24px;
+  padding: 4px 10px;
+  border: 1px solid var(--violet-300x-a72);
+  border-radius: 6px;
+  background: var(--violet-500x-a18);
+  color: var(--violet-100x);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dock-workspace-btn:hover {
+  background: var(--violet-500x);
+  border-color: var(--violet-300x);
+  color: var(--white);
+}
+
+
+body[data-startup-active] .app {
+  visibility: hidden;
+}
+
+/* ===== App shell and panel frames =====
+ * The window is one flex column: the page takes exactly what the bottom dock leaves (a fixed calc(100vh - 34px)
+ * ignores the main area's own padding and the dock's border, and pushes the dock 9 px below the window).
+ * A panel's frame (border, corner, background) has ONE owner: the pane itself -- a tabbed slot on 即時報價, the
+ * outer card on 歷史回放. Nothing inside a pane draws a frame: components that render their own dashboard-card shell
+ * (價量, 大單流向, Futu 走勢/報價, 技術分析...) would add a second border with 6 px corners inside the pane. */
+.app.app-bottom-nav {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ===== Bottom dock: connection status and the connection-diagnostics popover (index.html) =====
+ * The popover fits the window -- a 13" laptop included -- instead of scrolling: the topology scales down to the
+ * height that is left and the node detail scrolls inside its own column. */
+.api-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--slate-300);
+  font-size: 12px;
+}
+
+@media (max-width: 1200px) {
+  .api-status {
+    font-size: 11px;
+  }
+}
+
+.service-status {
+  min-width: max-content;
+  padding: 0 1px;
+}
+
+.service-status-button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.service-status-button:hover {
+  color: var(--white);
+}
+
+/* As wide as the cards on top need (延遲 as wide as its lines, user 10-22: no empty room right of them), never wider
+   than the window allows; the topology under them is scaled to the width that leaves. As tall as its content: the
+   cards, and under them the tallest detail; never taller than the window allows. */
+.service-diagnostics-popover {
+  position: fixed;
+  z-index: var(--z-popover-top);
+  right: 14px;
+  bottom: 46px;
+  width: max-content;
+  max-width: calc(100vw - 28px);
+  max-height: min(90vh, calc(100vh - 60px));
+  box-sizing: border-box;
+  /* No display of its own: the popover is closed by its hidden attribute, which any author display would override
+     (it opened on every App start, stuck at 讀取中, 10-20). */
+  padding: 14px;
+  overflow: hidden;
+  border: 1px solid var(--blue-700x-3);
+  border-radius: 10px;
+  background: var(--blue-950x-a98);
+  box-shadow: 0 18px 46px var(--black-a50);
+}
+
+.service-diagnostics-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--blue-800x-15);
+}
+
+.service-diagnostics-header b {
+  color: var(--slate-100);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+
+.service-diagnostics-close {
+  border: 0;
+  background: transparent;
+  color: var(--slate-400);
+  cursor: pointer;
+  font-size: 20px;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  line-height: 1;
+}
+
+.service-diagnostics-close:hover {
+  color: var(--slate-100);
+  background: var(--blue-800x-10);
+}
+
+.service-diagnostics-grid {
+  display: grid;
+  /* The three cards across the top; under them the topology and, beside it, the detail of what is picked. */
+  /* 260 px always: two tiles a row at most (user 10-22), the widest values (WAL 下次合併 10/22 08:23, 幀間隔 一般 · P95 ·
+     P99) still whole -- 250 px cuts them. */
+  grid-template-columns: minmax(0, 1fr) 260px;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 820px) {
+  .service-diagnostics-popover {
+    max-height: calc(100vh - 60px);
+    overflow: auto;
+  }
+  .service-diagnostics-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+  }
+}
+
+/* The shell reads only its own states, which the page shown sets (it never names a page or a page's data):
+ *   data-dock-trade-entry="hidden" the dock's 新增交易 is not offered (模擬帳務 adds trades in its own page). */
+body[data-dock-trade-entry="hidden"] .dock-add-trade-btn {
+  display: none;
+}
+
+/* 完整關閉 (ui/main/desktop_windows.js): the overlay main draws over every window while the App shuts down. */
+.app-shutdown-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: grid;
+  place-items: center;
+  background: var(--surface-panel);
+  color: var(--blue-100);
+  font-family: system-ui, sans-serif;
+}
+
+.app-shutdown-box {
+  max-width: 560px;
+  padding: 32px;
+  text-align: center;
+}
+
+.app-shutdown-title {
+  margin-bottom: 12px;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.app-shutdown-message {
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--blue-300);
+}
+
+.app-shutdown-bar {
+  height: 4px;
+  margin-top: 24px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--blue-600), var(--cyan-300), var(--blue-600));
+  background-size: 200% 100%;
+  animation: app-shutdown-pulse 1.2s linear infinite;
+}
+
+@keyframes app-shutdown-pulse {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}

@@ -1,0 +1,993 @@
+/* The data grid every list uses (product list, event feed, trade and tick details, account tables): frame, title row, column titles, lined rows, hover, selection, row snapping, scrollbars. */
+
+/* The column titles of a scrolling record table stay in view. Each table opts in at its own root (here the data
+ * grid's tables; tick-details, price-flow, system and the 帳務 card tables in their own sheets) -- never every <thead>
+ * in every window -- at element weight, so a grid that lays its header out itself (the split DataGrid header) decides. */
+:where(.data-table, .record-table) > thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+/* ===== Realtime Header / Tick Table ===== */
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+/* A page may set the cells' side padding on its table (--data-table-cell-padding-inline, start and end). */
+.data-table th,
+.data-table td {
+  padding-block: 10px;
+  padding-inline: var(--data-table-cell-padding-inline, 12px);
+  border-bottom: 1px solid var(--pane-border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.data-table th {
+  color: var(--slate-300);
+  font-weight: 800;
+}
+
+/* The column-title row's height is the table's own unless its page sets one (a row it must line up with): the page
+ * sets --data-table-head-height and --data-table-head-padding-block on the table; unset, every table is as before. */
+.data-table > thead > tr > th {
+  height: var(--data-table-head-height, auto);
+  padding-block: var(--data-table-head-padding-block, 10px);
+}
+
+/* A cell's default text colour, at element weight: a market colour on the cell (base.css .price-up ...) decides. */
+:where(.data-table) td {
+  color: var(--slate-50);
+}
+
+/* 盤中即時資訊不需要水平捲動。 */
+
+/* Scrollbar 安全區：Scrollbar 永遠在最外側，表格/Title 的最後一欄預留空間，不再壓住文字。 */
+/* ===== Tables ===== */
+/* ======================
+   Nice local scrollbars
+   只美化局部 scrollview，不影響整體大畫面
+====================== */
+.table-wrap {
+  max-height: none;
+  border-radius: 12px;
+  border: 1px solid var(--slate-400-a14);
+}
+
+/* A component's scroll area carries table-wrap-plain: .table-wrap's last-column inset and area colour, without its frame. */
+:is(.table-wrap, .table-wrap-plain) > table > thead > tr > th:last-child {
+  padding-right: 14px;
+}
+
+/* Not a detail row's one cell (.record-expand-detail): its content sets its own inset. */
+:is(.table-wrap, .table-wrap-plain) > table > tbody > tr:where(:not([data-row-detail])) > td:last-child {
+  padding-right: 14px;
+}
+
+/* A record list's shell (事件列表, 交易明細): its filter row on top, its table filling the rest. */
+.record-panel {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface-panel);
+}
+
+/* The filter row's band; the component says how the row clips what opens from it. */
+.record-panel-filter-row {
+  flex: 0 0 29px;
+  min-width: 0;
+  min-height: 29px;
+  height: 29px;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  background: var(--surface-panel);
+  border-bottom: 1px solid var(--pane-border);
+}
+
+/* Keep the original resize handles attached to the real th. */
+.record-table > thead > tr > th {
+  overflow: visible;
+}
+
+/* ===== One shared data-grid template =====
+   This is the only scrollbar/title mechanism used by main-app data tables.
+   Structure matches 商品頁 -> 查詢商品:
+     header table (outside scroll viewport)
+     body table  (inside scroll viewport)
+   Therefore the vertical scrollbar physically starts below the Title; no
+   pseudo-element track margin, cloned overlay, sticky thead or black gutter.
+   The wrapper is the grid's shell (data_grid.js adds this class to it): it never scrolls, its body viewport does, so no
+   wrapper class (.table-wrap, .finance-table-wrap, a component's table wrap) says how it overflows. The title cells'
+   band colour and line are tokens here, shared by the cap over the body's scrollbar. */
+.standard-data-grid {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
+.standard-data-grid-header-band {
+  flex: 0 0 auto;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--standard-grid-scrollbar-lane, 0px);
+  overflow: hidden;
+}
+
+.standard-data-grid-header-viewport {
+  min-width: 0;
+  overflow: hidden;
+  scrollbar-width: none;
+}
+
+.standard-data-grid-scrollbar-cap {
+  min-width: 0;
+  width: var(--standard-grid-scrollbar-lane, 0px);
+  box-sizing: border-box;
+  background: var(--data-grid-head-bg, var(--surface-panel));
+  border-bottom: 1px solid var(--data-grid-head-rule, var(--pane-border));
+  pointer-events: none;
+}
+
+.standard-data-grid-header-table,
+.standard-data-grid-body-table {
+  margin: 0;
+  border-spacing: 0;
+}
+
+/* The body table carries the header table's classes (the same collapse and spacing); its columns are the widths
+   data_grid.js mirrors from the titles, so it is always laid out from its colgroup. */
+.standard-data-grid-body-table {
+  table-layout: fixed;
+}
+
+/* The title is not sticky: it is not inside the scroll viewport at
+   all, so no sticky offset can clip its text. */
+.standard-data-grid-header-table > thead,
+.standard-data-grid-header-table > thead > tr,
+.standard-data-grid-header-table > thead > tr > th,
+.standard-data-grid-header-table > thead > tr > td {
+  visibility: visible;
+  opacity: 1;
+}
+
+.standard-data-grid-header-table > thead > tr > th {
+  overflow: visible;
+}
+
+.standard-data-grid-body-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: auto;
+  contain: paint;
+}
+
+.standard-data-grid-body-scroll[data-standard-grid-x="hidden"] {
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+}
+
+/* DataGrid canonical Title geometry containment.
+   THEAD/TR remain static, while each Title cell is the containing block for the
+   canonical column boundary. DataGrid mirrors rendered Title widths into tbody
+   so Title and row geometry stay synchronized during resize. */
+.standard-data-grid-header-table > thead,
+.standard-data-grid-header-table > thead > tr {
+  position: static;
+  top: auto;
+  bottom: auto;
+  transform: none;
+}
+
+.standard-data-grid-header-table > thead > tr > th,
+.standard-data-grid-header-table > thead > tr > td {
+  position: relative;
+  top: auto;
+  bottom: auto;
+  transform: none;
+  visibility: visible;
+  opacity: 1;
+}
+
+/* ===== Shared EventFeed / TickDetails / TradeDetails components ===== */
+/*
+ * These panels are real Slot components.  Live and Replay share the same
+ * presentation shell; only scoped context/adapters differ.  Internal tab rails
+ * may scroll horizontally, while Replay's date selector remains fixed on the
+ * right and never joins that scroll area.
+ */
+
+/* ===== Single canonical Title capability infrastructure =====
+   Divider, sortable and resizable are independent capabilities.  A real column
+   boundary is one centered DOM primitive: the visible 1px line and the wider
+   resize hit-area share exactly the same center. */
+.canonical-title-cell {
+  position: relative;
+  box-sizing: border-box;
+  user-select: none;
+  border-left: 0;
+  border-right: 0;
+}
+
+.canonical-title-label {
+  pointer-events: none;
+}
+
+.canonical-title-sortable {
+  cursor: pointer;
+}
+
+.canonical-title-sortable:hover,
+.canonical-title-sortable:focus-visible {
+  background-color: var(--sky-400-a08);
+}
+
+.canonical-title-action {
+  margin-left: 5px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.canonical-title-action:hover,
+.canonical-title-action:focus-visible {
+  color: var(--sky-300);
+  outline: none;
+}
+
+.canonical-sort-mark {
+  display: inline-block;
+  min-width: 10px;
+  margin-left: 3px;
+  color: var(--sky-400);
+  font-size: 9px;
+  vertical-align: 1px;
+}
+
+.canonical-column-boundary {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 8px;
+  height: 100%;
+  z-index: 9;
+  pointer-events: none;
+  touch-action: none;
+}
+
+.canonical-column-boundary.has-divider::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-.5px);
+  background: var(--blue-600x-a72);
+}
+
+.canonical-column-boundary.is-resizable {
+  pointer-events: auto;
+  cursor: col-resize;
+}
+
+.canonical-column-boundary.is-resizable:hover::before,
+.canonical-column-boundary.is-resizable.dragging::before {
+  background: var(--sky-400);
+}
+
+.canonical-column-boundary.is-resizable:not(.has-divider)::before {
+  content: "";
+  position: absolute;
+  top: 18%;
+  bottom: 18%;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-.5px);
+  background: transparent;
+}
+
+.canonical-column-boundary.is-resizable:not(.has-divider):hover::before,
+.canonical-column-boundary.is-resizable:not(.has-divider).dragging::before {
+  background: var(--sky-400);
+}
+
+.canonical-column-resize-active,
+.canonical-column-resize-active * {
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* Column boundaries may extend four pixels outside the TH; body cells keep
+   their existing overflow/ellipsis behavior. */
+th.canonical-title-cell {
+  overflow: visible;
+}
+
+.paged-row-list-root {
+  min-width:0;
+  min-height:0;
+}
+
+.paged-list-layout {
+  flex: 1 1 auto;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: block;
+  overflow: hidden;
+  background: var(--surface-panel);
+}
+
+.shared-row-snap-scroll,
+.row-snap-viewport {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+/* Complete-row mode is the shared contract for product/event/tick/trade lists.
+ * The scroll viewport itself is an exact multiple of the measured rendered row
+ * pitch. Any leftover panel pixels stay as background below the viewport, so a
+ * row can never be clipped by the top/bottom boundary. */
+.standard-data-grid-body-scroll.row-snap-fit-complete-rows {
+  flex: 0 0 var(--row-snap-aligned-height, auto);
+  height: var(--row-snap-aligned-height, auto);
+  max-height: var(--row-snap-aligned-height, none);
+  scroll-behavior: auto;
+  overflow-anchor: none;
+}
+
+/* Adaptive complete-row mode keeps the body viewport at the panel's full
+ * height. JS subtracts the browser's REAL horizontal scrollbar lane from the
+ * body frame, then distributes the remaining pixels across whole rows. This
+ * removes both the blank tail and the row hidden behind a horizontal rail. */
+.standard-data-grid-body-scroll.row-snap-fit-complete-rows.row-snap-distribute-remainder {
+  flex: 1 1 auto;
+  height: auto;
+  max-height: none;
+  min-height: 0;
+}
+
+.row-snap-head-spacer,
+.row-snap-tail-spacer {
+  display: block;
+  width: 1px;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  pointer-events: none;
+  background: transparent;
+}
+
+.row-snap-remainder-mask {
+  position: sticky;
+  z-index: 8;
+  bottom: 0;
+  left: 0;
+  display: block;
+  width: 100%;
+  height: var(--row-snap-remainder, 0px);
+  margin-top: calc(-1 * var(--row-snap-remainder, 0px));
+  pointer-events: none;
+  background: var(--surface-panel);
+}
+
+/* PageRail is the data grid's compact in-body scrollbar and page selector. */
+.page-rail-compact {
+  position: absolute;
+  right: var(--tick-details-rail-right, 0px);
+  top: var(--tick-details-rail-top, 31px);
+  bottom: var(--tick-details-rail-bottom, 0px);
+  width: var(--paged-rail-width);
+  min-width: var(--paged-rail-width);
+  max-width: var(--paged-rail-width);
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  box-sizing: border-box;
+  border-left: 0;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow: visible;
+  z-index: 24;
+}
+
+.page-scrollbar {
+  flex: 1 1 auto;
+  width: var(--paged-rail-width);
+  min-width: var(--paged-rail-width);
+  max-width: var(--paged-rail-width);
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  background: transparent;
+}
+
+.page-rail-stack {
+  flex: 0 0 var(--paged-rail-height);
+  width: var(--paged-rail-width);
+  min-width: var(--paged-rail-width);
+  max-width: var(--paged-rail-width);
+  height: var(--paged-rail-height);
+  min-height: var(--paged-rail-height);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-end;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-top: 1px solid var(--blue-800x-14);
+}
+
+.page-scroll-track {
+  position: relative;
+  flex: 1 1 auto;
+  width: var(--paged-rail-width);
+  min-width: var(--paged-rail-width);
+  max-width: var(--paged-rail-width);
+  min-height: 8px;
+  background: transparent;
+  overflow: hidden;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.page-scroll-thumb:hover {
+  background: var(--standard-grid-thumb-hover);
+}
+
+.page-scroll-thumb:active,
+.page-scroll-thumb.is-dragging {
+  cursor: default;
+  background: var(--standard-grid-thumb-hover);
+}
+
+.page-scroll-step,
+.page-rail-step,
+.page-rail-number {
+  flex: 0 0 var(--paged-rail-control-size);
+  width: var(--paged-rail-width);
+  min-width: var(--paged-rail-width);
+  max-width: var(--paged-rail-width);
+  height: var(--paged-rail-control-size);
+  min-height: var(--paged-rail-control-size);
+  max-height: var(--paged-rail-control-size);
+  box-sizing: border-box;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--blue-300x-3);
+  font: inherit;
+  font-size: 6px;
+  line-height: var(--paged-rail-control-size);
+  text-align: center;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.page-rail-number {
+  background: var(--sky-700x);
+  color: var(--white);
+  font-size: 6px;
+  letter-spacing: -.55px;
+  text-overflow: clip;
+}
+
+.page-scroll-step:hover,
+.page-rail-step:hover:not(:disabled),
+.page-rail-number:hover {
+  background: var(--surface-tab-active);
+  color: var(--white);
+}
+
+.page-rail-step:disabled {
+  opacity: .28;
+  cursor: default;
+}
+
+.page-scroll-thumb {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  min-height: 12px;
+  cursor: default;
+  touch-action: none;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  background: var(--app-scrollbar-thumb);
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+
+.page-scroll-thumb:hover,
+.page-scroll-thumb:active {
+  background-color: var(--app-scrollbar-thumb-hover);
+}
+
+/* The overlay variant occupies the final rail-width strip of the data body
+ * rather than reserving a sibling gutter. */
+.page-rail-compact[data-page-rail-overlay="1"] {
+  z-index: 40;
+}
+
+.standard-data-grid[data-standard-grid-discrete-rail="1"] > .shared-discrete-row-rail .page-scrollbar,
+.standard-data-grid[data-standard-grid-discrete-rail="1"] > .shared-discrete-row-rail .page-scroll-step,
+.standard-data-grid[data-standard-grid-discrete-rail="1"] > .shared-discrete-row-rail .page-scroll-track {
+  width: var(--shared-row-rail-width);
+  min-width: var(--shared-row-rail-width);
+  max-width: var(--shared-row-rail-width);
+}
+
+[data-standard-grid-overlay-scrollbar="1"] .standard-data-grid-header-band {
+  --standard-grid-scrollbar-lane: 0px;
+  width: 100%;
+  min-width: 0;
+}
+
+[data-standard-grid-overlay-scrollbar="1"] .standard-data-grid-scrollbar-cap {
+  display: none;
+  width: 0;
+  min-width: 0;
+  max-width: 0;
+}
+
+/* TickDetails owns one in-body overlay rail (scroll thumb + page controls).
+ * No native track and no reserved gutter may appear beside the data columns. */
+[data-standard-grid-overlay-scrollbar="1"] > .standard-data-grid-body-scroll {
+  /* Widen exactly one native scrollbar lane. If Chromium honors the hidden
+   * scrollbar rule, the extra strip is simply clipped empty space. If it does
+   * not, the native thumb is painted in that off-screen strip and is still
+   * invisible. Either way the visible data rectangle remains full width. */
+  width: calc(100% + var(--tick-native-scrollbar-clip));
+  min-width: calc(100% + var(--tick-native-scrollbar-clip));
+  max-width: none;
+  margin-right: calc(-1 * var(--tick-native-scrollbar-clip));
+  padding-right: 0;
+  box-sizing: border-box;
+  scrollbar-gutter: auto;
+}
+
+/* Shared logical-row scrollbar for live product/event grids.  It reuses the
+   same row-index mapping as transaction detail: thumb position -> first row
+   index -> index * rowHeight.  The native Chromium vertical thumb is hidden so
+   there is only one scroll authority while dragging. */
+
+.standard-data-grid[data-standard-grid-discrete-rail="1"] > .standard-data-grid-header-band {
+  --standard-grid-scrollbar-lane: 0px;
+}
+
+/* The discrete row rail drawn over a list's right edge (grids, 價量, 大單, 商品頁設定). Each list sets its top and
+   z-index; data_grid.js writes a grid's top under its header. */
+.shared-discrete-row-rail {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: var(--shared-row-rail-width);
+  min-width: var(--shared-row-rail-width);
+  max-width: var(--shared-row-rail-width);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: transparent;
+}
+
+.standard-data-grid[data-standard-grid-discrete-rail="1"] > .shared-discrete-row-rail {
+  min-height: 0;
+  z-index: 25;
+}
+
+/* Native scrollbars stay engines only for the three row-unit live lists.
+   The visible rail/control must be the shared discrete/PageRail UI. */
+[data-row-snap-unit="1"][data-row-snap-discrete-rail="1"] .standard-data-grid-body-scroll,
+[data-standard-grid-overlay-scrollbar="1"] > .standard-data-grid-body-scroll {
+  scrollbar-width: none;
+}
+
+/* 價量 scrolls one price row at a time (price_flow_component.js): every row is the same whole-pixel height so a
+ * row boundary is always an integer scrollTop. */
+
+/* ===== 成交明細 columns =====
+ * The column header row is exactly as tall as the 買賣報價 title row (--product-quote-header-height), and every
+ * column -- header and data -- is centred. The last column's centre leaves out the 8 px page rail that overlays
+ * its right edge. The 大單 badge takes a slot inside 成交 (mirrored on the left so the price stays centred). */
+
+:where(.standard-data-grid-header-band) {
+  background: var(--surface-panel);
+}
+
+/* The data grid's own tables (.data-table, .record-table) and every list that takes its look (.lined-rows): the header
+   on the card's colour (a sticky header cell covers the rows scrolled under it), one row hover, rows parted by a thin
+   line, no stripes. A table outside these classes has its own look; zero specificity, so a variant here decides. */
+:where(.data-table, .record-table, .lined-rows) > thead,
+:where(.data-table, .record-table, .lined-rows) > thead > tr > th {
+  background: var(--surface-panel);
+}
+
+:where(.data-table, .record-table, .lined-rows) > tbody > tr:hover {
+  background: var(--row-hover-bg);
+}
+
+:is(.standard-data-grid-body-table, .lined-rows) > tbody > tr > td {
+  border-bottom: 1px solid var(--pane-border);
+}
+
+/* record-table: the compact record list shared by 即時資訊 / 歷史事件 and 交易明細. */
+.record-table {
+  width: 100%;
+  min-width: 0;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.record-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 7px 5px;
+  color: var(--slate-400);
+  border-bottom: 1px solid var(--sky-800x-11);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.record-table td {
+  padding: 7px 5px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:where(.record-table) td {
+  color: var(--blue-50x);
+}
+
+.record-table th:first-child,
+.record-table td:first-child {
+  white-space: nowrap;
+  text-overflow: clip;
+}
+
+/* The area behind the rows, and the band behind a split header (zero specificity: any table may set its own). */
+:where(.standard-data-grid-body-scroll, .table-wrap, .table-wrap-plain) {
+  background: var(--surface-panel);
+}
+
+/* Row hover repaints the hovered cells only: no transition on a table's rows. */
+.data-table tbody tr,
+.data-table tbody td {
+  transition: none;
+}
+
+/* A table that stands alone on a page (帳務's main tables, 資料中心's dates and closes): the settings look's table card
+ * -- a rounded card, the column titles a 34 px band on the card's colour, rows 40 px high parted by a line (no
+ * stripes). Set by data-grid-variant="page" on the table's wrapper, a split data grid or a wrapper holding one table. */
+[data-grid-variant="page"] {
+  --data-grid-head-bg: var(--slate-900);
+  --data-grid-head-rule: var(--pane-border);
+  border: 0;
+  border-radius: 12px;
+  background: var(--slate-900);
+  overflow: hidden;
+}
+
+.standard-data-grid[data-grid-variant="page"] > :is(.standard-data-grid-header-band, .standard-data-grid-body-scroll) {
+  background: var(--slate-900);
+}
+
+.standard-data-grid[data-grid-variant="page"] .standard-data-grid-header-table > thead > tr > th,
+[data-grid-variant="page"] > table > thead > tr > th {
+  position: static;
+  height: 34px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  vertical-align: middle;
+  background: var(--data-grid-head-bg);
+  color: var(--slate-400);
+  font-size: 12px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--data-grid-head-rule);
+}
+
+/* A list inside a settings card (模擬帳務): the card's colour behind its title band, its rows and the cap over the
+ * scrollbar; its rows and titles keep their own table's sizes. */
+[data-grid-variant="card"] {
+  --data-grid-head-bg: var(--slate-900);
+  --data-grid-head-rule: var(--pane-border);
+  background: var(--slate-900);
+}
+
+.standard-data-grid[data-grid-variant="card"] > :is(.standard-data-grid-header-band, .standard-data-grid-body-scroll) {
+  background: var(--slate-900);
+}
+
+/* A record row is 40 px; an expanded row's detail cell is as tall as its block (a cell's height is its minimum, so
+   40 px held a closing block's row open until it was hidden). */
+.standard-data-grid[data-grid-variant="page"] .standard-data-grid-body-table > tbody > tr:where(:not(.record-expand-detail)) > td,
+[data-grid-variant="page"] > table > tbody > tr:where(:not(.record-expand-detail)) > td {
+  height: 40px;
+  padding-block: 0;
+  box-sizing: border-box;
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 -1px 0 var(--pane-border);
+}
+
+
+/* The page selector (PageRailController keeps it in document.body, beside the page number, so a narrow list never clips
+   it); its look is the original one. */
+.page-selector-popup {
+  position: fixed;
+  width: 172px;
+  box-sizing: border-box;
+  padding: 8px;
+  border: 1px solid var(--blue-700x-11);
+  border-radius: 5px;
+  background: var(--blue-900x);
+  box-shadow: 0 8px 24px var(--black-a48);
+  color: var(--blue-100x-4);
+  z-index: var(--z-floating-window);
+}
+
+.page-selector-popup[hidden] {
+  display: none;
+}
+
+.page-selector-title {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:6px;
+  margin-bottom:6px;
+  font-size:11px;
+}
+
+.page-selector-popup input[type="range"] {
+  width:100%;
+  margin:3px 0 7px;
+}
+
+/* «  ‹  [page]  ›  »: chevron buttons around the page box. */
+.page-selector-jump {
+  display:flex;
+  align-items:center;
+  gap:4px;
+}
+
+.page-selector-jump input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 26px;
+  box-sizing: border-box;
+  border: 1px solid var(--blue-700x-10);
+  border-radius: 4px;
+  background: var(--blue-950x-5);
+  color: var(--blue-50x);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* The chevrons move the page: the number box shows no spinner of its own. */
+.page-selector-jump input::-webkit-inner-spin-button,
+.page-selector-jump input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.page-selector-jump input:focus {
+  outline: none;
+  border-color: var(--sky-400);
+  box-shadow: 0 0 0 2px var(--sky-400-a18);
+}
+
+.page-selector-jump button {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--blue-700x-4);
+  border-radius: 4px;
+  background: var(--blue-900x-8);
+  color: var(--sky-300x-4);
+  cursor: pointer;
+  transition: background-color .12s, border-color .12s, color .12s;
+}
+
+.page-selector-jump button svg {
+  display: block;
+}
+
+.page-selector-jump button:hover:not(:disabled) {
+  border-color: var(--sky-400);
+  background: var(--sky-800x-4);
+  color: var(--sky-50x-2);
+}
+
+.page-selector-jump button:active:not(:disabled) {
+  background: var(--sky-800x);
+}
+
+.page-selector-jump button:disabled {
+  opacity: .3;
+  cursor: default;
+}
+
+/* A title cell shows its column-boundary handle outside itself: never clipped, whatever a table's own cell rules say. */
+.standard-data-grid-header-table > thead > tr > th.canonical-title-cell {
+  overflow: visible;
+}
+
+/* An overlay-rail grid (成交明細): the separator sits on the title band, not on the collapsed-border table, whose
+ * half-pixel border overflow made the band 0.5 px taller than the 買賣報價 title row. */
+[data-standard-grid-overlay-scrollbar="1"] > .standard-data-grid-header-band {
+  border-bottom: 1px solid var(--pane-border);
+}
+
+/* A column's alignment (column_title.js writes data-column-align on every title and body cell). */
+.canonical-title-cell[data-column-align="left"],
+.canonical-column-cell[data-column-align="left"] {
+  text-align: left;
+}
+
+.canonical-title-cell[data-column-align="center"],
+.canonical-column-cell[data-column-align="center"] {
+  text-align: center;
+}
+
+.canonical-title-cell[data-column-align="right"],
+.canonical-column-cell[data-column-align="right"] {
+  text-align: right;
+}
+
+/* A table whose column widths column_title.js fits to the available width. */
+.canonical-fitted-table {
+  table-layout: fixed;
+}
+
+/* An expandable record row and its detail row (data_grid.js expandCellHtml / expandDetailRowHtml: 帳務 個股數據 /
+   每日明細 / 配對明細, 資料中心 dates and products). The open row is marked on its cells; the detail row under it is one
+   cell on the detail background, set apart from the next record by that background, not a line. */
+.record-expand-row {
+  cursor: pointer;
+}
+
+.record-expand-row.expanded > td {
+  background: var(--row-expanded-bg);
+}
+
+.record-expand-row:focus-visible {
+  outline: 1px solid var(--sky-400);
+  outline-offset: -1px;
+}
+
+.record-expand-detail[hidden] {
+  display: none;
+}
+
+/* A table row opening or closing (expand_motion.js): each cell's content in one block whose height the motion moves,
+   centred in it as in the cell; the row follows its cells. */
+.expand-cell-motion {
+  display: grid;
+  align-content: center;
+  overflow: hidden;
+}
+
+.record-expand-detail > td {
+  padding: 0;
+  background: var(--surface-subrow);
+  border-bottom-color: transparent;
+}
+
+/* The caret sits at the first cell's left edge and turns down while the row is open; the label keeps clear of it on
+   both sides, so a centred label stays centred and a left-aligned one starts after the caret. */
+.record-expand-cell {
+  position: relative;
+}
+
+.record-expand-label {
+  display: inline-block;
+  padding-inline: 38px;
+}
+
+.record-expand-caret {
+  position: absolute;
+  left: 22px;
+  top: 50%;
+  width: 15px;
+  color: var(--slate-500);
+  font-size: 17px;
+  line-height: 1;
+  transform: translateY(-50%);
+  transition: transform .32s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.expanded > .record-expand-cell > .record-expand-caret {
+  color: var(--slate-200);
+  transform: translateY(-50%) rotate(90deg);
+}
+
+/* A settings-style row's › (執行紀錄, 每個預測的兩種模型): it turns while the row, carrying aria-expanded, is open. */
+.record-expand-chevron {
+  display: inline-block;
+  width: 10px;
+  color: var(--slate-500);
+  transition: transform .32s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+[aria-expanded="true"] .record-expand-chevron {
+  color: var(--slate-200);
+  transform: rotate(90deg);
+}
+
+/* The horizontal rail (horizontal_rail.js) under a row-snap grid's body: shown only while the body is wider than its
+   viewport, a lane of its own (the rows refit above it), clear of the vertical row rail at the right. */
+.shared-x-rail {
+  position: relative;
+  flex: 0 0 var(--shared-row-rail-width);
+  height: var(--shared-row-rail-width);
+  margin-right: var(--shared-row-rail-width);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.shared-x-rail[hidden] {
+  display: none;
+}
+
+.shared-x-rail-thumb {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--app-scrollbar-thumb);
+  background-clip: padding-box;
+  cursor: default;
+}
+
+.shared-x-rail-thumb:hover,
+.shared-x-rail-thumb.dragging {
+  background-color: var(--app-scrollbar-thumb-hover);
+}

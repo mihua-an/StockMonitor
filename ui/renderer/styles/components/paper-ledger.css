@@ -1,0 +1,397 @@
+/* 模擬帳務 (features/realtime/components/paper_ledger_component.js), in the settings look (components/settings.css):
+ * the tiles at the top, a title row above each card, rounded cards holding the lists (split data grids, data-grid.css),
+ * the 刪改 or 下單 card in 未實現's place, 未實現's figures across the bottom. This file sizes and places only its own
+ * parts. The paper ledger's colour (--ledger-paper) marks it as simulated. */
+
+.paper-ledger {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  padding: 8px;
+  background: var(--surface-panel);
+  border-top: 2px solid var(--ledger-paper);
+  font-size: 13px;
+}
+
+.paper-ledger-tiles,
+.paper-ledger-sums {
+  flex: none;
+}
+
+/* What went wrong (an order refused, a read failed), only while there is something to say. */
+.paper-ledger-message {
+  padding: 0 4px;
+  font-size: 12px;
+}
+
+.paper-ledger-message:empty {
+  display: none;
+}
+
+.paper-ledger-message.error {
+  color: var(--price-up-color);
+}
+
+.paper-ledger-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.paper-ledger-left,
+.paper-ledger-right,
+.paper-ledger-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.paper-ledger-section {
+  flex: 1;
+}
+
+.paper-ledger-section[hidden],
+.paper-ledger-card[hidden] {
+  display: none;
+}
+
+/* A card's title row, outside the card (the settings group title's look): the name or the tabs at the left, a figure,
+   the search box or a link at the right. One height for every title row. */
+.paper-ledger-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  margin: 0 4px 4px;
+  color: var(--slate-400);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.paper-ledger-head-end {
+  margin-left: auto;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The tabs keep their own width; the search box takes what is left of the row. */
+.paper-ledger-tabs {
+  flex: none;
+}
+
+.paper-ledger-search-slot {
+  --product-quote-search-height: 28px;
+  flex: 0 1 140px;
+  min-width: 72px;
+}
+
+/* A card: the settings group's rounded card, holding one list or a panel. */
+.paper-ledger-card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: 12px;
+  background: var(--slate-900);
+  overflow: hidden;
+}
+
+/* A list in a card: data-grid-variant="card" gives its title band and rows the card's colour (data-grid.css). */
+.paper-ledger-table-wrap {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Each column a fixed share of the width (column_schemas.js), so the scrollbar never makes a row scroll sideways. The
+   column titles are as tall as 下單's product row beside them (user 10-27). */
+.paper-ledger-table {
+  width: 100%;
+  table-layout: fixed;
+  --data-table-cell-padding-inline: 4px;
+  --data-table-head-height: var(--product-quote-header-height);
+  --data-table-head-padding-block: 0;
+}
+
+.paper-ledger-table > thead > tr > th {
+  background: var(--slate-900);
+  color: var(--slate-400);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.paper-ledger-table > tbody > tr > td {
+  height: 32px;
+  padding-block: 0;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 股名: at the left, after the caret that turns down while the row is open. */
+.paper-ledger-table > tbody > tr > td.paper-ledger-name {
+  padding-left: 18px;
+  text-align: left;
+}
+
+.paper-ledger-table > thead > tr > th:first-child {
+  padding-left: 18px;
+}
+
+.paper-ledger-row {
+  cursor: pointer;
+}
+
+.paper-ledger-row > td.paper-ledger-name {
+  position: relative;
+}
+
+.paper-ledger-row > td.paper-ledger-name::before {
+  content: "›";
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  color: var(--slate-500);
+  transform: translateY(-50%);
+  transition: transform .32s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.paper-ledger-row.expanded > td.paper-ledger-name::before {
+  color: var(--slate-200);
+  transform: translateY(-50%) rotate(90deg);
+}
+
+.paper-ledger-row.expanded > td,
+.paper-ledger-row.selected > td {
+  background: var(--row-expanded-bg);
+}
+
+/* A finished order (全部成交, 已取消, 已失效, 拒絕): the row grey, its 股名 too; a filled one's 買進 / 賣出 keeps its colour. */
+.paper-ledger-done > td {
+  color: var(--gray-400);
+}
+
+/* The newest notice of a working order (行情中斷 ...) under its state, cut short. */
+.paper-ledger-notice {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ledger-paper);
+  font-size: 11px;
+}
+
+/* An opened order's lines, under the order's own columns: 時間, 價格, 股數, -, 委託 / 成交. */
+.paper-ledger-lines {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.paper-ledger-lines td {
+  height: 28px;
+  padding: 0 4px;
+  color: var(--slate-300);
+  font-size: 12px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+
+.paper-ledger-lines td:first-child {
+  padding-left: 18px;
+  text-align: left;
+  color: var(--slate-400);
+}
+
+.paper-ledger-lines td:last-child {
+  color: var(--slate-400);
+}
+
+.paper-ledger-lines tr + tr > td {
+  box-shadow: inset 0 1px 0 var(--pane-border);
+}
+
+/* An opened pair: 買入 / 賣出 across the top, 時間 / 單價 / 價金 / 報酬率 down the side. */
+.paper-ledger-pair {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.paper-ledger-pair th,
+.paper-ledger-pair td {
+  height: 26px;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+.paper-ledger-pair thead th {
+  color: var(--slate-400);
+  font-weight: 600;
+  text-align: center;
+}
+
+.paper-ledger-pair tbody th {
+  width: 30%;
+  padding-left: 18px;
+  color: var(--slate-400);
+  font-weight: 400;
+  text-align: left;
+}
+
+.paper-ledger-pair td {
+  color: var(--slate-100);
+  text-align: center;
+}
+
+.paper-ledger-pair tbody tr > * {
+  box-shadow: inset 0 1px 0 var(--pane-border);
+}
+
+/* An opened 未實現 row: 均價 / 市價 over 成本 / 現值, each its name at the left and its figure at the right. */
+.paper-ledger-figures {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.paper-ledger-figure {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  height: 26px;
+  align-items: center;
+  padding: 0 8px 0 18px;
+  white-space: nowrap;
+  box-shadow: inset 0 1px 0 var(--pane-border);
+}
+
+/* The right column (市價, 現值): no room kept for the row's caret. */
+.paper-ledger-figure:nth-child(even) {
+  padding-left: 8px;
+}
+
+.paper-ledger-figure > span {
+  color: var(--slate-400);
+}
+
+.paper-ledger-figure > b {
+  color: var(--slate-100);
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Hidden with 未實現 while the 刪改 or 下單 card is in its place. */
+.paper-ledger-sums[hidden] {
+  display: none;
+}
+
+/* 刪改, laid out as 下單 (user 11-11, E1): the 買賣報價, then 刪單 / 改價, the one row (order-ticket's), 取消 / 確認 and
+ * the order as it stands, the card's full width. */
+.paper-ledger-edit {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 0 8px;
+}
+
+.paper-ledger-modes {
+  flex: none;
+}
+
+.paper-ledger-book {
+  flex: 1;
+  min-height: 0;
+}
+
+/* The slot of the 買賣報價 it holds: the book fills it (its own depth layout fits the 10 rows), as a pane host does. */
+.paper-ledger-book > * {
+  height: 100%;
+}
+
+/* 下單: the 買賣報價 (its 價格 / 漲跌 row), then the order ticket (order-ticket.css) and the detail opened over 買進 / 賣出,
+ * each the card's full width (user 10-27: no side padding). */
+.paper-ledger-order-card {
+  background: var(--surface-panel);
+}
+
+/* Its own stacking context: what the 買賣報價 raises inside it stays under the detail. */
+.paper-ledger-order-book {
+  position: relative;
+  z-index: 0;
+}
+
+/* The frame the detail is placed in: above the 買賣報價, the detail's bottom set over the button pressed. */
+.paper-ledger-ticket {
+  position: relative;
+  z-index: 1;
+}
+
+/* The detail over the buttons, as wide as the card (a narrow pane's card is narrower than any fixed width). */
+.paper-ledger-confirm {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--focus-ring-color);
+  border-radius: var(--pane-radius);
+  background: var(--surface-panel);
+}
+
+.paper-ledger-confirm[hidden] {
+  display: none;
+}
+
+.paper-ledger-confirm-title {
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+.paper-ledger-confirm-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+}
+
+.paper-ledger-confirm-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.paper-ledger-confirm-actions > * {
+  flex: 1;
+}
+
+/* 取消 and 確認買進／賣出: one button shape; 取消 gray, 確認 in the side's color. */
+.paper-ledger-confirm-button {
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--gray-700);
+  color: var(--control-selected-fg);
+  cursor: pointer;
+}
+
+.paper-ledger-confirm-button.buy {
+  background: var(--price-up-color);
+}
+
+.paper-ledger-confirm-button.sell {
+  background: var(--price-down-color);
+}

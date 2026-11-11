@@ -1,0 +1,64 @@
+/* 技術分析's detached window: the left column (header, timeframes, candles) and the watch list on the right. */
+.technical-window {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  height: 100%;
+  background: var(--surface-panel);
+}
+
+.technical-window-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.technical-window-toolbar {
+  flex: 0 0 var(--product-quote-header-height);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.technical-window-timeframes {
+  display: flex;
+  gap: 2px;
+}
+
+.technical-window-timeframes button {
+  min-width: 30px;
+  height: 22px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--slate-400);
+  font: inherit;
+  cursor: pointer;
+}
+
+.technical-window-timeframes button:hover {
+  background: var(--slate-800);
+  color: var(--slate-100);
+}
+
+.technical-window-timeframes button.is-active {
+  background: var(--surface-tab-active);
+  color: var(--slate-100);
+}
+
+.technical-window-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.technical-window-list {
+  min-height: 0;
+  border-left: 1px solid var(--pane-border);
+}

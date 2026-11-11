@@ -1,0 +1,225 @@
+<div class="panel full-page-panel settings-page account-page" data-account-mode="actual">
+  <div class="settings-layout">
+    <nav class="settings-nav account-directory" aria-label="帳務中心目錄">
+      <h2>帳務中心</h2>
+      <button class="settings-nav-item is-active" type="button" data-account-view="home">首頁</button>
+      <button class="settings-nav-item" type="button" data-account-view="holdings">庫存</button>
+      <button class="settings-nav-item" type="button" data-account-view="stockStats">個股數據</button>
+      <button class="settings-nav-item" type="button" data-account-view="daily">每日明細</button>
+      <button class="settings-nav-item" type="button" data-account-view="pairs">配對明細</button>
+      <button class="settings-nav-item" type="button" data-account-view="daytrade">當沖分析</button>
+      <button class="settings-nav-item" type="button" data-account-view="orders">委託紀錄</button>
+      <button class="settings-nav-item" type="button" data-account-view="mobile">手機卡片</button>
+      <div class="account-directory-separator"></div>
+      <button class="settings-nav-item" type="button" data-account-view="trades">交易資料</button>
+      <button class="settings-nav-item" type="button" data-account-view="errors">資料檢查</button>
+      <div class="settings-seg is-fill account-mode-seg" role="tablist" aria-label="帳本">
+        <button class="settings-seg-btn is-active" type="button" role="tab" aria-selected="true" data-account-mode-tab="actual">實際</button>
+        <button class="settings-seg-btn" type="button" role="tab" aria-selected="false" data-account-mode-tab="paper">模擬</button>
+      </div>
+    </nav>
+
+    <main class="account-main-pane">
+      <div class="settings-page-head account-page-header">
+        <h1 id="actualAccountViewTitle" class="settings-page-title is-inline">實際帳務</h1>
+        <span id="actualAccountSubtitle" class="account-subtitle"></span>
+        <div class="settings-page-head-actions account-header-actions">
+          <div class="settings-seg account-market-switch" role="group" aria-label="切換市場">
+            <button class="settings-seg-btn is-active" type="button" data-market="台股">台股</button>
+            <button class="settings-seg-btn" type="button" data-market="美股">美股</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="actualAccountLoadErrorBanner" class="account-load-error-banner" role="alert" hidden></div>
+      <div class="settings-toast-stack">
+        <div id="actualAccountNotice" class="settings-toast account-notice" role="status" aria-live="polite" hidden>
+          <span class="account-notice-text" data-account-notice-text></span>
+          <button class="settings-link" type="button" data-account-notice-close aria-label="關閉提示">關閉</button>
+        </div>
+      </div>
+
+      <div id="actualAccountContentScroll" class="account-content-scroll">
+      <section class="account-view active" data-account-view-panel="home">
+        <div class="settings-tiles" aria-label="帳務摘要">
+          <div class="settings-tile"><div class="settings-tile-label">今日已實現</div><div id="actualTodayValue" class="settings-tile-value">--</div></div>
+          <div class="settings-tile"><div class="settings-tile-label">本週已實現</div><div id="actualWeekValue" class="settings-tile-value">--</div></div>
+          <div class="settings-tile"><div class="settings-tile-label">本月已實現</div><div id="actualMonthValue" class="settings-tile-value">--</div></div>
+          <div class="settings-tile"><div class="settings-tile-label">庫存成本</div><div id="actualHoldingValue" class="settings-tile-value">--</div></div>
+        </div>
+
+        <!-- 資金: features/account/capital_view.js -->
+        <div class="account-capital" data-account-capital></div>
+
+        <div class="settings-group-title"><span>績效</span></div>
+        <div class="settings-tiles is-3">
+          <div class="settings-tile"><div class="settings-tile-label">累積已實現</div><div id="actualHomeTotalProfit" class="settings-tile-value is-mid">--</div><div id="actualHomeTotalCount" class="settings-tile-note">--</div></div>
+          <div class="settings-tile"><div class="settings-tile-label">整體勝率</div><div id="actualHomeWinRate" class="settings-tile-value is-mid">--</div><div id="actualHomeWinLossCount" class="settings-tile-note">--</div></div>
+          <div class="settings-tile"><div class="settings-tile-label">盈虧比</div><div id="actualHomeProfitLossRatio" class="settings-tile-value is-mid">--</div><div id="actualHomeAvgWinLoss" class="settings-tile-note">--</div></div>
+          <div class="settings-tile"><div class="settings-tile-label">當沖收益</div><div id="actualHomeDayTradeProfit" class="settings-tile-value is-mid">--</div><div id="actualHomeDayTradeCount" class="settings-tile-note">--</div></div>
+          <div class="settings-tile"><div class="settings-tile-label">一般交易收益</div><div id="actualHomeNormalProfit" class="settings-tile-value is-mid">--</div><div id="actualHomeNormalCount" class="settings-tile-note">--</div></div>
+          <div class="settings-tile">
+            <div class="settings-tile-label">多空收益</div>
+            <div class="settings-tile-split">
+              <div><div class="settings-tile-note">多</div><div id="actualHomeLongProfit" class="settings-tile-value is-mid">--</div><div id="actualHomeLongWinRate" class="settings-tile-note">--</div></div>
+              <div><div class="settings-tile-note">空</div><div id="actualHomeShortProfit" class="settings-tile-value is-mid">--</div><div id="actualHomeShortWinRate" class="settings-tile-note">--</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-group-title"><span>績效亮點</span></div>
+        <div class="settings-group">
+          <div class="settings-item"><span class="settings-item-main"><b>最佳個股</b><span id="actualHomeBestStockName" class="settings-item-value"></span></span><span id="actualHomeBestStock" class="account-item-number">--</span></div>
+          <div class="settings-item"><span class="settings-item-main"><b>最差個股</b><span id="actualHomeWorstStockName" class="settings-item-value"></span></span><span id="actualHomeWorstStock" class="account-item-number">--</span></div>
+          <div class="settings-item"><span class="settings-item-main"><b>最佳單日</b><span id="actualHomeBestDayName" class="settings-item-value"></span></span><span id="actualHomeBestDay" class="account-item-number">--</span></div>
+          <div class="settings-item"><span class="settings-item-main"><b>最差單日</b><span id="actualHomeWorstDayName" class="settings-item-value"></span></span><span id="actualHomeWorstDay" class="account-item-number">--</span></div>
+        </div>
+      </section>
+
+      <section class="account-view" data-account-view-panel="holdings" hidden>
+        <div class="account-capital" data-account-capital></div>
+        <div class="settings-group-title"><span><span id="actualHoldingsTitle">台股庫存</span><span id="actualHoldingNote" class="account-title-note">平均成本以先進先出計算</span></span><span id="actualHoldingCountText" class="settings-group-title-side">0 檔</span></div>
+        <div class="table-wrap finance-table-wrap account-table-wrap" data-grid-variant="page">
+          <table class="data-table finance-table account-holdings-table">
+            <thead data-column-schema="accountHoldings"></thead>
+            <tbody id="actualHoldingsBody"><tr><td colspan="7" class="empty">尚無交易資料</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="account-view" data-account-view-panel="stockStats" hidden>
+        <div class="table-wrap finance-table-wrap account-stock-stats-table-wrap" data-grid-variant="page" data-row-stops="1">
+          <table class="data-table finance-table account-stock-stats-table">
+            <colgroup data-column-schema-owner="accountStockStats"></colgroup>
+            <thead data-column-schema="accountStockStats"></thead>
+            <tbody id="actualStockStatsBody"><tr><td colspan="12" class="empty">尚無個股數據</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="account-view" data-account-view-panel="daily" hidden>
+        <div class="table-wrap finance-table-wrap account-analysis-table-wrap account-daily-table-wrap" data-grid-variant="page" data-row-stops="1">
+          <table class="data-table finance-table account-analysis-table account-daily-table">
+            <thead data-column-schema="accountDaily"></thead>
+            <tbody id="actualDailyBody"><tr><td colspan="11" class="empty">尚無每日明細</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="account-view" data-account-view-panel="daytrade" hidden>
+        <div class="settings-seg account-daytrade-tabs" role="tablist" aria-label="當沖分析方向">
+          <button class="settings-seg-btn is-active" type="button" data-daytrade-mode="overview">總覽</button>
+          <button class="settings-seg-btn" type="button" data-daytrade-mode="long">多單</button>
+          <button class="settings-seg-btn" type="button" data-daytrade-mode="short">空單</button>
+        </div>
+
+        <div class="settings-tiles is-5" id="actualDayTradeSummary"></div>
+
+        <div class="settings-group-title"><span>當沖數據</span></div>
+        <div id="actualDaytradeMiniReport" class="settings-columns"></div>
+
+        <div class="settings-columns account-daytrade-period-grid">
+          <div>
+            <div class="settings-group-title"><span>每週</span></div>
+            <div id="actualDaytradeWeekPeriod" class="table-wrap finance-table-wrap account-daytrade-period-wrap" data-grid-variant="page"></div>
+          </div>
+          <div>
+            <div class="settings-group-title"><span>每月</span></div>
+            <div id="actualDaytradeMonthPeriod" class="table-wrap finance-table-wrap account-daytrade-period-wrap" data-grid-variant="page"></div>
+          </div>
+        </div>
+
+        <div class="settings-group-title"><span>星期</span></div>
+        <div class="table-wrap finance-table-wrap account-daytrade-weekday-wrap" data-grid-variant="page">
+          <table class="data-table finance-table account-daytrade-weekday-table">
+            <thead id="actualDaytradeWeekdayHead" data-dynamic-column-owner="daytradeWeekday"></thead>
+            <tbody id="actualDaytradeWeekdayBody"></tbody>
+          </table>
+        </div>
+
+        <div class="settings-group-title"><span>持有時間</span></div>
+        <div class="table-wrap finance-table-wrap account-analysis-table-wrap account-daytrade-metric-wrap" data-grid-variant="page">
+          <table class="data-table finance-table account-analysis-table account-daytrade-metric-table">
+            <thead id="actualHoldTimeHead" data-dynamic-column-owner="daytradeMetric:hold"></thead>
+            <tbody id="actualHoldTimeBody"></tbody>
+          </table>
+        </div>
+
+        <div class="settings-group-title"><span>進場時間</span></div>
+        <div class="table-wrap finance-table-wrap account-analysis-table-wrap account-daytrade-metric-wrap" data-grid-variant="page">
+          <table class="data-table finance-table account-analysis-table account-daytrade-metric-table">
+            <thead id="actualEntryTimeHead" data-dynamic-column-owner="daytradeMetric:entry"></thead>
+            <tbody id="actualEntryTimeBody"></tbody>
+          </table>
+        </div>
+
+        <div class="settings-group-title"><span>進場時間 × 持有時間</span></div>
+        <div class="table-wrap finance-table-wrap account-analysis-table-wrap account-matrix-wrap" data-grid-variant="page">
+          <table class="data-table finance-table account-analysis-table account-matrix-table"><thead id="actualMatrixHead" data-dynamic-column-owner="daytradeMatrix"></thead><tbody id="actualMatrixBody"></tbody></table>
+        </div>
+
+        <div class="settings-columns account-ranking-grid">
+          <div>
+            <div class="settings-group-title"><span>單筆最大虧損 Top 10</span></div>
+            <div class="table-wrap finance-table-wrap account-ranking-table-wrap" data-grid-variant="page"><table class="data-table finance-table account-ranking-table"><thead data-column-schema="accountRanking"></thead><tbody id="actualTopLossBody"></tbody></table></div>
+          </div>
+          <div>
+            <div class="settings-group-title"><span>單筆最大獲利 Top 10</span></div>
+            <div class="table-wrap finance-table-wrap account-ranking-table-wrap" data-grid-variant="page"><table class="data-table finance-table account-ranking-table"><thead data-column-schema="accountRanking"></thead><tbody id="actualTopWinBody"></tbody></table></div>
+          </div>
+        </div>
+
+        <div id="actualDaytradeReplayHost" class="account-daytrade-replay-host"></div>
+
+        <div id="actualDirectionReportCard" class="account-direction-report-card">
+          <div class="settings-group-title"><span id="actualDirectionReportTitle">當沖交易明細</span></div>
+          <div class="table-wrap finance-table-wrap account-analysis-table-wrap" data-grid-variant="page">
+            <table class="data-table finance-table account-analysis-table account-daytrade-report-table">
+              <thead data-column-schema="accountDirectionReport"></thead>
+              <tbody id="actualDirectionReportBody"><tr><td colspan="11" class="empty">尚無資料</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+
+      <!-- 模擬帳務 only: the 模擬下單 orders of a range of days (features/account/paper_order_history_view.js). -->
+      <section class="account-view account-orders-view" data-account-view-panel="orders" hidden></section>
+
+      <section class="account-view account-trades-view" data-account-view-panel="trades" hidden>
+        <div class="table-wrap finance-table-wrap account-trades-wrap" data-grid-variant="page">
+          <table class="data-table finance-table account-trades-table">
+            <thead data-column-schema="accountRawTrades"></thead>
+            <tbody id="actualTradesBody"><tr><td colspan="10" class="empty">尚無交易資料</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="account-view" data-account-view-panel="pairs" hidden>
+        <div class="table-wrap finance-table-wrap account-analysis-table-wrap account-pair-table-wrap" data-grid-variant="page" data-row-stops="1">
+          <table class="data-table finance-table account-analysis-table account-pair-table">
+            <thead data-column-schema="accountPairs"></thead>
+            <tbody id="actualPairBody"><tr><td colspan="8" class="empty">尚無配對明細</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="account-view" data-account-view-panel="errors" hidden>
+        <div class="settings-group-title"><span>資料檢查</span><span id="actualErrorCountText" class="settings-group-title-side">0 筆</span></div>
+        <div id="actualAccountErrors" class="settings-group"></div>
+      </section>
+
+      <section class="account-view" data-account-view-panel="mobile" hidden>
+        <div class="mobile-cards-bar">
+          <div id="actualMobileCardsStatus" class="settings-item-value">讀取中…</div>
+          <button id="actualMobileCardsRefreshBtn" class="btn secondary" type="button">重新計算</button>
+        </div>
+        <div id="actualMobileCards" class="mobile-cards"></div>
+      </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- 交易編輯 modal: the shared TradeEditor form (features/account/trade_editor_form.js) builds its content. -->
+  <div id="actualTradeModal" class="account-trade-modal" hidden aria-hidden="true"></div>
+</div>

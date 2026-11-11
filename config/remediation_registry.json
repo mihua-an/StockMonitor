@@ -1,0 +1,1000 @@
+{
+  "schema": "stock-monitor-remediation-registry-v1",
+  "description": "The one registry of remediation mechanisms (docs/system-architecture/07_monitoring.md section 5). Every retry, reconnect, resend, rebuild, fallback or rollback the system performs is a mechanism listed here, with exactly one owner and a fixed list of emission files. An event whose mechanism_id or trigger_reason is not listed is refused by the writer (Health). A mechanism with no emission point fails tests/test_remediation_registry.py. `trigger_sources` (optional) lists the files that decide a trigger the emission point passes on, when that is a different file (a facade emitting what its writer or recovery part found). First normal connects, daily planned refreshes and user seeks are not remediation and are never listed.",
+  "event_schema": "stock-monitor-remediation-event-v1",
+  "outcomes": ["started", "succeeded", "failed", "abandoned", "suppressed"],
+  "terminal_outcomes": ["succeeded", "failed", "abandoned", "suppressed"],
+  "identity_fields": ["source", "market", "code", "session", "trading_date", "view_id", "subscription_id", "connection_id"],
+  "runtimes": ["node", "python", "rust", "renderer"],
+  "limits": {
+    "frame_bytes": 65536,
+    "detail_keys": 32,
+    "string_chars": 512,
+    "client_queue_events": 1000,
+    "client_ack_timeout_ms": 5000
+  },
+  "mechanisms": {
+    "sink.client_loss": {
+      "s1": null,
+      "label": "補救紀錄遺失",
+      "owner": "every remediation client",
+      "component": "remediation_client",
+      "zero_expected": true,
+      "description": "A client could not hand events to the writer (writer unreachable, its own queue full, an oversized frame). Emitted once delivery works again, with the number of events lost since the last delivered one.",
+      "trigger_reasons": ["sink_unreachable", "queue_full", "frame_too_large", "sink_unconfigured"],
+      "emission": ["service/platform/js/remediation_client.js", "service/platform/remediation.py", "native/market_runtime/src/remediation.rs"]
+    },
+    "sink.observability_loss": {
+      "s1": "S2d-21",
+      "label": "日誌紀錄遺失",
+      "owner": "electron main",
+      "component": "ui_sinks",
+      "zero_expected": true,
+      "description": "At the UI's close, one of its own log or telemetry sinks (error-electron.log, renderer_health.json, the performance window) had lost records (rate limit, failed writes) or was failing (CX-101).",
+      "trigger_reasons": ["records_lost"],
+      "emission": ["ui/main/shutdown_controller.js"]
+    },
+    "sink.writer_loss": {
+      "s1": null,
+      "label": "補救紀錄寫入失敗",
+      "owner": "health",
+      "component": "remediation_ledger",
+      "zero_expected": true,
+      "description": "Health's ledger writer could not write or fsync, or its queue overflowed. Written once writing works again, with the number of events lost.",
+      "trigger_reasons": ["write_failed", "queue_full"],
+      "emission": ["health/remediation/ledger.js"],
+      "trigger_sources": ["health/remediation/ledger_writer.js"]
+    },
+    "sink.ledger_rebuild": {
+      "s1": null,
+      "label": "補救紀錄重建",
+      "owner": "health",
+      "component": "remediation_ledger",
+      "zero_expected": true,
+      "description": "Health's ledger start could not use its checkpoint (absent while raw files exist, unreadable, of another schema or mode, or a raw file it covers changed) and re-read every retained raw file to rebuild today's counts, the open operations and the day summaries.",
+      "trigger_reasons": ["checkpoint_absent", "checkpoint_unreadable", "checkpoint_incompatible", "raw_file_changed"],
+      "emission": ["health/remediation/ledger.js"],
+      "trigger_sources": ["health/remediation/ledger_recovery.js"]
+    },
+    "health.service_restart": {
+      "s1": "S1-50",
+      "label": "服務自動重啟",
+      "owner": "health",
+      "component": "supervisor",
+      "zero_expected": true,
+      "description": "Health's watch loop found a service that should run but is not alive and starts it again (bounded budget).",
+      "trigger_reasons": ["service_not_alive", "restart_budget_exhausted"],
+      "emission": ["health/supervisor.js"]
+    },
+    "market.wal_tail_repair": {
+      "s1": "S1-31",
+      "label": "行情存檔修補",
+      "owner": "market_runtime",
+      "component": "wal_scan",
+      "zero_expected": true,
+      "description": "At startup the newest WAL segment ended in an unfinished append (or was created but never initialized) and was cut back to its last valid record boundary.",
+      "trigger_reasons": ["unfinished_append"],
+      "emission": ["native/market_runtime/src/server/startup.rs"]
+    },
+    "market.checkpoint_fallback": {
+      "s1": "S1-32",
+      "label": "行情核心從存檔重建",
+      "owner": "market_runtime",
+      "component": "startup_recovery",
+      "zero_expected": true,
+      "description": "At startup the newest checkpoint could not be used (missing, damaged, another stream, beyond the WAL): an older checkpoint was taken, or none, and the rest replayed from the WAL.",
+      "trigger_reasons": ["checkpoint_fallback", "full_wal_replay"],
+      "emission": ["native/market_runtime/src/server/startup.rs"]
+    },
+    "market.checkpoint_write_retry": {
+      "s1": "S1-33",
+      "label": "行情核心進度檔重寫",
+      "owner": "market_runtime",
+      "component": "checkpoint",
+      "zero_expected": true,
+      "description": "A due checkpoint write failed and is tried again on the next pass. Ends when one succeeds.",
+      "trigger_reasons": ["checkpoint_write_failed"],
+      "emission": ["native/market_runtime/src/server/durable.rs"]
+    },
+    "market.durable_delivery_hole": {
+      "s1": "S1-35",
+      "label": "分析資料跳號補送",
+      "owner": "market_runtime",
+      "component": "durable_delivery",
+      "zero_expected": true,
+      "description": "A durable consumer's live delivery skipped sequences (it is switched to reading the range from the WAL: succeeded), or a range cannot be delivered at all and is declared to it as a durable.gap with its reason (pruned or unreadable: failed). A consumer that holds nothing (after_sequence 0) told that retention removed the prefix is not a hole.",
+      "trigger_reasons": ["live_delivery_hole", "wal_pruned", "wal_unreadable"],
+      "emission": ["native/market_runtime/src/server/session.rs"]
+    },
+    "market.wal_corruption": {
+      "s1": null,
+      "label": "行情存檔中段損壞",
+      "owner": "market_runtime",
+      "component": "wal_scan",
+      "zero_expected": true,
+      "description": "At startup a WAL frame that is not the newest segment's unfinished tail is damaged: the records it hides cannot be read (failed). Market Runtime keeps serving and declares the gap; one record per damaged span (segment, offset, reason, the durable sequences around it) at every start that still holds the segment.",
+      "trigger_reasons": ["corrupt_record"],
+      "emission": ["native/market_runtime/src/server/startup.rs"]
+    },
+    "market.provider_silent_closed": {
+      "s1": null,
+      "label": "關閉沒有回應的行情來源連線",
+      "owner": "market_runtime",
+      "component": "provider_connection",
+      "zero_expected": true,
+      "description": "A provider connection sent no frame, not even a keepalive ping, for three keepalive periods: the process is frozen with its socket open. Market Runtime closes the connection, so the usual end of a connection withdraws its coverage and stops counting its partitions as recorded.",
+      "trigger_reasons": ["no_frame_within_keepalive"],
+      "emission": ["native/market_runtime/src/server/session.rs"]
+    },
+    "market.slow_consumer_recovery": {
+      "s1": "S1-34",
+      "label": "接收太慢，重送資料",
+      "owner": "market_runtime",
+      "component": "delivery",
+      "zero_expected": true,
+      "description": "A client's bounded outbound queue overflowed: what was queued is dropped and the client is restored from authoritative state (view re-snapshots, durable delivery from the WAL, a replay fed again). Succeeded when that went out, failed if the client could not take it.",
+      "trigger_reasons": ["outbound_queue_full"],
+      "emission": ["native/market_runtime/src/server/session.rs"]
+    },
+    "api.component_build_retry": {
+      "s1": null,
+      "label": "API 元件重建",
+      "owner": "api services",
+      "component": "api_components",
+      "zero_expected": true,
+      "description": "Building an API component (a reader, a store, a daemon client) failed. Its routes answer the failure until the next try is due (1, 2, 4 ... up to 60 s); started at the first failure, succeeded once a build works (BACKLOG CX-10).",
+      "trigger_reasons": ["component_build_failed"],
+      "emission": ["api/components.py"]
+    },
+    "market.coverage_write_retry": {
+      "s1": null,
+      "label": "訂閱紀錄重寫",
+      "owner": "market_runtime",
+      "component": "subscription_coverage",
+      "zero_expected": true,
+      "description": "The WAL refused a subscription coverage record (full or failed). The transition stays pending and is written by the next pass; failed when a refusal streak begins, succeeded when every pending transition is written (BACKLOG CX-15).",
+      "trigger_reasons": ["wal_refused"],
+      "emission": ["native/market_runtime/src/server/durable.rs"]
+    },
+    "analysis.a_reconnect": {
+      "s1": "S1-39",
+      "label": "分析程式重新連線",
+      "owner": "analysis_runtime",
+      "component": "stream_loop",
+      "zero_expected": true,
+      "description": "Rust B lost (or could not open) its connections to Market Runtime and connects again; every reconnect re-subscribes the durable stream from B's cursor and resends what was in flight and unacknowledged (never the whole projection).",
+      "trigger_reasons": ["connect_failed", "subscribe_send_failed", "publish_failed", "timeline_send_failed", "signals_publish_failed", "publisher_closed", "status_send_failed", "reply_send_failed", "recv_failed", "resubscribe_failed", "durable_stream_changed", "incompatible_writer", "contract_violation"],
+      "emission": ["native/analysis_runtime/src/runtime/stream_runtime.rs"]
+    },
+    "analysis.checkpoint_fallback": {
+      "s1": "S1-46",
+      "label": "分析程式從存檔重算",
+      "owner": "analysis_runtime",
+      "component": "startup_restore",
+      "zero_expected": true,
+      "description": "At startup Rust B's newest checkpoint could not be used: the previous one was restored, or none and the projection is rebuilt from the WAL. A checkpoint built under other rules, calendar or state layout is set aside by its header and rebuilt by design: logged, not a remediation.",
+      "trigger_reasons": ["checkpoint_fallback", "full_replay"],
+      "emission": ["native/analysis_runtime/src/runtime/startup.rs"]
+    },
+    "analysis.projection_full_republish": {
+      "s1": "S1-40",
+      "label": "分析結果整份重送",
+      "owner": "analysis_runtime",
+      "component": "stream_loop",
+      "zero_expected": true,
+      "description": "Market Runtime's runtime epoch changed under a running Rust B (A restarted, its projection cache is empty), so B publishes its whole projection once. Ends when that full publish has gone out. B's own first connection is not remediation.",
+      "trigger_reasons": ["market_runtime_restarted", "epoch_behind"],
+      "emission": ["native/analysis_runtime/src/runtime/stream_runtime.rs"]
+    },
+    "analysis.checkpoint_write_retry": {
+      "s1": "S2b-18",
+      "label": "分析進度檔重寫",
+      "owner": "analysis_runtime",
+      "component": "checkpoint",
+      "zero_expected": true,
+      "description": "A due Rust B checkpoint was not written -- its write failed at a stage (encode / write / fsync / rotate) or the writer was still busy with the previous one -- and is taken again on the next pass. Ends when one is written (CX-84).",
+      "trigger_reasons": ["checkpoint_write_failed", "checkpoint_writer_busy"],
+      "emission": ["native/analysis_runtime/src/runtime/checkpoint_service.rs"]
+    },
+    "analysis.volume_baseline_corrupt": {
+      "s1": "S2b-17",
+      "label": "量基準檔讀不到",
+      "owner": "analysis_runtime",
+      "component": "volume_baseline",
+      "zero_expected": true,
+      "description": "The volume baseline Rust B needs for a source and trading date cannot be read (CX-85): open while it stays unreadable (each read again is an attempt), ended once it reads or is replaced.",
+      "trigger_reasons": ["baseline_unreadable"],
+      "emission": ["native/analysis_runtime/src/baseline.rs"]
+    },
+    "analysis.signals_full_republish": {
+      "s1": "S1-41",
+      "label": "模型訊號整份重送",
+      "owner": "analysis_runtime",
+      "component": "stream_loop",
+      "zero_expected": true,
+      "description": "Rust B resends every model signal it holds once: Market Runtime restarted under it, refused a signals batch (signals_rejected, CX-25), or a reconnect found batches it never answered (signals_unacknowledged, CX-69).",
+      "trigger_reasons": ["market_runtime_restarted", "signals_rejected", "signals_unacknowledged"],
+      "emission": ["native/analysis_runtime/src/runtime/stream_runtime.rs"]
+    },
+    "analysis.stream_reset": {
+      "s1": "S1-43",
+      "label": "分析程式從頭重算",
+      "owner": "analysis_runtime",
+      "component": "stream_loop",
+      "zero_expected": true,
+      "description": "A durable subscription found another history (a new durable stream id, or a head below B's cursor): B drops its state, resets the projection and replays from 0. Ends when the rebuilt projection is published.",
+      "trigger_reasons": ["stream_changed", "head_below_cursor"],
+      "emission": ["native/analysis_runtime/src/runtime/stream_runtime.rs"]
+    },
+    "analysis.retention_rebuild": {
+      "s1": "S1-44",
+      "label": "舊資料清除後重算",
+      "owner": "analysis_runtime",
+      "component": "stream_loop",
+      "zero_expected": true,
+      "description": "WAL retention removed events after the state B holds: B drops the state and rebuilds from what the WAL still has. Ends when the rebuilt projection is published.",
+      "trigger_reasons": ["wal_pruned_after_state"],
+      "emission": ["native/analysis_runtime/src/runtime/stream_runtime.rs"]
+    },
+    "historical.staging_orphan_removed": {
+      "s1": null,
+      "label": "清掉中斷物化留下的暫存",
+      "owner": "analysis_runtime",
+      "component": "historical_store",
+      "zero_expected": true,
+      "description": "A materialization job ended without publishing or dropping what it staged (killed at its timeout, a crash): the historical store's manager (market_runtime historical_store.rs, run by B's daemon at its start and at each rollover) removes that job's staging folder once its lock is free. The job's own failure is recorded where Health ran it.",
+      "trigger_reasons": ["job_ended_unpublished"],
+      "emission": ["native/market_runtime/src/historical_store.rs"]
+    },
+    "historical.partition_replace_recovered": {
+      "s1": null,
+      "label": "復原中斷的歷史分區替換",
+      "owner": "analysis_runtime",
+      "component": "historical_store",
+      "zero_expected": true,
+      "description": "A partition's replacement was interrupted (the job killed or crashed) while its previous copy waited beside it: the historical store's manager (market_runtime historical_store.rs) puts that copy back when no partition is in place, or removes it when the replacement had landed. Failed when neither could be done; the copy stays and the next prune tries again.",
+      "trigger_reasons": ["replace_interrupted"],
+      "emission": ["native/market_runtime/src/historical_store.rs"]
+    },
+    "historical.totals_rebuilt": {
+      "s1": null,
+      "label": "重建歷史日期總表",
+      "owner": "analysis_runtime",
+      "component": "historical_store",
+      "zero_expected": true,
+      "description": "A date's totals.json (the index of its committed partitions, historical_totals.rs) did not match the partitions when the historical store's manager (market_runtime historical_store.rs, run by B's daemon at its start and at each rollover) compared them: missing, of another schema, or behind (a publish or prune that crashed or failed between changing the partitions and writing the file). Rebuilt from the partition manifests; rebuild_failed when even that could not be written. The first start after the schema changes rewrites every date once (unreadable).",
+      "trigger_reasons": ["missing", "unreadable", "stale", "rebuild_failed"],
+      "trigger_sources": ["native/market_runtime/src/historical_totals.rs"],
+      "emission": ["native/market_runtime/src/historical_store.rs"]
+    },
+    "analysis.rules_rebuild": {
+      "s1": "S1-45",
+      "label": "規則變更後重算",
+      "owner": "analysis_runtime",
+      "component": "stream_loop",
+      "zero_expected": false,
+      "description": "The flow rules changed: B rebuilds the day under the new rules version from the earliest live partition. Expected after a user rule change; ends when the rebuilt projection is published.",
+      "trigger_reasons": ["flow_rules_changed"],
+      "emission": ["native/analysis_runtime/src/runtime/stream_runtime.rs"]
+    },
+    "analysis.durable_hole": {
+      "s1": "S1-42",
+      "label": "分析讀存檔跳號",
+      "owner": "analysis_runtime",
+      "component": "durable_cursor",
+      "zero_expected": true,
+      "description": "Rust B's durable cursor met a hole: a live delivery gap it resubscribes over (succeeded), a range Market Runtime declared unreadable (failed: the held state is marked as lost input), or a replay jump Market Runtime did not declare (failed: a contract violation).",
+      "trigger_reasons": ["live_sequence_gap", "declared_unreadable", "undeclared_replay_gap"],
+      "emission": ["native/analysis_runtime/src/runtime/ingest.rs", "native/analysis_runtime/src/runtime/stream_runtime.rs"]
+    },
+    "analysis.live_lane_gap": {
+      "s1": "S1-48",
+      "label": "加密貨幣資料遺失",
+      "owner": "analysis_runtime",
+      "component": "live_lane",
+      "zero_expected": true,
+      "description": "The live lane (Futu crypto, never stored; stocks off the background list, live.batch storage unlisted) lost input that cannot be re-read: Market Runtime restarted, a live_sequence was skipped, an event did not decode, or B joined the lane late (its first live.batch of a run was not the lane's first: Market Runtime sent while B was not there; a live-lane partition open before the join is marked from its open). A lane whose first message B gets is sequence 1 started with this run of Market Runtime: the never-stored partitions B held from its checkpoint are still marked for the time the App was down, but that is downtime, as for every stored partition, not a remediation. The never-stored families and every unlisted stock's shown partition (engine::LiveOverlay), or the event's own partition, are marked as lost input; stored partitions never are. Always failed: the input is gone, marking it is not a recovery (as analysis.durable_hole's declared_unreadable).",
+      "trigger_reasons": ["epoch_changed", "sequence_skipped", "undecodable_event", "joined_late"],
+      "emission": ["native/analysis_runtime/src/runtime/stream_runtime.rs"]
+    },
+    "analysis.event_archive_repair": {
+      "s1": "S1-47",
+      "label": "盤中事件存檔補寫",
+      "owner": "analysis_runtime",
+      "component": "event_archive",
+      "zero_expected": true,
+      "description": "A trading date of Rust B's rule-event archive is not durable: a write or fsync failed, the pending lines overflowed and were dropped, startup found records B holds that the file lacks, the file ended in an unfinished line (cut back to its last whole line), or the file could not be read whole (nothing is appended to it until it can). Succeeded once nothing of the date is pending and what was written is fsynced.",
+      "trigger_reasons": ["write_failed", "fsync_failed", "pending_overflow", "startup_difference", "torn_tail", "index_unreadable"],
+      "emission": ["native/analysis_runtime/src/archive.rs"]
+    },
+    "provider.ingest_reconnect": {
+      "s1": "S1-24",
+      "label": "行情來源重新連線",
+      "owner": "provider adapters",
+      "component": "rust_event_sink",
+      "zero_expected": true,
+      "description": "A provider's event sink lost its ingest connection to Market Runtime (or could not open it) and connects again; batches not acknowledged are resent. Events acknowledged but not yet under a pushed WAL watermark stay held across it and are released by the new connection's first watermark.",
+      "trigger_reasons": ["connect_failed", "send_failed", "ack_timeout", "ingest_refused", "protocol_error"],
+      "emission": ["service/market/shared/rust_live.py"]
+    },
+    "provider.short_ack_resend": {
+      "s1": "S1-25",
+      "label": "少收幾筆，重送",
+      "owner": "provider adapters",
+      "component": "rust_event_sink",
+      "zero_expected": true,
+      "description": "Market Runtime acknowledged fewer events than the batch held; the unanswered ones are sent again (an applied one answers as a duplicate). Ends when a batch is answered in full.",
+      "trigger_reasons": ["ack_shorter_than_batch"],
+      "emission": ["service/market/shared/rust_live.py"]
+    },
+    "provider.wal_queue_full_retry": {
+      "s1": "S1-26",
+      "label": "寫硬碟太慢，重送",
+      "owner": "provider adapters",
+      "component": "rust_event_sink",
+      "zero_expected": true,
+      "description": "Market Runtime's WAL queue was full (a disk stall): the refused events were not applied and the same batch is sent again after a pause. Ends when a batch is accepted.",
+      "trigger_reasons": ["wal_queue_full"],
+      "emission": ["service/market/shared/rust_live.py"]
+    },
+    "provider.orphan_resend": {
+      "s1": "S1-28",
+      "label": "未確認資料重送",
+      "owner": "provider adapters",
+      "component": "rust_event_sink",
+      "zero_expected": true,
+      "description": "Held events were accepted by a Market Runtime process that is gone (another instance answers): they are sent again.",
+      "trigger_reasons": ["runtime_instance_changed"],
+      "emission": ["service/market/shared/rust_live.py"]
+    },
+    "provider.resend_duplicate": {
+      "s1": "S1-49",
+      "label": "重送資料已收過",
+      "owner": "provider adapters",
+      "component": "rust_event_sink",
+      "zero_expected": true,
+      "description": "Events of a resend that Market Runtime had already applied answered RejectedSequence: counted once as duplicates, never as losses.",
+      "trigger_reasons": ["rejected_sequence_after_resend"],
+      "emission": ["service/market/shared/rust_live.py"]
+    },
+    "renderer.live_ws_reconnect": {
+      "s1": "S1-66",
+      "label": "畫面重新連線",
+      "owner": "renderer",
+      "component": "realtime_connection",
+      "zero_expected": true,
+      "description": "A window's live WebSocket to Market Runtime closed without the window asking for it, and the window connects again with backoff.",
+      "trigger_reasons": ["heartbeat_timeout", "socket_error", "remote_close", "construct_failed"],
+      "emission": ["ui/renderer/js/market_data/realtime.js"]
+    },
+    "provider.broker_session_reconnect": {
+      "s1": "S1-01",
+      "label": "Shioaji 重新登入",
+      "owner": "Shioaji provider",
+      "component": "shioaji_session",
+      "zero_expected": true,
+      "description": "The Shioaji broker session is torn down and logged in again after a fault (a failed login, a failed subscription sync, the broker reporting the session down); it ends when a new login has subscribed every desired lane again (S1-02 is that re-subscribe, recorded in the outcome's resubscribed_lanes). The UI's 重新連線, a credential change and the daily re-login before the open are the user's action or a scheduled routine, written to the operation log, not here.",
+      "trigger_reasons": ["login_failed", "subscription_sync_failed", "broker_session_down"],
+      "emission": ["service/market/shioaji/session.py"]
+    },
+    "provider.shioaji_sdk_session_reconnect": {
+      "s1": null,
+      "label": "永豐 SDK 自動重連",
+      "owner": "Shioaji provider",
+      "component": "shioaji_session",
+      "zero_expected": true,
+      "description": "The Shioaji SDK found one connection's session down (keep-alive) and reconnected it by itself, without the App logging in again: event 12 'Session reconnecting' starts it, event 13 'Session reconnected' ends it succeeded with the gap (down_at, reconnected_at, gap_ms) in which that connection's quotes could not arrive; identity.connection_id names the connection. When the SDK gives up (the session-down callback) it ends failed and the App's re-login is provider.broker_session_reconnect; a session logged out meanwhile ends it abandoned.",
+      "trigger_reasons": ["sdk_session_down"],
+      "emission": ["service/market/shioaji/session.py"]
+    },
+    "client.shioaji_daemon_attach": {
+      "s1": "S1-11",
+      "label": "API 連接 Shioaji 重試",
+      "owner": "FastAPI",
+      "component": "market_daemon_client",
+      "zero_expected": false,
+      "description": "FastAPI's background attach to the Shioaji market daemon failed and is retried until the daemon takes its lease (normal for a few attempts while Electron starts the daemon): 1-30 s backoff, never given up (the daemon is the App's own and comes back through Health), stopped at once when a foreign program owns its port.",
+      "trigger_reasons": ["attach_unavailable"],
+      "emission": ["service/market/shioaji/daemon_client.py"],
+      "trigger_sources": ["service/market/shared/daemon_lease.py"]
+    },
+    "client.shioaji_lease_reattach": {
+      "s1": "S2a-10",
+      "label": "API 重新接上 Shioaji",
+      "owner": "FastAPI",
+      "component": "market_daemon_client",
+      "zero_expected": true,
+      "description": "FastAPI's control lease on the Shioaji market daemon was lost (a new daemon instance, not attached, or a failed heartbeat) and is attached again.",
+      "trigger_reasons": ["instance_changed", "not_attached", "heartbeat_failed"],
+      "emission": ["service/market/shioaji/daemon_client.py"],
+      "trigger_sources": ["service/market/shared/daemon_lease.py"]
+    },
+    "client.shioaji_stream_reconnect": {
+      "s1": "S1-12",
+      "label": "API 與 Shioaji 重新連線",
+      "owner": "FastAPI",
+      "component": "market_daemon_stream",
+      "zero_expected": true,
+      "description": "FastAPI's control stream to the Shioaji market daemon closed without FastAPI asking (close code/reason recorded) and connects again with backoff. It ends only on an attached frame that passed the identity check; one refused is an attempt (attach_refused).",
+      "trigger_reasons": ["connection_closed", "stream_error", "connect_failed", "attach_refused"],
+      "emission": ["service/market/shioaji/daemon_stream.py"]
+    },
+    "client.security_master_events_reconnect": {
+      "s1": null,
+      "label": "商品目錄與券商主檔重新連線",
+      "owner": "app_api (product catalog)",
+      "component": "security_master_watch",
+      "zero_expected": true,
+      "description": "app_api's stream of a provider's security-master writes (Shioaji /v1/security-master/events, Futu /v1/futu/security-master/events), which rebuilds the product catalog when a master is written, broke after it had connected and is opened again with backoff. Ended by the first event of a new connection (the master's state then: a write missed meanwhile is rebuilt). Refusals before the first connection (the provider not up yet) are logged, not recorded.",
+      "trigger_reasons": ["http_failure", "connect_failed", "stream_error", "eof"],
+      "emission": ["service/market/reference/security_master_watch.py"]
+    },
+    "client.security_master_catalog_retry": {
+      "s1": null,
+      "label": "商品目錄重建重試",
+      "owner": "app_api (product catalog)",
+      "component": "security_master_watch",
+      "zero_expected": true,
+      "description": "The product catalog did not take a provider's security-master write (the rebuild failed or answered ok: false). app_api's watch keeps that master state and hands it to the catalog again at the first stream event (a write or a heartbeat) after a doubling delay capped at 5 minutes, until the catalog takes it (succeeded) or the watch stops (abandoned).",
+      "trigger_reasons": ["catalog_rebuild_failed"],
+      "emission": ["service/market/reference/security_master_watch.py"]
+    },
+    "daemon.stream_consumer_drop": {
+      "s1": "S1-13",
+      "label": "Shioaji 斷開過慢連線",
+      "owner": "Shioaji market daemon",
+      "component": "daemon_stream_hub",
+      "zero_expected": true,
+      "description": "A client of the daemon's control stream fell 256 frames behind and was closed with 1013; its reconnect is recorded by the client (client.shioaji_stream_reconnect).",
+      "trigger_reasons": ["consumer_lagged"],
+      "emission": ["backend/shioaji/stream_hub.py"]
+    },
+    "provider.shioaji_connection_close_retry": {
+      "s1": null,
+      "label": "永豐額外連線登出重試",
+      "owner": "Shioaji provider",
+      "component": "shioaji_connection_pool",
+      "zero_expected": true,
+      "description": "An added Shioaji connection (設定 → 永豐行情連線) did not log out -- left idle by a smaller plan, at the session's stop, or right after a login whose setup failed. Its handle is kept (it may still hold one of the person ID's broker connections) and its index is not logged in again; the logout is tried again after each subscription sync, up to 3 attempts: succeeded when one logs out, abandoned (the handle let go, the state kept in the status) after the last.",
+      "trigger_reasons": ["logout_failed"],
+      "emission": ["service/market/shioaji/session.py"]
+    },
+    "provider.shioaji_refusal_resync": {
+      "s1": null,
+      "label": "永豐訂閱拒絕無法對應時重新訂閱",
+      "owner": "Shioaji provider",
+      "component": "shioaji_connection_pool",
+      "zero_expected": true,
+      "description": "The broker refused a subscription (Max Num Subscriptions Exceeded) with a topic that names no stream the connection holds, so which stream it dropped is unknown. Every stream of that connection is marked UNVERIFIED and laid out again, the connection capped at one stream less than it held; ended (succeeded) by the next sync that subscribes them all without an error.",
+      "trigger_reasons": ["unattributed_refusal"],
+      "emission": ["service/market/shioaji/session.py"]
+    },
+    "provider.futu_opend_reconnect": {
+      "s1": "S1-15",
+      "label": "OpenD 重新連線",
+      "owner": "Futu provider",
+      "component": "futu_opend",
+      "zero_expected": true,
+      "description": "OpenD stopped answering or the quote context was lost after it had been connected; a new context is opened with backoff and the recovery ends when it completes its first cycle (handlers, plan subscribed).",
+      "trigger_reasons": ["opend_unreachable", "connection_lost", "context_open_failed"],
+      "emission": ["service/market/futu/opend_lifecycle.py"]
+    },
+    "provider.futu_subscribe_retry": {
+      "s1": "S1-16",
+      "label": "Futu 訂閱重試",
+      "owner": "Futu provider",
+      "component": "futu_subscriptions",
+      "zero_expected": true,
+      "description": "A planned (code, subtype) pair could not be subscribed at OpenD; later syncs try it again with backoff until it is subscribed, the plan drops it, or the context is reset.",
+      "trigger_reasons": ["subscribe_failed"],
+      "emission": ["service/market/futu/subscriptions.py"]
+    },
+    "provider.futu_quota_read_retry": {
+      "s1": "S1-86",
+      "label": "OpenD 額度讀取重試",
+      "owner": "Futu provider",
+      "component": "futu_opend",
+      "zero_expected": true,
+      "description": "OpenD did not answer query_subscription (its subscription quota, which Market Runtime plans the Futu streams within): read again with a growing wait (1-15 s) until it answers or the context is reset; nothing new is subscribed on a context before its quota is read.",
+      "trigger_reasons": ["quota_read_failed"],
+      "emission": ["service/market/futu/opend_lifecycle.py"]
+    },
+    "provider.futu_unsubscribe_retry": {
+      "s1": "S1-17",
+      "label": "Futu 取消訂閱重試",
+      "owner": "Futu provider",
+      "component": "futu_subscriptions",
+      "zero_expected": true,
+      "description": "A pair the plan no longer wants could not be unsubscribed at OpenD; it is tried again after 5 s until it is gone, wanted again, or the context is reset.",
+      "trigger_reasons": ["unsubscribe_failed"],
+      "emission": ["service/market/futu/subscriptions.py"]
+    },
+    "client.futu_daemon_attach": {
+      "s1": "S1-19",
+      "label": "API 連接 Futu 重試",
+      "owner": "FastAPI",
+      "component": "moomoo_daemon_client",
+      "zero_expected": false,
+      "description": "FastAPI's attach to the Futu daemon: the background loop's retries (1-30 s backoff, given up after 15 min or at once for a permanent cause), recorded with their outcome. The diagnostics panel's 重新檢查 (S1-22) is the user's action, written to the operation log, not here; an attach it makes still ends an open retry.",
+      "trigger_reasons": ["attach_unavailable"],
+      "emission": ["service/market/futu/daemon_client.py"],
+      "trigger_sources": ["service/market/shared/daemon_lease.py"]
+    },
+    "client.futu_lease_reattach": {
+      "s1": "S1-20",
+      "label": "API 重新接上 Futu",
+      "owner": "FastAPI",
+      "component": "moomoo_daemon_client",
+      "zero_expected": true,
+      "description": "FastAPI's Futu daemon lease was lost (a new daemon instance, not attached, or a failed heartbeat) and is attached again.",
+      "trigger_reasons": ["instance_changed", "not_attached", "heartbeat_failed"],
+      "emission": ["service/market/futu/daemon_client.py"],
+      "trigger_sources": ["service/market/shared/daemon_lease.py"]
+    },
+    "provider.adapter_control_reconnect": {
+      "s1": "S1-29",
+      "label": "行情來源控制連線重連",
+      "owner": "provider adapters",
+      "component": "adapter_control",
+      "zero_expected": true,
+      "description": "A provider's adapter-control connection to Market Runtime was lost (or could not be opened or registered); it connects and registers again, and Market Runtime then re-sends the full plan.",
+      "trigger_reasons": ["registration_timeout", "connect_failed", "control_lost"],
+      "emission": ["service/market/shared/adapter_control.py"]
+    },
+    "renderer.view_resync": {
+      "s1": "S1-68",
+      "label": "畫面資料重取",
+      "owner": "renderer",
+      "component": "realtime_view_store",
+      "zero_expected": true,
+      "description": "A view is re-baselined from Market Runtime (view.resync): a sequence gap, a snapshot not applied, a daemon or session-generation change, or Market Runtime's snapshot.required / stream.reset. Ended by the snapshot that answers it; each further request before that is an attempt.",
+      "trigger_reasons": ["snapshot_not_applied", "daemon_instance_changed", "session_generation_changed", "sequence_gap", "server_reset", "resync_retry", "client_request", "replay_diff_unfit"],
+      "emission": ["ui/renderer/js/market_data/view_subscriptions.js"],
+      "trigger_sources": ["ui/renderer/js/market_data/realtime_view_store.js", "ui/renderer/js/market_data/sequence_gate.js"]
+    },
+    "renderer.view_resubscribe": {
+      "s1": "S1-70",
+      "label": "畫面重新訂閱",
+      "owner": "renderer",
+      "component": "realtime_view_store",
+      "zero_expected": true,
+      "description": "A view's subscribe/snapshot/resync went unanswered for 55 s (S1-70), the view reported an error (S1-71, 2-15 s backoff), or the window's live connection came back and the view is subscribed on it again: it is subscribed again until a snapshot applies.",
+      "trigger_reasons": ["request_timeout", "view_error", "reconnect"],
+      "emission": ["ui/renderer/js/market_data/view_subscriptions.js"]
+    },
+    "renderer.view_protocol_fault": {
+      "s1": "S2c-09",
+      "label": "畫面拒收錯置資料",
+      "owner": "renderer",
+      "component": "realtime_view_store",
+      "zero_expected": true,
+      "description": "A delta or snapshot named another session identity than the view is bound to (Market Runtime rebinds views itself; the frame is refused, the view shows stale until the next baseline, and the fault is recorded once), or a view.subscribe reply named a request this window never had open (every request it stops waiting for is cancelled by its request id, so its replies are known; the reply is refused and its view is not closed from here), or a snapshot carried an older session generation than the view already applied (Market Runtime never sends one: it refuses older generations at ingest, and a replay view carries the replay's own generation, which rises at every seek).",
+      "trigger_reasons": ["wrong_session_identity", "foreign_snapshot_identity", "unknown_request_reply", "old_session_generation", "replay_diff_unfit"],
+      "emission": ["ui/renderer/js/market_data/realtime_view_store.js"],
+      "trigger_sources": ["ui/renderer/js/market_data/sequence_gate.js"]
+    },
+    "market.client_resync": {
+      "s1": "S1-36",
+      "label": "畫面要求重取資料",
+      "owner": "Market Runtime",
+      "component": "view_delivery",
+      "zero_expected": true,
+      "description": "A client asked to re-baseline one of its views (view.resync) and was sent a fresh snapshot; recorded by view, reason, partition and sequence before/after (S2b-19).",
+      "trigger_reasons": ["snapshot_not_applied", "daemon_instance_changed", "session_generation_changed", "sequence_gap", "server_reset", "resync_retry", "client_request", "replay_diff_unfit", "unspecified"],
+      "emission": ["native/market_runtime/src/server/commands.rs"],
+      "trigger_sources": ["native/market_runtime/src/server/session.rs"]
+    },
+    "renderer.view_consumer_fault": {
+      "s1": "S2c-11",
+      "label": "畫面元件更新失敗",
+      "owner": "renderer",
+      "component": "realtime_view_store",
+      "zero_expected": true,
+      "description": "A view's consumer callback threw: the view's data is current but that consumer did not update. Recorded once per fault streak with the view and the consumer.",
+      "trigger_reasons": ["callback_threw"],
+      "emission": ["ui/renderer/js/market_data/realtime_view_store.js"]
+    },
+    "analysis.replay_timeline_resume": {
+      "s1": "S1-38",
+      "label": "歷史回放時間軸補建",
+      "owner": "Rust B",
+      "component": "replay_runtime",
+      "zero_expected": false,
+      "description": "Market Runtime held part of an open replay's timeline and Rust B had no build of it under way (B restarted, or spans were lost on the way): B builds the spans Market Runtime is missing. A seek or a changed analysis is not a remediation.",
+      "trigger_reasons": ["missing_spans"],
+      "emission": ["native/analysis_runtime/src/runtime/replay_runtime.rs"]
+    },
+    "analysis.replay_orphan_release": {
+      "s1": "S1-38",
+      "label": "釋放無主的歷史回放",
+      "owner": "Rust B",
+      "component": "replay_runtime",
+      "zero_expected": true,
+      "description": "durable.subscribed named another replay (or none) than one Rust B still held: Market Runtime restarted, or its replay.close was lost with the connection. B releases the replay as a close would have.",
+      "trigger_reasons": ["not_open_at_market_runtime"],
+      "emission": ["native/analysis_runtime/src/runtime/replay_runtime.rs"]
+    },
+    "config.lock_takeover": {
+      "s1": "S1-61",
+      "label": "解除設定檔鎖定",
+      "owner": "config store",
+      "component": "config_store",
+      "zero_expected": true,
+      "description": "A config domain's writer lock was taken over because the process that holds it is gone (or its PID now names another process). Never decided by the lock's age (S2d-14); a takeover that raced another contender and could not put its live lock back is recorded as failed.",
+      "trigger_reasons": ["owner_process_gone", "owner_process_replaced"],
+      "emission": ["config/config_revisions.py", "config/js/config_revisions.js"]
+    },
+    "network.saved_revision_fallback": {"s1": null, "label": "改用上一份連接埠設定", "owner": "health", "component": "network_config", "zero_expected": true, "description": "The active saved network revision did not validate at Health start, so Health started on the store's last good revision instead of the defaults (CX-57). Without a valid last good revision Health does not start.", "trigger_reasons": ["active_revision_invalid"], "emission": ["health/main.js"]},
+    "storage.rename_retry": {"s1": null, "label": "資料夾改名重試", "owner": "health", "component": "storage_location", "zero_expected": true, "description": "Switching the storage location, a folder could not be renamed because something had a file in it open (a scanner, antivirus), so the rename was tried again for a bounded time. Recorded once per rename, with the number of retries.", "trigger_reasons": ["folder_locked"], "emission": ["health/main.js"]},
+    "network.apply_recovery": {
+      "s1": "S1-54",
+      "label": "連接埠設定已復原",
+      "owner": "health",
+      "component": "network_operations",
+      "zero_expected": false,
+      "description": "A network operation recovered: a candidate that failed to stop/start/verify was rolled back (only after every candidate service was confirmed gone, S2d-01), a self-endpoint change completed through the bootstrap restart on a clean handoff receipt (S2d-02), a candidate that did not come up after that restart was rolled back, or an operation interrupted by a Health restart was finished on the previous revision (S2d-03).",
+      "trigger_reasons": ["candidate_failed", "self_endpoint_change", "bootstrap_candidate_failed", "interrupted_operation"],
+      "emission": ["health/operations.js"]
+    },
+    "health.bootstrap_restart": {
+      "s1": "S1-52",
+      "label": "服務監控重啟",
+      "owner": "electron main",
+      "component": "health_bootstrap",
+      "zero_expected": false,
+      "description": "Electron main restarted Health: a planned restart (exit 75, a network operation moved Health's or settings_api's own endpoint) or an unexpected exit (backoff, bounded budget; abandoned once the budget is spent).",
+      "trigger_reasons": ["planned_restart", "unexpected_exit"],
+      "emission": ["ui/main/health_bootstrap.js"]
+    },
+    "health.attach_start_all_retry": {
+      "s1": null,
+      "label": "啟動全部服務重試",
+      "owner": "electron main",
+      "component": "health_bootstrap",
+      "zero_expected": true,
+      "description": "A UI attaching to a running Health had its start-all request refused or unanswered and asked again (doubling delay, bounded tries, one request id for every try, so Health answers a repeat with the attempt it already began). Recorded once Electron main's emitter exists, with the tries and the outcome.",
+      "trigger_reasons": ["start_all_not_accepted"],
+      "emission": ["ui/main/health_bootstrap.js"]
+    },
+    "ui.endpoint_rediscovery": {
+      "s1": "S1-65",
+      "label": "重新讀取連線位置",
+      "owner": "electron main",
+      "component": "api_endpoints",
+      "zero_expected": false,
+      "description": "Electron main re-read the effective endpoints from Health after a network apply or a Health restart (renderer windows reload when they changed). The projection carries the Health instance and revision it came from; a failed read marks it unavailable (S2d-10).",
+      "trigger_reasons": ["network_apply", "health_restart"],
+      "emission": ["ui/main/api_endpoints.js"]
+    },
+    "provider.late_join_backfill": {
+      "s1": null,
+      "label": "盤中才訂閱的商品補當天資料",
+      "owner": "shioaji provider",
+      "component": "restart_backfill",
+      "zero_expected": false,
+      "description": "The provider subscribed an instrument's print stream once its session was trading (the user added it, a view opened it, or the App started after the open): Market Runtime noticed its first print and answered that ingest batch with the gap from the session's open to it (market_runtime late_join.rs). The provider fetched that window from the broker's tick history (api.ticks RangeTime) and published the prints as backfill trades with their cumulative volume (an index: price-only backfill bars), stored for a background-list code and sent over the live lane to Rust B otherwise, then reported the code with ingest.backfill. Not an error when the user added the instrument; one operation per code, succeeded with the prints and volume stored, or failed.",
+      "trigger_reasons": ["late_join"],
+      "emission": ["service/market/shioaji/restart_backfill.py"]
+    },
+    "provider.closed_view_backfill": {
+      "s1": null,
+      "label": "收盤後看沒有資料的商品時補當天資料",
+      "owner": "shioaji provider",
+      "component": "restart_backfill",
+      "zero_expected": false,
+      "description": "A view opened on a finished session of a code Market Runtime holds nothing of: the session's prints come from the broker's history, shown and folded by Rust B and never written.",
+      "trigger_reasons": ["closed_session_view"],
+      "emission": ["service/market/shioaji/restart_backfill.py"]
+    },
+    "provider.history_backfill": {
+      "s1": null,
+      "label": "收盤後補空檔",
+      "owner": "shioaji provider",
+      "component": "history_backfill",
+      "zero_expected": true,
+      "description": "A closed session's gaps (history_gaps.rs: holes in a code's cumulative volume, an index's quiet minutes) were fetched from the broker's tick history for scripts/fill_history_gaps.py, window by window (api.ticks RangeTime), nothing published; Rust B folded the session again from the historical store with them. One operation per code, succeeded with the prints fetched, or failed with the windows that could not be.",
+      "trigger_reasons": ["closed_session_gap"],
+      "emission": ["service/market/shioaji/session.py"]
+    },
+    "provider.outage_backfill": {
+      "s1": null,
+      "label": "券商斷線補空檔",
+      "owner": "shioaji provider",
+      "component": "restart_backfill",
+      "zero_expected": true,
+      "description": "A broker connection of the running provider stopped delivering and came back without the process restarting (the SDK reconnecting it, or a re-login): when it went down the provider told Market Runtime (ingest.outage), which took each stored code's gap start then (newest stored print); once the outage's report (ingest.loss broker_outage) touched the code's trading, Market Runtime answered the gap with its end (the code's first print after the start, or its close; market_runtime outage_gap.rs). The provider fetched only that window from the broker's tick history (api.ticks RangeTime) and published the prints as backfill trades with their cumulative volume (an index: price-only backfill quotes), then reported the code with ingest.backfill (cause outage). A futures night's window before its midnight is not held by the broker yet: abandoned and left to the fill after the session's materialization. One operation per code, succeeded with the prints and volume stored, failed, or abandoned.",
+      "trigger_reasons": ["broker_connection_outage"],
+      "emission": ["service/market/shioaji/restart_backfill.py"]
+    },
+    "provider.restart_backfill": {
+      "s1": null,
+      "label": "盤中重啟補空檔",
+      "owner": "shioaji provider",
+      "component": "restart_backfill",
+      "zero_expected": true,
+      "description": "The provider process restarted during a session its predecessor was recording: Market Runtime's hello answer named, per stored code, where its gap starts (newest stored print, the volume at that instant, the cumulative volume). The provider fetched only that window from the broker's tick history (api.ticks RangeTime, up to the code's first live print or its close) and published the prints as backfill trades with their cumulative volume (an index: price-only backfill bars), then reported the code with ingest.backfill. One operation per code, succeeded with the prints and volume stored, or failed.",
+      "trigger_reasons": ["provider_restart"],
+      "emission": ["service/market/shioaji/restart_backfill.py"]
+    },
+    "ui.catalog_stream_reconnect": {
+      "s1": null,
+      "label": "商品目錄變更串流重連",
+      "owner": "electron main",
+      "component": "product_catalog_store",
+      "zero_expected": true,
+      "description": "Electron main's copy of the product catalog follows app_api's /api/product-catalog/events; the stream broke (app_api ended it, went silent past the heartbeat, refused, or failed to connect or mid-read) and was opened again with a doubling delay. One operation from the break to the stream answering again (succeeded) or the App closing first (abandoned), with the attempts made. A failed read of a newly announced revision (reload_failed) breaks the stream the same way, so the reconnect's current revision is read again; that operation ends when the copy holds the announced revision.",
+      "trigger_reasons": ["stream_ended", "stream_silent", "stream_refused", "stream_failed", "reload_failed"],
+      "emission": ["ui/main/product_catalog_store.js"]
+    },
+    "ui.health_events_refollow": {
+      "s1": null,
+      "label": "Health 關閉公告串流重新跟隨",
+      "owner": "electron main",
+      "component": "shutdown_controller",
+      "zero_expected": true,
+      "description": "Electron main follows Health's GET /control/ui-events so a shutdown anyone asks of Health is announced before the services under the windows stop. The stream broke while Health ran (stream_broken) or did not open (stream_not_opened) and was followed again at once. One operation from the break to Health accepting the stream again (succeeded), Health not accepting it (failed: Health is not answering; the bootstrap follows the Health it restarts), or the App closing / Health restarting first (abandoned).",
+      "trigger_reasons": ["stream_broken", "stream_not_opened"],
+      "emission": ["ui/main/shutdown_controller.js"]
+    },
+    "health.resource_sampler_restart": {
+      "s1": null,
+      "label": "資源量測重啟",
+      "owner": "health",
+      "component": "process_resources",
+      "zero_expected": true,
+      "description": "Health replaced its PowerShell resource sampler because the previous one exited, failed to spawn or lost its input. A query that only timed out ends alone (replies are matched by request id, S2d-17); its late reply is dropped and counted.",
+      "trigger_reasons": ["sampler_exited", "sampler_failed", "sampler_input_failed", "sampler_unanswered"],
+      "emission": ["health/monitoring/process_resources.js"]
+    },
+    "analysis.inference_config_reread": {
+      "s1": null,
+      "label": "模型設定重讀",
+      "owner": "analysis_runtime",
+      "component": "config_watch",
+      "zero_expected": true,
+      "description": "Rust B could not read its inference config file (a sharing violation, an antivirus or ACL lock): the version still running stays, and the same file version is read again every second until a read succeeds. One operation from the first failed read to the read that succeeded (or B stopping).",
+      "trigger_reasons": ["config_unreadable"],
+      "emission": ["native/analysis_runtime/src/runtime/inference_runtime.rs"]
+    },
+    "analysis.wedged_replacement": {
+      "s1": "S1-51",
+      "label": "分析程式無回應，重啟",
+      "owner": "health",
+      "component": "analysis_runtime_host",
+      "zero_expected": true,
+      "description": "Health replaced Rust B because it stopped reporting metrics for 60 s after its hello. The old child is confirmed exited (its own exit event) before a new one is spawned; not confirmed, nothing is spawned (S2d-07).",
+      "trigger_reasons": ["metrics_silent"],
+      "emission": ["health/services/analysis_runtime_host.js"]
+    },
+    "training.auto_retry": {
+      "s1": "S1-57",
+      "label": "自動訓練重試",
+      "owner": "training domain",
+      "component": "training_job",
+      "zero_expected": false,
+      "description": "Another automatic training attempt for a trading date that already had one: the previous one answered NOT_READY, failed, or never recorded its end. When it is due is the training domain's own ledger (schedule.json, S2d-18).",
+      "trigger_reasons": ["not_ready", "failed", "interrupted"],
+      "emission": ["service/analysis/online_training/job.py"]
+    },
+    "training.owner_recovered": {
+      "s1": null,
+      "label": "訓練程序交接",
+      "owner": "health",
+      "component": "training_job_runner",
+      "zero_expected": false,
+      "description": "This Health found the training job owner record of an earlier Health (it crashed, or its stop could not end the job): released when its process is gone or its pid names another process (succeeded), kept as this Health's running job while that exact process still runs (succeeded, detail.kept), or left blocking every start when it cannot be verified (failed).",
+      "trigger_reasons": ["previous_health_gone"],
+      "emission": ["health/training_job_runner.js"]
+    },
+    "provider.daemon_ownership_wait": {
+      "s1": "S1-53",
+      "label": "行情來源等舊實例結束",
+      "owner": "health",
+      "component": "provider_daemon_ownership",
+      "zero_expected": false,
+      "description": "Health's provider daemon start waited on another owner, read from the daemon's own owner record (S2d-12): an owner still STARTING or STOPPING, our own daemon of another runtime stopped for an upgrade, a peer that won the singleton lock instead of the process Health spawned, or a READY owner whose health did not answer at once (READY is published only once it serves).",
+      "trigger_reasons": ["owner_starting", "owner_stopping", "incompatible_upgrade", "singleton_race", "owner_ready_unanswered"],
+      "emission": ["health/startup/provider_daemon_ownership.js"]
+    },
+    "health.forced_termination": {
+      "s1": null,
+      "label": "強制結束程式",
+      "owner": "health / electron main",
+      "component": "forced_termination",
+      "zero_expected": true,
+      "description": "A process was ended by force because it did not keep its stop contract: a stop past its grace, a start that never came up, a job past its timeout, or the UI's quit watchdog (recorded from the marker it leaves, at the next start). Names the exact process, why, its grace and whether it exited (S2d-19).",
+      "trigger_reasons": ["stop_grace_exceeded", "start_failed", "job_timeout", "shutdown_watchdog", "orphan_of_previous_owner"],
+      "emission": ["service/platform/js/forced_termination.js"]
+    },
+    "materialization.job_retry": {
+      "s1": "S1-55",
+      "label": "收盤整理重試",
+      "owner": "session owner (materialization ledger)",
+      "component": "materialization_ledger",
+      "zero_expected": false,
+      "description": "A materialization job was requested again after its previous attempt failed (the request could not be written, the job failed, or the request was lost -- neither pending, claimed nor done), with exponential backoff; abandoned past the attempt budget. The job's place is read, never guessed from a lease (S2d-09).",
+      "trigger_reasons": ["request_write_failed", "job_failed", "request_lost"],
+      "emission": ["service/market/shared/materialization_ledger.py"]
+    },
+    "materialization.claim_recovered": {
+      "s1": null,
+      "label": "收盤整理重新排入",
+      "owner": "health",
+      "component": "materializer_job_runner",
+      "zero_expected": false,
+      "description": "A materialization job claimed by an earlier Health (it stopped or crashed) was put back to pending at this Health's start -- its process ended first if it was still running (S2d-09).",
+      "trigger_reasons": ["previous_health_gone"],
+      "emission": ["health/materializer_job_runner.js"]
+    },
+    "provider.metadata_refetch": {
+      "s1": "S1-07/S1-09/S1-21",
+      "label": "商品資料重新下載",
+      "owner": "provider (metadata owner)",
+      "component": "metadata",
+      "zero_expected": false,
+      "description": "A provider's metadata artifact is being fetched again: stock limits a contract has not been updated for today (or that could not be read), TXF limits the contract does not yet carry for a trading date whose quotes already trade (its reference is not the one they state, or it could not be read), a Shioaji security master whose daily refresh failed, a Futu security master that failed or came back partial (groups kept from before). Also a reference (stock limits, TXF session reference or limits) that Market Runtime's ingress refused, until one is admitted. Open from the first failure until a refresh is complete; the artifact states its own coverage meanwhile (S2a-13).",
+      "trigger_reasons": ["stock_limits_not_updated", "stock_limits_unavailable", "txf_limits_not_updated", "txf_limits_unavailable", "reference_publish_refused", "security_master_failed", "futu_master_failed", "futu_master_partial"],
+      "emission": ["service/market/shioaji/session.py", "service/market/shioaji/maintenance.py", "service/market/futu/security_master.py"]
+    },
+    "reference.catalog_rebuild": {
+      "s1": "S1-63",
+      "label": "商品目錄重建",
+      "owner": "product catalog",
+      "component": "product_catalog",
+      "zero_expected": false,
+      "description": "The product catalog (derived from the provider security masters) was rebuilt outside the normal path -- at the owning process's start (not loaded yet, a master changed or the catalog file is older than its sources: a write that did not reach the catalog while it ran) or on a manual request. A rebuild because a provider wrote its master (the daily relogin) is the normal update and is not recorded. Its outcome (OK / DEGRADED with the missing sources) is recorded.",
+      "trigger_reasons": ["not_loaded", "source_changed", "catalog_stale", "manual"],
+      "emission": ["service/market/projection/product_catalog_service.py"]
+    },
+    "session.close_recovery": {
+      "s1": "S1-58",
+      "label": "收盤處理接續完成",
+      "owner": "session owner",
+      "component": "session_close",
+      "zero_expected": false,
+      "description": "A session's close was recovered, under its one close operation id (S2a-14): a session intent a restart interrupted was finalized after the restart (closed meanwhile; one still live is taken back as its normal load, only logged), an unreadable intent (its content moved aside to unreadable/, or left for the next start when the file could not be read) or one whose recovery failed, a stale empty-contract FUT placeholder intent dropped next to its session's real one, or a finalization attempt retried or abandoned.",
+      "trigger_reasons": ["intent_finalized_after_restart", "intent_unreadable", "intent_recovery_failed", "placeholder_intent_dropped", "finalization_retry"],
+      "emission": ["service/market/lifecycle/rollover.py"]
+    },
+    "kbar.job_recovered": {
+      "s1": "S1-10",
+      "label": "K 線下載接續",
+      "owner": "Shioaji K-bar download",
+      "component": "kbar_download",
+      "zero_expected": false,
+      "description": "K-bar download work taken up again: segments that were downloading when the process stopped (back to pending), or jobs waiting for the daily budget resumed after it reset.",
+      "trigger_reasons": ["inflight_at_restart", "budget_resume"],
+      "emission": ["service/market/shioaji/history_download.py"]
+    },
+    "account.manual_rebuild": {
+      "s1": "S1-85",
+      "label": "帳務重新計算",
+      "owner": "actual account / paper wallet",
+      "component": "account_routes",
+      "zero_expected": false,
+      "description": "A ledger rebuild the user asked for (\u91cd\u65b0\u8a08\u7b97), with its outcome. An explicit operation only; no automatic path starts it.",
+      "trigger_reasons": ["user_request"],
+      "emission": ["api/routes/account_routes.py"]
+    },
+    "account.dashboard_reread": {
+      "s1": "S1-84",
+      "label": "帳務資料重讀",
+      "owner": "actual account / paper wallet",
+      "component": "account_dashboard",
+      "zero_expected": false,
+      "description": "An account dashboard read saw the ledger change between its parts: the mixed result was discarded and read again (the third attempt holds the ledger lock).",
+      "trigger_reasons": ["ledger_changed_during_read"],
+      "emission": ["service/account/account_analytics_service.py"]
+    },
+    "account.paper_fill_import_retry": {
+      "s1": null,
+      "label": "模擬成交寫入帳本重試",
+      "owner": "paper wallet",
+      "component": "paper_orders",
+      "zero_expected": true,
+      "description": "Matched 模擬下單 fills could not be written into the paper ledger. They are kept and written again with a doubling wait (1 s up to 60 s); one operation from the first failure, every retry an attempt, succeeded once they are in the ledger.",
+      "trigger_reasons": ["ledger_write_failed"],
+      "emission": ["service/account/paper_orders.py"]
+    },
+    "renderer.sse_reconnect": {
+      "s1": null,
+      "label": "庫存即時更新重連",
+      "owner": "renderer (shared SSE owner)",
+      "component": "sse_stream",
+      "zero_expected": false,
+      "description": "A renderer Server-Sent Events stream (e.g. \u6301\u5009\u8b8a\u52d5) broke and is reconnected with backoff: an HTTP failure, the server closing it, the silence watchdog or a transport error -- told apart. Finished by a connection that held for a heartbeat interval, with the stream's last identity (S2c-16).",
+      "trigger_reasons": ["http_failure", "eof", "silence_watchdog", "transport_error"],
+      "emission": ["ui/renderer/js/core/sse_stream.js"]
+    },
+    "market.recovery_invalid_events": {
+      "s1": null,
+      "label": "略過日期錯誤的資料",
+      "owner": "market_runtime",
+      "component": "startup_recovery",
+      "zero_expected": true,
+      "description": "Market Runtime's WAL recovery met events whose trading date is no real calendar date (written before ingest refused them): they are not applied (outcome suppressed), counted, and the first one's sequence and date recorded. A checkpoint image naming such a date is refused whole and the state rebuilt from the WAL (market.checkpoint_fallback).",
+      "trigger_reasons": ["invalid_trading_date"],
+      "emission": ["native/market_runtime/src/server/startup.rs"]
+    },
+    "market.holidays_calendar": {
+      "s1": null,
+      "label": "假日檔無法使用",
+      "owner": "market_runtime",
+      "component": "startup_recovery",
+      "zero_expected": true,
+      "description": "The holidays file Market Runtime was started with (--market-holidays) could not be read or does not validate (schema, a date that is not a real date of its year, a closed run too long to search). The start stops (outcome failed): the copy built into the binary may be a year behind and never stands in for a file that was named.",
+      "trigger_reasons": ["holidays_file_invalid"],
+      "emission": ["native/market_runtime/src/server/startup.rs"]
+    },
+    "market.voided_events_file": {
+      "s1": null,
+      "label": "作廢事件清單無法使用",
+      "owner": "market_runtime",
+      "component": "startup_recovery",
+      "zero_expected": true,
+      "description": "The void-event list Market Runtime was started with (--voided-events, <data root>/live-engine/voided_events.json, native/market_runtime/src/voided.rs) exists but could not be read or does not validate. The start stops (outcome failed): the state would otherwise hold the durable events the user decided to remove.",
+      "trigger_reasons": ["voided_events_invalid"],
+      "emission": ["native/market_runtime/src/server/startup.rs"]
+    },
+    "market.sessions_file": {
+      "s1": null,
+      "label": "開市狀態檔無法使用",
+      "owner": "market_runtime",
+      "component": "startup_recovery",
+      "zero_expected": true,
+      "description": "Market Runtime's own sessions file (--market-sessions: the Shioaji sessions that have opened on their first print and the closures it observed) exists but could not be read or does not validate. The start stops (outcome failed): an observed closure it holds would otherwise be a trading day again.",
+      "trigger_reasons": ["sessions_file_invalid"],
+      "emission": ["native/market_runtime/src/server/startup.rs"]
+    },
+    "market.shutdown_incomplete": {
+      "s1": null,
+      "label": "關閉時未完整寫入",
+      "owner": "market_runtime",
+      "component": "shutdown",
+      "zero_expected": true,
+      "description": "Market Runtime's durable shutdown could not confirm everything: the WAL flush timed out or found the writer gone, the writer's stop/join failed (panic, final flush or fsync error), the WAL had failed, the checkpoint or the clean-shutdown marker could not be written. The receipt (detail) names which; the stop is not clean and the next start recovers from the WAL.",
+      "trigger_reasons": ["durable_shutdown_incomplete"],
+      "emission": ["native/market_runtime/src/server/durable.rs"]
+    },
+    "market.session_end_unannounced": {
+      "s1": null,
+      "label": "關機時無法通知 Health",
+      "owner": "market_runtime",
+      "component": "session_end",
+      "zero_expected": true,
+      "description": "Windows announced a shutdown or logoff to Market Runtime, but the session_ending line to Health (A's stdout) could not be written: Health was already gone, so no full shutdown of the other services runs. A ran its own durable stop (WAL flush, checkpoint, clean marker) instead; outcome succeeded when that stop was clean. The receipt and the write error are in the detail.",
+      "trigger_reasons": ["health_unreachable"],
+      "emission": ["native/market_runtime/src/server/session_end.rs"]
+    },
+    "market.worker_failure": {
+      "s1": null,
+      "label": "背景工作異常結束",
+      "owner": "market_runtime",
+      "component": "supervisor",
+      "zero_expected": true,
+      "description": "A Market Runtime loop (clock, checkpoint, replay, rollover, config, accept) panicked; found when it is joined at shutdown, or when a failed start stops the loops it had started. The stop summary names it and is not clean.",
+      "trigger_reasons": ["worker_panicked"],
+      "emission": ["native/market_runtime/src/server/startup.rs"]
+    },
+    "renderer.instrument_name_retry": {
+      "s1": null,
+      "label": "商品名稱重查",
+      "owner": "renderer (instrument names)",
+      "component": "instrument_names",
+      "zero_expected": true,
+      "description": "A window's security-master name lookup for a code failed and is asked again after a per-code backoff (60 s doubling to 30 min). One operation per code from its first failure (source, code, error) to the lookup that answers (succeeded, with the attempts), or abandoned when the page goes away first.",
+      "trigger_reasons": ["lookup_failed"],
+      "emission": ["ui/renderer/js/core/instrument_names.js"]
+    },
+    "renderer.sse_break": {
+      "s1": null,
+      "label": "庫存即時更新中斷",
+      "owner": "renderer (shared SSE owner)",
+      "component": "sse_stream",
+      "zero_expected": false,
+      "description": "One break of a renderer Server-Sent Events stream, recorded when it happens: why (HTTP failure, server EOF, silence watchdog, transport error), when, how much the connection had delivered and how long it was open, and the stream's identity then. Related to the renderer.sse_reconnect outage it belongs to, whose terminal event counts the breaks by kind.",
+      "trigger_reasons": ["http_failure", "eof", "silence_watchdog", "transport_error"],
+      "emission": ["ui/renderer/js/core/sse_stream.js"]
+    }
+  }
+}

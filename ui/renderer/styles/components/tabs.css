@@ -1,0 +1,268 @@
+/* Tab strips: panel tabs, product page tabs, tabbed dashboard slots. */
+
+/* Tabs 用監控報價同系的深藍 header，不是亮藍整塊按鈕。 */
+.tab-list {
+  display:flex;
+  min-width:0;
+  overflow-x:auto;
+  height: 100%;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Dense page tabs (the product lists' pages). */
+.panel-tabs.panel-tabs-dense .panel-tab {
+  padding-left: 7px;
+  padding-right: 7px;
+}
+
+/* tab 永遠在最上面，不參與五個內容區塊的排序。 */
+
+/* ===== Card head: pill tabs and tools =====
+ * A pane is a card (--pane-radius, --surface-panel); its head is a row of pills on the card's own colour, no band and
+ * no line under it: the active tab is a filled pill, a hovered one a fainter pill, and a tab's × shows only on the
+ * active or hovered tab. The same tabs serve the panes, the product pages and the history tabs. */
+.tab-strip {
+  display:flex;
+  height: 31px;
+  min-height: 31px;
+  padding: 0;
+  gap: 0;
+  align-items: center;
+  justify-content: flex-start;
+  overflow: hidden;
+  background: transparent;
+}
+
+/* Every row of pills keeps the same 6 px off the card's edge, in a title strip or on its own under it. */
+.tab-strip > .tab-list,
+.panel-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  margin: 0;
+  padding: 0 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  background: transparent;
+  border: 0;
+}
+
+.panel-tabs.panel-tabs-end {
+  justify-content: flex-end;
+}
+
+.tab-title,
+.panel-tab {
+  flex: 0 0 auto;
+  height: 24px;
+  min-width: max-content;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--slate-400);
+}
+
+.tab-title {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.panel-tab {
+  display: flex;
+  align-items: stretch;
+}
+
+.panel-tab-main,
+.panel-tab-close {
+  height: 100%;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.panel-tab-main {
+  min-width: 0;
+  padding: 0 10px;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.panel-tab-close {
+  visibility: hidden;
+  width: 18px;
+  min-width: 18px;
+  margin-left: -6px;
+  padding: 0 6px 0 0;
+  color: var(--slate-500);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.panel-tab:hover .panel-tab-close,
+.panel-tab.active .panel-tab-close {
+  visibility: visible;
+}
+
+.tab-title:hover,
+.panel-tab:hover {
+  background: var(--slate-800);
+  color: var(--slate-100);
+}
+
+.panel-tab-close:hover {
+  color: var(--white);
+}
+
+.tab-title.active,
+.panel-tab.active {
+  background: var(--slate-700);
+  color: var(--slate-100);
+}
+
+.tab-title:disabled {
+  cursor: default;
+  color: var(--slate-600x);
+  background: transparent;
+}
+
+.panel-tab-count {
+  margin-left: 4px;
+  color: var(--slate-500);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.panel-tabs.panel-tabs-compact .panel-tab {
+  height: 22px;
+}
+
+.panel-tabs.panel-tabs-compact .panel-tab-main {
+  height: 22px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* A component title is a fixed outer tab; it is not part of the scrollable
+ * filter rail below it. */
+.tab-strip-title > .tab-list {
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+
+/* Search Focus: compact shared control for orderbook/ticks/flow. */
+
+/* Configurable realtime dashboard slots: feature tabs are self-managed.
+ * Every tab owns a quiet close affordance, the add button lives immediately
+ * after the last tab, and the body becomes the provider picker while a blank
+ * tab is active.  No separate edit rail or edit mode exists. */
+
+.panel-tabs-slot .panel-tab.reorderable {
+  cursor: grab;
+}
+
+.panel-tabs-slot .panel-tab.reorderable:active {
+  cursor: grabbing;
+}
+
+.panel-tabs-slot .panel-tab.dragging {
+  opacity: .46;
+}
+
+.panel-tabs-slot .panel-tab.panel-tab-drop-before {
+  box-shadow: inset 2px 0 0 var(--sky-400);
+}
+
+.panel-tabs-slot .panel-tab.panel-tab-drop-after {
+  box-shadow: inset -2px 0 0 var(--sky-400);
+}
+
+.panel-tabs-slot .panel-tab-add {
+  flex: 0 0 24px;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  margin: 0 0 0 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--slate-400);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.panel-tabs-slot .panel-tab-add:hover,
+.panel-tabs-slot .panel-tab-add:focus-visible {
+  background: var(--slate-800);
+  color: var(--slate-100);
+  outline: none;
+}
+
+.panel-tabs-drop-rail {
+  box-shadow: inset 0 -2px 0 var(--blue-400x-2);
+}
+
+/* Components keep their own title for replay/detached windows. Inside a
+ * configurable realtime slot the shared outer tab rail is the single title. */
+/* A component's own title strip: 31 px; hidden where the host's tab already names it (a dashboard slot, a workspace
+ * column: data-component-title="hidden" on the host). */
+.tab-strip-title {
+  flex: 0 0 31px;
+  position: relative;
+}
+
+[data-component-title="hidden"] > * > .tab-strip-title {
+  display: none;
+}
+
+
+
+.tab-strip-actions {
+  flex: 0 0 auto;
+  min-width: 0;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 6px;
+}
+
+.tab-strip-title > .tab-strip-actions {
+  position: absolute;
+  top: 4px;
+  right: 0;
+  box-sizing: border-box;
+  z-index: 3;
+  height: 22px;
+  width: 170px;
+  max-width: calc(100% - 76px);
+  justify-content: flex-end;
+}
+
+/* The slot's tab rail (tabbed_component_host.js). */
+.tab-strip-slot {
+  flex: 0 0 31px;
+  width: 100%;
+  z-index: 12;
+}

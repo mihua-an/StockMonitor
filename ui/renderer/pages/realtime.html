@@ -1,0 +1,14 @@
+<!-- 即時報價 is one pane workspace (core/pane_workspace.js places and sizes every pane). Each pane is a dashboard-card
+     (the frame) holding one component slot; the component builds its own markup on mount -- the page never carries
+     a copy of it. -->
+<div class="realtime-workspace" data-layout-key="shioaji-live-layout-v4">
+  <div class="dashboard-card" data-component-slot="productList"></div>
+  <div class="dashboard-card" data-component-slot="topAuxiliary"></div>
+  <div class="dashboard-card" data-component-slot="liveInfo"></div>
+  <div class="dashboard-card" data-component-slot="analysisPrimary"></div>
+  <div class="dashboard-card" data-component-slot="analysisQuaternary"></div>
+  <div class="dashboard-card" data-component-slot="analysisSecondary" data-trend-lookup-dock-target="realtime-orderbook" data-trend-lookup-align="left"></div>
+  <div class="dashboard-card" data-component-slot="analysisTertiary"></div>
+  <div class="dashboard-card" data-component-slot="auxiliary"></div>
+  <div class="dashboard-card" data-component-slot="analysisQuinary"></div>
+</div>

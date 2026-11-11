@@ -1,0 +1,9 @@
+/* load-state: the placeholder a card or section shows while its data is not there (載入中…, 讀取失敗, 暫不可用) or
+   when an answer holds nothing. Shared by 帳務 and 模型中心 (js/core/load_state_view.js builds the markup). */
+.load-state {
+  color: var(--slate-400);
+  padding: 12px 4px;
+  text-align: left;
+  /* In a grid of cards it takes the whole row, not the first card's cell. */
+  grid-column: 1 / -1;
+}

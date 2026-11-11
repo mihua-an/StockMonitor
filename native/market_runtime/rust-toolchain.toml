@@ -1,0 +1,4 @@
+# Existing compiler observed on 2026-09-05; no toolchain upgrade.
+[toolchain]
+channel = "1.97.1"
+profile = "minimal"

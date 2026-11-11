@@ -1,0 +1,160 @@
+{
+  "created_at": "2026-10-14T03:19:08.602+00:00",
+  "domain": "event_rules",
+  "previous_revision": 1,
+  "revision": 2,
+  "schema": "stock-monitor-config-revision-v1",
+  "source": "claude-maintenance",
+  "summary": "user 10-14: 爆量 (volume_spike) removed; its volume is now 量比 on the price events",
+  "values": {
+    "note": "seeded from service/market/semantics/signal_detector.py thresholds",
+    "rules": [
+      {
+        "direction": "up",
+        "exclude_minutes": [
+          [
+            805,
+            810
+          ]
+        ],
+        "label": "1分急拉",
+        "match": {
+          "market": "STK",
+          "source": "shioaji"
+        },
+        "priority": 400,
+        "rule_id": "win1_up",
+        "threshold_pct": 0.8,
+        "type": "window_move",
+        "window": 1
+      },
+      {
+        "direction": "down",
+        "exclude_minutes": [
+          [
+            805,
+            810
+          ]
+        ],
+        "label": "1分急殺",
+        "match": {
+          "market": "STK",
+          "source": "shioaji"
+        },
+        "priority": 400,
+        "rule_id": "win1_down",
+        "threshold_pct": 0.8,
+        "type": "window_move",
+        "window": 1
+      },
+      {
+        "direction": "up",
+        "exclude_minutes": [
+          [
+            805,
+            810
+          ]
+        ],
+        "label": "3分急拉",
+        "match": {
+          "market": "STK",
+          "source": "shioaji"
+        },
+        "priority": 350,
+        "rule_id": "win3_up",
+        "threshold_pct": 1.5,
+        "type": "window_move",
+        "window": 3
+      },
+      {
+        "direction": "down",
+        "exclude_minutes": [
+          [
+            805,
+            810
+          ]
+        ],
+        "label": "3分急殺",
+        "match": {
+          "market": "STK",
+          "source": "shioaji"
+        },
+        "priority": 350,
+        "rule_id": "win3_down",
+        "threshold_pct": 1.5,
+        "type": "window_move",
+        "window": 3
+      },
+      {
+        "direction": "up",
+        "exclude_minutes": [
+          [
+            805,
+            810
+          ]
+        ],
+        "label": "5分緩漲",
+        "match": {
+          "market": "STK",
+          "source": "shioaji"
+        },
+        "priority": 300,
+        "rule_id": "win5_up",
+        "threshold_pct": 2.5,
+        "type": "window_move",
+        "window": 5
+      },
+      {
+        "direction": "down",
+        "exclude_minutes": [
+          [
+            805,
+            810
+          ]
+        ],
+        "label": "5分緩跌",
+        "match": {
+          "market": "STK",
+          "source": "shioaji"
+        },
+        "priority": 300,
+        "rule_id": "win5_down",
+        "threshold_pct": 2.5,
+        "type": "window_move",
+        "window": 5
+      },
+      {
+        "active_minutes": [
+          540,
+          555
+        ],
+        "direction": "up",
+        "label": "開盤急拉",
+        "match": {
+          "market": "STK",
+          "source": "shioaji"
+        },
+        "priority": 450,
+        "rule_id": "open_up",
+        "threshold_pct": 1.5,
+        "type": "opening_move"
+      },
+      {
+        "active_minutes": [
+          540,
+          555
+        ],
+        "direction": "down",
+        "label": "開盤急殺",
+        "match": {
+          "market": "STK",
+          "source": "shioaji"
+        },
+        "priority": 450,
+        "rule_id": "open_down",
+        "threshold_pct": 1.5,
+        "type": "opening_move"
+      }
+    ]
+  }
+}

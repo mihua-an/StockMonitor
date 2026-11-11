@@ -1,0 +1,204 @@
+[
+ {
+  "name": "the shipped settings",
+  "settings": {
+   "contract_version": 1,
+   "enabled_sources": [
+    "shioaji",
+    "futu"
+   ],
+   "sources": {
+    "shioaji": {
+     "api_prefixes": [
+      "/api/shioaji/",
+      "/api/settings/shioaji/",
+      "/api/market-daemon/",
+      "/api/security-master/",
+      "/api/history/",
+      "/api/data-center/",
+      "/api/trade-detail/",
+      "/api/training/",
+      "/api/model/",
+      "/api/replay/",
+      "/api/diagnostics/startup-realtime-freshness",
+      "/api/diagnostics/restart-trade-detail-timezone"
+     ]
+    },
+    "futu": {
+     "api_prefixes": [
+      "/api/futu/",
+      "/api/futu-daemon/"
+     ]
+    }
+   }
+  },
+  "problems": []
+ },
+ {
+  "name": "not an object",
+  "settings": [],
+  "problems": [
+   "settings must be an object"
+  ]
+ },
+ {
+  "name": "an unsupported version",
+  "settings": {
+   "contract_version": 2,
+   "enabled_sources": [
+    "shioaji",
+    "futu"
+   ],
+   "sources": {
+    "shioaji": {
+     "api_prefixes": [
+      "/api/shioaji/",
+      "/api/settings/shioaji/",
+      "/api/market-daemon/",
+      "/api/security-master/",
+      "/api/history/",
+      "/api/data-center/",
+      "/api/trade-detail/",
+      "/api/training/",
+      "/api/model/",
+      "/api/replay/",
+      "/api/diagnostics/startup-realtime-freshness",
+      "/api/diagnostics/restart-trade-detail-timezone"
+     ]
+    },
+    "futu": {
+     "api_prefixes": [
+      "/api/futu/",
+      "/api/futu-daemon/"
+     ]
+    }
+   }
+  },
+  "problems": [
+   "contract_version must be one of [1]"
+  ]
+ },
+ {
+  "name": "a version given as text",
+  "settings": {
+   "contract_version": "1",
+   "enabled_sources": [
+    "shioaji",
+    "futu"
+   ],
+   "sources": {
+    "shioaji": {
+     "api_prefixes": [
+      "/api/shioaji/",
+      "/api/settings/shioaji/",
+      "/api/market-daemon/",
+      "/api/security-master/",
+      "/api/history/",
+      "/api/data-center/",
+      "/api/trade-detail/",
+      "/api/training/",
+      "/api/model/",
+      "/api/replay/",
+      "/api/diagnostics/startup-realtime-freshness",
+      "/api/diagnostics/restart-trade-detail-timezone"
+     ]
+    },
+    "futu": {
+     "api_prefixes": [
+      "/api/futu/",
+      "/api/futu-daemon/"
+     ]
+    }
+   }
+  },
+  "problems": [
+   "contract_version must be one of [1]"
+  ]
+ },
+ {
+  "name": "no sources",
+  "settings": {
+   "contract_version": 1,
+   "enabled_sources": [
+    "shioaji",
+    "futu"
+   ],
+   "sources": {}
+  },
+  "problems": [
+   "sources must be a non-empty object"
+  ]
+ },
+ {
+  "name": "a prefix outside /api/",
+  "settings": {
+   "contract_version": 1,
+   "enabled_sources": [
+    "shioaji",
+    "futu"
+   ],
+   "sources": {
+    "shioaji": {
+     "api_prefixes": [
+      "/api/shioaji/",
+      "/api/settings/shioaji/",
+      "/api/market-daemon/",
+      "/api/security-master/",
+      "/api/history/",
+      "/api/data-center/",
+      "/api/trade-detail/",
+      "/api/training/",
+      "/api/model/",
+      "/api/replay/",
+      "/api/diagnostics/startup-realtime-freshness",
+      "/api/diagnostics/restart-trade-detail-timezone"
+     ]
+    },
+    "futu": {
+     "api_prefixes": [
+      "/futu/"
+     ]
+    }
+   }
+  },
+  "problems": [
+   "sources.futu.api_prefixes must be a non-empty list of /api/ paths"
+  ]
+ },
+ {
+  "name": "an unknown enabled source",
+  "settings": {
+   "contract_version": 1,
+   "enabled_sources": [
+    "ib"
+   ],
+   "sources": {
+    "shioaji": {
+     "api_prefixes": [
+      "/api/shioaji/",
+      "/api/settings/shioaji/",
+      "/api/market-daemon/",
+      "/api/security-master/",
+      "/api/history/",
+      "/api/data-center/",
+      "/api/trade-detail/",
+      "/api/training/",
+      "/api/model/",
+      "/api/replay/",
+      "/api/diagnostics/startup-realtime-freshness",
+      "/api/diagnostics/restart-trade-detail-timezone"
+     ]
+    },
+    "futu": {
+     "api_prefixes": [
+      "/api/futu/",
+      "/api/futu-daemon/"
+     ]
+    }
+   }
+  },
+  "problems": [
+   "enabled_sources must list sources"
+  ]
+ }
+]

@@ -1,0 +1,8 @@
+{
+  "contract_version": 1,
+  "canonical_sources": [
+    "shioaji",
+    "futu"
+  ],
+  "default_source": "shioaji"
+}

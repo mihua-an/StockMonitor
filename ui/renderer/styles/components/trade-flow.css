@@ -1,0 +1,584 @@
+/* 大單流向 (trade_flow_component.js + big_order_flow.js): the view tabs, 進出 (大單控盤 and the two net-flow charts),
+ * 買賣比, 分時 (session buckets and their large prints) and the 查價 window. One rule per selector; the charts' text is
+ * HTML beside a stretched bar plot, never inside it. */
+
+/* ===== Frame: view tabs over a scrolling content area ===== */
+.trade-flow {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.big-order-view-tabs {
+  flex: 0 0 28px;
+  width: 100%;
+  height: 28px;
+  align-items: stretch;
+  overflow: hidden;
+  background: var(--surface-panel);
+  border-bottom: 1px solid var(--pane-border);
+}
+
+.big-order-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--surface-panel);
+}
+
+/* ===== 進出 ===== */
+.flow-inout-view {
+  flex: 1 0 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+  box-sizing: border-box;
+}
+
+/* 大單控盤 beside the one 累計／分時 switch both charts follow. */
+.flow-inout-top {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.flow-control {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.flow-control-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  color: var(--blue-300x-10);
+  font-size: 12px;
+}
+
+.flow-control-head > b {
+  color: var(--amber-500x-2);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.flow-control-track {
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--blue-700x-13);
+}
+
+.flow-control-track > i {
+  display: block;
+  height: 100%;
+  background: var(--amber-500x-2);
+}
+
+.flow-control-legend {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.flow-control-large {
+  color: var(--amber-500x-2);
+}
+
+.flow-control-small {
+  color: var(--slate-400);
+}
+
+/* 累計 / 分時: a pill-switch (base.css); each choice at least 40px wide. */
+.flow-mode > button {
+  min-width: 40px;
+}
+
+.flow-chart-stack {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  /* A short pane scrolls the content rather than flattening the charts below a readable height. */
+  grid-template-rows: repeat(2, minmax(110px, 1fr));
+  gap: 10px;
+}
+
+.flow-chart-section {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 4px;
+}
+
+.flow-net-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--blue-100x-4);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.flow-net-summary > b {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.flow-net-unit {
+  color: var(--slate-400);
+}
+
+/* A chart: the y axis labels | the bar plot, and (lower chart only) the x axis labels under the plot. */
+.flow-chart {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.flow-chart[data-x-axis] {
+  grid-template-rows: minmax(0, 1fr) 16px;
+}
+
+.flow-chart-y {
+  position: relative;
+  min-height: 0;
+}
+
+.flow-chart-y-label {
+  position: absolute;
+  right: 6px;
+  transform: translateY(-50%);
+  color: var(--slate-400);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The plot is a rounded inset, like the trend chart's. */
+.flow-chart-plot {
+  position: relative;
+  min-height: 60px;
+  border-radius: 6px;
+  background: var(--chart-plot-bg);
+}
+
+.flow-chart-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.flow-chart-grid {
+  stroke: var(--chart-separator);
+  stroke-dasharray: 3 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.flow-chart-zero {
+  stroke: var(--blue-600x-3);
+  stroke-dasharray: 5 5;
+  vector-effect: non-scaling-stroke;
+}
+
+.flow-chart-area {
+  shape-rendering: crispEdges;
+}
+
+.flow-chart-area.buy {
+  fill: var(--price-up-color);
+}
+
+.flow-chart-area.sell {
+  fill: var(--price-down-color);
+}
+
+.flow-chart-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--blue-500x-3);
+  font-size: 12px;
+}
+
+.flow-chart-x {
+  grid-column: 2;
+  position: relative;
+}
+
+.flow-chart-x-label {
+  position: absolute;
+  top: 2px;
+  transform: translateX(-50%);
+  color: var(--slate-400);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The first hour sits on the plot's left edge: it starts there instead of reaching under the y axis. */
+.flow-chart-x-label:first-child {
+  transform: none;
+}
+
+/* The hovered minute, drawn over the plot by the component (kept across content morphs). */
+.flow-crosshair-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed var(--slate-200-a75);
+  pointer-events: none;
+}
+
+/* ===== 買賣比 ===== */
+.flow-ratio-summary {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  color: var(--blue-200x-2);
+  font-size: 11px;
+}
+
+.flow-ratio-summary > b {
+  font-size: 14px;
+}
+
+.flow-ratio-summary > label {
+  justify-self: end;
+}
+
+.flow-ratio-summary select,
+.flow-side-filter select {
+  height: 22px;
+  border: 1px solid var(--blue-700x-11);
+  background: var(--surface-panel);
+  color: var(--blue-50x);
+}
+
+/* One row per class (大單 / 小單), one column per period: the larger side's share over a short split bar. */
+.flow-ratio-table {
+  width: calc(100% - 20px);
+  margin: 0 10px 10px;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.flow-ratio-table th {
+  padding: 0 0 4px;
+  color: var(--slate-500);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.flow-ratio-table td {
+  padding: 6px 0;
+  border-top: 1px solid var(--pane-border);
+  text-align: right;
+  vertical-align: middle;
+}
+
+.flow-ratio-table :is(th, td):first-child {
+  text-align: left;
+}
+
+.flow-ratio-table td:first-child {
+  color: var(--slate-100);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.flow-ratio-table td > b {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.flow-ratio-none {
+  display: block;
+  color: var(--slate-500);
+  font-size: 11px;
+  line-height: 17px;
+}
+
+.flow-ratio-track {
+  width: 80px;
+  height: 4px;
+  margin: 3px 0 0 auto;
+  display: flex;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--slate-800);
+}
+
+.flow-ratio-track > i {
+  display: block;
+  height: 100%;
+}
+
+.flow-ratio-track > .buy {
+  background: var(--price-up-color);
+}
+
+.flow-ratio-track > .sell {
+  background: var(--price-down-color);
+}
+
+/* ===== 分時: session buckets and the selected bucket's large prints ===== */
+.flow-pv-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.flow-pv-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--pane-border);
+  color: var(--blue-300x-6);
+  font-size: 11px;
+}
+
+/* The bucket rows take whatever height the whole-row large-order list leaves (core/whole_row_fit.js). */
+.flow-hour-share-list {
+  flex: 1 1 auto;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  padding: 4px 4px 6px;
+}
+
+.flow-hour-share-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 92px minmax(60px, 1fr) 72px;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--slate-300);
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+}
+
+.flow-hour-share-row:hover {
+  background: var(--row-hover-bg);
+}
+
+.flow-hour-share-row.active {
+  background: var(--slate-800);
+}
+
+.flow-hour-share-row > b {
+  font-size: 14px;
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.flow-hour-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.flow-hour-share-track {
+  height: 10px;
+  display: flex;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--slate-700x);
+}
+
+.flow-hour-share-track > i {
+  display: block;
+  height: 100%;
+}
+
+.flow-hour-share-track > i.buy {
+  background: var(--price-up-color);
+}
+
+.flow-hour-share-track > i.sell {
+  background: var(--price-down-color);
+}
+
+.flow-hour-share-track > i.other {
+  background: transparent;
+}
+
+/* The list scrolls one 26 px row at a time with the shared scrollbar over its right edge (as 成交明細 / 價量). */
+.flow-large-order-head,
+.flow-large-order-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+  padding-right: calc(10px + var(--shared-row-rail-width));
+  padding-left: 10px;
+  text-align: right;
+}
+
+.flow-large-order-head > :first-child,
+.flow-large-order-row > :first-child {
+  text-align: left;
+}
+
+.flow-large-order-head {
+  padding-top: 5px;
+  padding-bottom: 5px;
+  color: var(--slate-500x-2);
+  font-size: 12.5px;
+  border-top: 1px solid var(--pane-border);
+  border-bottom: 1px solid var(--pane-border);
+  background: var(--surface-panel);
+}
+
+.flow-large-order-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 60px;
+  display: flex;
+}
+
+.flow-large-order-body[data-whole-rows] {
+  flex: 0 0 var(--whole-rows-height);
+  min-height: 0;
+}
+
+.flow-large-order-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  box-sizing: border-box;
+  overflow: auto;
+  scrollbar-width: none;
+}
+
+.flow-large-order-row {
+  height: 26px;
+  box-sizing: border-box;
+  align-items: center;
+  font-size: 14px;
+  border-bottom: 1px solid var(--blue-800x-a45);
+}
+
+.flow-large-order-row > span {
+  color: var(--blue-200x-3);
+}
+
+.flow-large-order-row > b {
+  font-weight: 400;
+}
+
+.flow-large-order-list.lined-rows > .flow-large-order-row + .flow-large-order-row {
+  box-shadow: inset 0 1px 0 var(--pane-border);
+}
+
+.flow-large-order-list.lined-rows > .flow-large-order-row:hover {
+  background: var(--row-hover-bg);
+}
+
+.flow-large-order-rail {
+  top: 0;
+  z-index: 3;
+}
+
+.flow-large-order-empty,
+.flow-large-order-note {
+  padding: 8px 6px;
+  color: var(--slate-500x-2);
+  font-size: 10px;
+}
+
+/* ===== 查價 window: fixed beside the panel, never over the charts being read ===== */
+.flow-quote-window {
+  position: fixed;
+  z-index: var(--z-floating-window);
+  width: 214px;
+  box-sizing: border-box;
+  border: 1px solid var(--sky-500x-3);
+  border-radius: 3px;
+  background: var(--blue-900x-5);
+  color: var(--blue-50x);
+  font-family: "Microsoft JhengHei", sans-serif;
+  box-shadow: 0 4px 14px var(--black-a55);
+}
+
+.flow-quote-window > header {
+  position: relative;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--sky-500x-3);
+  color: var(--white);
+  font-size: 13px;
+}
+
+.flow-quote-window > header button {
+  position: absolute;
+  right: 4px;
+  top: 1px;
+  border: 0;
+  background: transparent;
+  color: var(--white);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.flow-quote-body {
+  padding: 4px 12px 8px;
+}
+
+.flow-quote-body section + section {
+  margin-top: 6px;
+  border-top: 1px solid var(--slate-700);
+}
+
+.flow-quote-body h5 {
+  margin: 8px 0 6px;
+  color: var(--slate-50);
+  font-size: 16px;
+  font-weight: 400;
+}
+
+.flow-quote-body p {
+  margin: 0 0 6px;
+  color: var(--slate-50);
+  font-size: 15px;
+}
+
+.flow-quote-time {
+  color: var(--amber-500);
+}
+
+.flow-quote-arrow {
+  margin-left: 2px;
+  font-style: normal;
+}

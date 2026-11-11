@@ -1,0 +1,313 @@
+/* The startup progress overlay. */
+
+/* ===== Startup progress overlay ===== */
+body[data-startup-active] {
+  overflow: hidden;
+}
+
+.startup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-startup-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+  background: var(--slate-900);
+}
+
+.startup-overlay[hidden] {
+  display: none;
+}
+
+.startup-progress-card {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 8px);
+  overflow: hidden;
+  box-sizing: border-box;
+  padding: 6px 16px 6px;
+  border: 1px solid var(--slate-700);
+  border-radius: 16px;
+  background: var(--gray-900);
+  box-shadow: 0 24px 70px var(--black-a38);
+}
+
+.startup-progress-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.startup-progress-heading h1 {
+  margin: 1px 0 0;
+  font-size: 18px;
+  line-height: 1.05;
+  color: var(--slate-50);
+}
+
+.startup-progress-eyebrow {
+  font-size: 9px;
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--blue-400);
+}
+
+.startup-total-elapsed {
+  flex: none;
+  min-width: 82px;
+  padding-top: 1px;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--slate-300);
+}
+
+.startup-progress-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 2px;
+}
+
+.startup-progress-subtitle {
+  min-width: 0;
+  color: var(--slate-400);
+  font-size: 9px;
+  line-height: 1.15;
+}
+
+.startup-overall-progress {
+  flex: none;
+  color: var(--slate-300);
+  font-size: 9px;
+  line-height: 1.15;
+  font-weight: 800;
+}
+
+.startup-step-list {
+  display: grid;
+  gap: 2px;
+  margin-top: 3px;
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
+}
+
+.startup-step-placeholder {
+  padding: 8px;
+  text-align: center;
+  color: var(--slate-500);
+  font-size: 11px;
+}
+
+.startup-phase-group {
+  min-width: 0;
+}
+
+.startup-phase-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 13px;
+  padding: 0 6px;
+  color: var(--slate-500);
+  line-height: 1;
+}
+
+.startup-phase-title {
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.11em;
+}
+
+.startup-phase-count {
+  font-family: Consolas, "Cascadia Mono", "Microsoft JhengHei", monospace;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.startup-phase-group.is-running .startup-phase-header {
+  color: var(--blue-400);
+}
+
+.startup-phase-group.is-complete .startup-phase-header {
+  color: var(--status-ok);
+}
+
+.startup-phase-group.is-failed .startup-phase-header {
+  color: var(--status-error);
+}
+
+.startup-phase-rows {
+  display: grid;
+  gap: 1px;
+}
+
+.startup-step-row {
+  display: grid;
+  grid-template-columns: 47px minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 6px;
+  min-height: 17px;
+  padding: 0 7px;
+  border: 1px solid var(--gray-800);
+  border-radius: 6px;
+  background: var(--blue-900x-5);
+  color: var(--slate-500);
+  line-height: 1;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.startup-step-index,
+.startup-step-duration,
+.startup-total-elapsed {
+  font-family: Consolas, "Cascadia Mono", "Microsoft JhengHei", monospace;
+}
+
+.startup-step-index {
+  font-size: 9px;
+  font-weight: 800;
+  color: var(--slate-500);
+}
+
+.startup-step-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.startup-step-duration {
+  min-width: 96px;
+  text-align: right;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.startup-step-row.is-running {
+  border-color: var(--blue-600);
+  background: var(--blue-900x-16);
+  color: var(--slate-200);
+}
+
+.startup-step-row.is-running .startup-step-index,
+.startup-step-row.is-running .startup-step-duration {
+  color: var(--blue-400);
+}
+
+.startup-step-row.is-done {
+  color: var(--slate-300);
+}
+
+.startup-step-row.is-done .startup-step-index,
+.startup-step-row.is-done .startup-step-duration {
+  color: var(--status-ok);
+}
+
+.startup-step-row.is-degraded,
+.startup-step-row.is-skipped {
+  color: var(--slate-300);
+}
+
+.startup-step-row.is-degraded .startup-step-index,
+.startup-step-row.is-degraded .startup-step-duration,
+.startup-step-row.is-skipped .startup-step-index,
+.startup-step-row.is-skipped .startup-step-duration {
+  color: var(--amber-400);
+}
+
+.startup-step-row.is-failed {
+  border-color: var(--status-error);
+  background: var(--red-900x);
+  color: var(--status-error);
+}
+
+.startup-step-row.is-failed .startup-step-index,
+.startup-step-row.is-failed .startup-step-duration {
+  color: var(--status-error);
+}
+
+.startup-progress-message {
+  min-height: 10px;
+  margin-top: 2px;
+  font-size: 9px;
+  line-height: 1.15;
+  color: var(--slate-400);
+}
+
+/* Normal desktop windows should show every grouped startup unit without a scrollbar. */
+@media (max-height: 560px) {
+  .startup-overlay {
+    padding: 6px 10px;
+  }
+  .startup-progress-card {
+    width: min(720px, calc(100vw - 20px));
+    max-height: calc(100vh - 8px);
+    padding: 5px 12px;
+  }
+  .startup-step-list {
+    max-height: calc(100vh - 72px);
+    overflow-y: auto;
+    padding-right: 3px;
+  }
+  .startup-step-row {
+    min-height: 16px;
+  }
+  .startup-phase-header {
+    min-height: 12px;
+  }
+}
+
+.startup-progress-message.is-error {
+  color: var(--status-error);
+}
+
+/* 介面載入失敗 (startup_error.html): the page a window shows when its own page failed to load. */
+.startup-error-body {
+  min-height: 100vh;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  background: var(--surface-panel);
+  color: var(--startup-error-text);
+  font-family: system-ui, "Microsoft JhengHei", sans-serif;
+  color-scheme: dark;
+}
+
+.startup-error-card {
+  box-sizing: border-box;
+  width: min(680px, calc(100vw - 48px));
+  padding: 36px;
+  border: 1px solid var(--startup-error-card-border);
+  border-radius: 14px;
+  background: var(--startup-error-card-bg);
+  box-shadow: 0 20px 70px var(--startup-error-shadow);
+}
+
+.startup-error-title {
+  margin: 0 0 14px;
+  font-size: 28px;
+}
+
+.startup-error-text {
+  margin: 8px 0;
+  line-height: 1.7;
+  color: var(--startup-error-muted);
+}
+
+.startup-error-detail {
+  box-sizing: border-box;
+  display: block;
+  margin-top: 18px;
+  padding: 14px;
+  overflow-wrap: anywhere;
+  border-radius: 8px;
+  background: var(--startup-error-code-bg);
+  color: var(--market-red);
+}

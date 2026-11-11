@@ -1,0 +1,316 @@
+<div class="panel full-page-panel settings-page">
+  <div class="settings-layout">
+    <nav class="settings-nav" aria-label="設定分類">
+      <h2>設定</h2>
+      <button class="settings-nav-item" type="button" data-settings-section="display">顯示</button>
+      <button class="settings-nav-item" type="button" data-settings-section="broker">券商帳號</button>
+      <button class="settings-nav-item" type="button" data-settings-section="subscription">訂閱管理</button>
+      <button class="settings-nav-item" type="button" data-settings-section="account">實際帳務</button>
+      <button class="settings-nav-item" type="button" data-settings-section="capital">資金</button>
+      <button class="settings-nav-item" type="button" data-settings-section="storage">資料儲存</button>
+      <button class="settings-nav-item" type="button" data-settings-section="system">系統</button>
+    </nav>
+
+    <div class="settings-page-scroll">
+
+      <!-- 顯示：點選即生效 -->
+      <div class="settings-pagewrap" data-settings-panel="display" hidden>
+        <h1 class="settings-page-title">顯示</h1>
+
+        <div class="settings-group-title"><span>漲跌顏色</span></div>
+        <div class="settings-group" role="group" aria-label="漲跌顏色慣例">
+          <button id="priceColorSchemeRedUp" class="settings-item settings-choice" type="button" data-scheme="red-up">
+            <span class="settings-item-main"><b><span class="settings-swatch is-red"></span>上漲紅　<span class="settings-swatch is-green"></span>下跌綠</b></span>
+            <span class="settings-checkmark"></span>
+          </button>
+          <button id="priceColorSchemeGreenUp" class="settings-item settings-choice" type="button" data-scheme="green-up">
+            <span class="settings-item-main"><b><span class="settings-swatch is-green"></span>上漲綠　<span class="settings-swatch is-red"></span>下跌紅</b></span>
+            <span class="settings-checkmark"></span>
+          </button>
+        </div>
+        <div class="settings-actions is-note-only"><span id="priceColorMessage" class="settings-actions-note"></span></div>
+
+        <div class="settings-group-title"><span>走勢預測</span></div>
+        <div class="settings-group">
+          <label class="settings-item"><span class="settings-item-main"><b>第一組</b></span><span class="settings-select"><select id="trendFooterHorizonA"></select></span></label>
+          <label class="settings-item"><span class="settings-item-main"><b>第二組</b></span><span class="settings-select"><select id="trendFooterHorizonB"></select></span></label>
+        </div>
+        <div class="settings-actions is-note-only"><span id="trendFooterHorizonMessage" class="settings-actions-note"></span></div>
+
+        <div class="settings-group-title"><span>即時報價版面</span></div>
+        <div class="settings-group">
+          <div class="settings-actions">
+            <span id="realtimePaneMessage" class="settings-actions-note"></span>
+            <button id="realtimeLayoutEditorOpen" class="btn is-compact secondary" type="button">編輯畫面版型</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 券商帳號 -->
+      <div class="settings-pagewrap" data-settings-panel="broker" hidden>
+        <h1 class="settings-page-title">券商帳號</h1>
+
+        <div class="settings-group-title">
+          <span>永豐 Shioaji API 金鑰</span>
+          <span id="shioajiCredentialsStatus" class="settings-status is-warn">讀取中</span>
+        </div>
+        <div class="settings-group">
+          <label class="settings-item"><span class="settings-item-main"><b>API Key</b></span><input id="shioajiApiKey" class="settings-input" type="password" autocomplete="off" placeholder="要更換時才輸入" /></label>
+          <label class="settings-item"><span class="settings-item-main"><b>Secret Key</b></span><input id="shioajiSecretKey" class="settings-input" type="password" autocomplete="off" placeholder="要更換時才輸入" /></label>
+          <div class="settings-actions">
+            <span id="shioajiCredentialsMessage" class="settings-actions-note"></span>
+            <button id="shioajiCredentialsClearBtn" class="btn is-compact is-danger" type="button">清除金鑰</button>
+            <button id="shioajiCredentialsSaveBtn" class="btn is-compact primary" type="button">儲存並重新連線</button>
+          </div>
+        </div>
+
+        <div class="settings-group-title">
+          <span>永豐行情連線</span>
+        </div>
+        <div class="settings-group">
+          <label class="settings-item"><span class="settings-item-main"><b>最多連線數</b></span><span class="settings-select"><select id="brokerConnectionsMax"></select></span></label>
+          <label class="settings-item"><span class="settings-item-main"><b>每條訂閱數</b></span><span class="settings-select"><select id="brokerConnectionsLimit"></select></span></label>
+          <div class="settings-item"><span class="settings-item-main"><b>目前使用</b></span><span id="brokerConnectionsUsage" class="settings-item-value"></span></div>
+        </div>
+        <div class="settings-actions">
+          <span id="brokerConnectionsMessage" class="settings-actions-note"></span>
+          <button id="brokerConnectionsSaveBtn" class="btn is-compact primary" type="button" disabled>儲存</button>
+        </div>
+
+        <div class="settings-group-title">
+          <span>券商 SDK</span>
+        </div>
+        <div class="settings-group">
+          <div class="settings-item">
+            <span class="settings-item-main"><b>永豐 Shioaji</b></span>
+            <span id="providerSdkShioajiState" class="settings-status">讀取中</span>
+            <button id="providerSdkShioajiInstall" class="btn secondary small-btn" type="button" data-provider="shioaji" hidden>安裝</button>
+          </div>
+          <div class="settings-item">
+            <span class="settings-item-main"><b>富途 moomoo-api</b></span>
+            <span id="providerSdkFutuState" class="settings-status">讀取中</span>
+            <button id="providerSdkFutuInstall" class="btn secondary small-btn" type="button" data-provider="futu" hidden>安裝</button>
+          </div>
+        </div>
+        <div class="settings-actions is-note-only"><span id="providerSdkMessage" class="settings-actions-note"></span></div>
+        <pre id="providerSdkLog" class="settings-log" hidden></pre>
+      </div>
+
+      <!-- 訂閱管理：跟商品頁設定改的是同一份（settings_api 的商品頁與訂閱偏好），儲存只送出這裡改的項目 -->
+      <div class="settings-pagewrap" data-settings-panel="subscription" hidden>
+        <h1 class="settings-page-title">訂閱管理</h1>
+
+        <h2 class="settings-section-title">永豐 Shioaji</h2>
+        <div class="settings-group">
+          <div class="settings-quota">
+            <div class="settings-quota-head">
+              <div class="settings-quota-num"><span id="subShioajiUsed">0</span><small>／<span id="subShioajiLimit">0</span></small></div>
+            </div>
+            <div id="subShioajiBar" class="settings-quota-bar"></div>
+            <div id="subShioajiConns" class="settings-quota-conns"></div>
+          </div>
+        </div>
+
+        <div class="settings-group-title">大盤</div>
+        <div class="settings-group">
+          <label class="settings-item">
+            <span class="settings-item-main"><b>加權指數</b><span class="settings-item-code">IX0001</span></span>
+            <input id="subTaiex" class="settings-switch" type="checkbox" />
+          </label>
+          <label class="settings-item">
+            <span class="settings-item-main"><b>台指期</b><span class="settings-item-code">TXFR1</span></span>
+            <input id="subTxf" class="settings-switch" type="checkbox" />
+          </label>
+        </div>
+
+        <div class="settings-group-title">
+          <span>個股</span>
+          <button id="subStockAllOn" class="settings-link" type="button">全部開啟</button>
+        </div>
+        <input id="subStockFilter" class="settings-search" type="search" placeholder="搜尋或加入股票（股號、股名）" autocomplete="off" />
+        <div id="subStockRows" class="settings-group settings-scroll"></div>
+        <div id="subStockAddTitle" class="settings-group-title" hidden><span>加入</span></div>
+        <div id="subStockAdd" class="settings-group" hidden></div>
+
+        <div class="settings-group-title">
+          <span>產業指數</span>
+        </div>
+        <div class="settings-group">
+          <label class="settings-item">
+            <span class="settings-item-main"><b>訂閱產業指數</b></span>
+            <input id="subSector" class="settings-switch" type="checkbox" />
+          </label>
+          <div id="subSectorScope"></div>
+        </div>
+        <div id="subSectorListTitle" class="settings-group-title" hidden></div>
+        <div id="subSectorList" class="settings-group settings-scroll" hidden></div>
+
+        <h2 class="settings-section-title">富途 Futu</h2>
+        <div class="settings-group">
+          <div class="settings-quota">
+            <div class="settings-quota-head">
+              <div class="settings-quota-num"><span id="subFutuUsed">0</span><small>／<span id="subFutuLimit">—</span></small></div>
+              <span id="subFutuNote" class="settings-item-value"></span>
+            </div>
+            <div id="subFutuBar" class="settings-quota-bar"></div>
+          </div>
+        </div>
+
+        <div class="settings-group-title"><span>美股與加密貨幣</span></div>
+        <input id="subFutuFilter" class="settings-search" type="search" placeholder="搜尋或加入富途商品（例如 US.AAPL）" autocomplete="off" />
+        <div id="subFutuRows" class="settings-group settings-scroll"></div>
+        <div id="subFutuAddTitle" class="settings-group-title" hidden><span>加入</span></div>
+        <div id="subFutuAdd" class="settings-group" hidden></div>
+
+        <div class="settings-actions">
+          <span id="subMessage" class="settings-actions-note"></span>
+        </div>
+      </div>
+
+      <!-- 實際帳務 -->
+      <div class="settings-pagewrap" data-settings-panel="account" hidden>
+        <h1 class="settings-page-title">實際帳務</h1>
+
+        <div class="settings-group-title">
+          <span>同步</span>
+          <span id="actualAccountSettingsStatus" class="settings-status is-warn">讀取中</span>
+        </div>
+        <div class="settings-group">
+          <div class="settings-item"><span class="settings-item-main"><b>上次同步</b></span><span id="actualAccountSettingsLastSync" class="settings-item-value"></span></div>
+          <div class="settings-item"><span class="settings-item-main"><b>手機資料</b></span><span id="actualAccountMobilePublishStatus" class="settings-item-value"></span></div>
+          <div class="settings-actions">
+            <span class="settings-actions-notes">
+              <span id="actualAccountSettingsMessage" class="settings-actions-note"></span>
+              <span id="actualAccountRebuildMessage" class="settings-actions-note"></span>
+              <span id="actualAccountMobilePublishMessage" class="settings-actions-note"></span>
+              <span id="actualAccountSyncMessage" class="settings-actions-note"></span>
+            </span>
+            <button id="actualAccountSettingsRebuildBtn" class="btn is-compact secondary" type="button">重新計算</button>
+            <button id="actualAccountMobilePublishBtn" class="btn is-compact secondary" type="button">上傳手機資料</button>
+            <button id="actualAccountSettingsSyncBtn" class="btn is-compact primary" type="button">立即同步</button>
+          </div>
+        </div>
+
+        <div class="settings-group-title">
+          <span>GAS 連線</span>
+          <button id="actualAccountSettingsEditBtn" class="settings-link" type="button">編輯</button>
+        </div>
+        <div class="settings-group">
+          <label class="settings-item"><span class="settings-item-main"><b>Web App 網址</b></span><input id="actualAccountSettingsGasUrl" class="settings-input is-wide" type="text" placeholder="https://script.google.com/macros/s/…/exec" disabled /></label>
+          <label class="settings-item"><span class="settings-item-main"><b>Token</b></span><input id="actualAccountSettingsGasToken" class="settings-input" type="password" autocomplete="off" placeholder="未設定" disabled /></label>
+          <label class="settings-item"><span class="settings-item-main"><b>開 App 後第一次打開「實際帳務」時自動同步</b></span><input id="actualAccountSettingsAutoSync" class="settings-switch" type="checkbox" disabled /></label>
+          <button id="actualAccountSettingsFormToggle" class="settings-item settings-choice" type="button" aria-expanded="false">
+            <span class="settings-item-main"><b>Google Form 新增交易</b></span>
+            <span id="actualAccountSettingsFormStatus" class="settings-status is-warn">尚未設定</span>
+            <span id="actualAccountSettingsFormChevron" class="settings-checkmark">›</span>
+          </button>
+        </div>
+        <div id="actualAccountSettingsFormGroup" class="settings-group" hidden>
+          <label class="settings-item"><span class="settings-item-main"><b>完整預填連結</b></span><input id="actualAccountSettingsFormPrefillUrl" class="settings-input is-wide" type="text" placeholder="https://docs.google.com/forms/d/e/…/viewform?usp=pp_url…" disabled /></label>
+          <label class="settings-item"><span class="settings-item-main"><b>交易日期</b></span><input id="actualAccountSettingsFormParamDate" class="settings-input is-short" type="text" placeholder="DATE" disabled /></label>
+          <label class="settings-item"><span class="settings-item-main"><b>市場</b></span><input id="actualAccountSettingsFormParamMarket" class="settings-input is-short" type="text" placeholder="MARKET" disabled /></label>
+          <label class="settings-item"><span class="settings-item-main"><b>交易類型</b></span><input id="actualAccountSettingsFormParamAction" class="settings-input is-short" type="text" placeholder="ACTION" disabled /></label>
+          <label class="settings-item"><span class="settings-item-main"><b>股號</b></span><input id="actualAccountSettingsFormParamCode" class="settings-input is-short" type="text" placeholder="CODE" disabled /></label>
+          <label class="settings-item"><span class="settings-item-main"><b>交易資訊</b></span><input id="actualAccountSettingsFormParamInfo" class="settings-input is-short" type="text" placeholder="INFO" disabled /></label>
+          <label class="settings-item"><span class="settings-item-main"><b>交易時間</b></span><input id="actualAccountSettingsFormParamTime" class="settings-input is-short" type="text" placeholder="TIME" disabled /></label>
+        </div>
+        <div id="actualAccountSettingsEditActions" class="settings-actions" hidden>
+          <span id="actualAccountSettingsEditMessage" class="settings-actions-note"></span>
+          <button id="actualAccountSettingsCancelBtn" class="btn is-compact secondary" type="button">取消</button>
+          <button id="actualAccountSettingsSaveBtn" class="btn is-compact primary" type="button">儲存</button>
+        </div>
+      </div>
+
+      <!-- 資金：實際帳務的每日交易額度、模擬帳務（只有台股）的起始本金與每日交易額度（pages/settings_capital.js 建立兩組） -->
+      <div class="settings-pagewrap" data-settings-panel="capital" hidden>
+        <h1 class="settings-page-title">資金</h1>
+        <div id="settingsCapitalGroups"></div>
+      </div>
+
+      <!-- 資料儲存：原始逐筆／五檔的保存天數、模型訓練資料，與會逐漸變大的資料的位置 -->
+      <div class="settings-pagewrap" data-settings-panel="storage" hidden>
+        <h1 class="settings-page-title">資料儲存</h1>
+
+        <div class="settings-group-title"><span>原始歷史資料</span></div>
+        <div id="storageRetentionGroup" class="settings-group"></div>
+
+        <div class="settings-group-title"><span>模型訓練資料</span></div>
+        <div class="settings-group">
+          <label class="settings-item"><span class="settings-item-main"><b>保留</b></span><span class="settings-select"><select id="trainingRetentionSelect" data-training-field="retention_days"></select></span></label>
+          <label class="settings-item"><span class="settings-item-main"><b>每次訓練使用</b></span><span class="settings-select"><select id="trainingWindowSelect" data-training-field="window_trading_days"></select></span></label>
+        </div>
+
+        <div class="settings-group-title"><span>查詢快取</span></div>
+        <div class="settings-group">
+          <label class="settings-item"><span class="settings-item-main"><b>保存天數</b></span><span class="settings-select"><select id="queryCacheRetentionSelect"></select></span></label>
+        </div>
+
+        <div class="settings-group-title"><span>收盤資料來源</span></div>
+        <div class="settings-group">
+          <label class="settings-item"><span class="settings-item-main"><b>端點</b><small>收盤後的五檔、參考價與漲跌停。網址要含 {code}；留空就不連線。使用前請自行確認資料提供者的條款</small></span><input id="closingDataUrl" class="settings-input is-wide" type="text" spellcheck="false" autocomplete="off"></label>
+        </div>
+
+        <div class="settings-group-title"><span>K 棒保存</span></div>
+        <div id="kbarRetentionGroup" class="settings-group"></div>
+
+        <div class="settings-group-title"><span>儲存位置</span></div>
+        <div class="settings-group">
+          <div class="settings-item"><span class="settings-item-main"><b>位置</b></span><span id="storageLocationPath" class="settings-item-value is-mono"></span></div>
+          <div id="storageLocationPending" class="settings-item-sub" hidden></div>
+          <div class="settings-actions">
+            <button id="storageLocationPickBtn" class="btn is-compact secondary" type="button">選擇資料夾…</button>
+            <button id="storageLocationDefaultBtn" class="btn is-compact secondary" type="button">改回預設</button>
+          </div>
+        </div>
+        <div class="settings-actions">
+          <span id="storageMessage" class="settings-actions-note"></span>
+          <button id="storageSaveBtn" class="btn is-compact primary" type="button" disabled>儲存</button>
+        </div>
+      </div>
+
+      <!-- 系統：服務狀態與連接埠（按「編輯連接埠」才出現改連接埠的欄位與步驟） -->
+      <div class="settings-pagewrap is-wide" data-settings-panel="system" hidden>
+        <h1 class="settings-page-title">系統</h1>
+
+        <div class="settings-group-title"><span>啟動</span></div>
+        <div class="settings-group">
+          <label class="settings-item"><span class="settings-item-main"><b>開機時自動啟動</b></span><input id="systemAutostart" class="settings-switch" type="checkbox" disabled /></label>
+        </div>
+        <div class="settings-actions is-note-only"><span id="systemAutostartMessage" class="settings-actions-note"></span></div>
+
+        <div class="settings-group-title">
+          <span>服務</span>
+          <span class="settings-group-title-side">
+            <span id="systemPortsPendingPill" class="settings-status">讀取中</span>
+            <button id="systemPortsEditToggle" class="settings-link" type="button">編輯連接埠</button>
+          </span>
+        </div>
+        <div id="systemPortsEditInfo" class="settings-group" hidden>
+          <div class="settings-item"><span class="settings-item-main"><b>生效版本</b></span><span id="systemPortsRevision" class="settings-item-value"></span></div>
+        </div>
+        <div id="systemServiceRows" class="settings-group"></div>
+        <div class="settings-group">
+          <div id="systemTotalsRow" class="settings-item is-service">
+            <span class="settings-item-main"><b>總計</b></span>
+            <span class="settings-num"></span>
+            <span id="systemTotalsCpu" class="settings-num">—</span>
+            <span class="settings-num"></span>
+            <span id="systemTotalsMemory" class="settings-num">—</span>
+          </div>
+        </div>
+        <div class="settings-actions is-note-only"><span id="systemWorkloadMessage" class="settings-actions-note"></span></div>
+
+        <div id="systemPortsActions" class="settings-actions" hidden>
+          <span id="systemPortsMessage" class="settings-actions-note"></span>
+          <button id="systemPortsResetBtn" class="btn is-compact secondary" type="button">全部改回預設</button>
+          <button id="systemPortsValidateBtn" class="btn is-compact secondary" type="button">1. 檢查</button>
+          <button id="systemPortsSaveBtn" class="btn is-compact secondary" type="button" disabled>2. 儲存</button>
+          <button id="systemPortsApplyBtn" class="btn is-compact primary" type="button" disabled>3. 套用</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  <!-- 成功訊息（與包 2 的「復原」）：畫面上方浮出幾秒後消失；錯誤固定在那組按鈕左邊，不用這個 -->
+  <div id="settingsToast" class="settings-toast-stack" role="status" aria-live="polite" hidden></div>
+</div>

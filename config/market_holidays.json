@@ -1,0 +1,292 @@
+{
+  "schema": "market-holidays-v1",
+  "markets": {
+    "TWSE": {
+      "source": "https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule",
+      "years": {
+        "2026": {
+          "fetched_at": "2026-10-02T02:08:06+00:00",
+          "closed": [
+            {
+              "date": "2026-01-01",
+              "name": "中華民國開國紀念日"
+            },
+            {
+              "date": "2026-02-12",
+              "name": "市場無交易，僅辦理結算交割作業"
+            },
+            {
+              "date": "2026-02-13",
+              "name": "市場無交易，僅辦理結算交割作業"
+            },
+            {
+              "date": "2026-02-15",
+              "name": "農曆除夕及春節"
+            },
+            {
+              "date": "2026-02-16",
+              "name": "農曆除夕及春節"
+            },
+            {
+              "date": "2026-02-17",
+              "name": "農曆除夕及春節"
+            },
+            {
+              "date": "2026-02-18",
+              "name": "農曆除夕及春節"
+            },
+            {
+              "date": "2026-02-19",
+              "name": "農曆除夕及春節"
+            },
+            {
+              "date": "2026-02-20",
+              "name": "農曆除夕及春節"
+            },
+            {
+              "date": "2026-02-27",
+              "name": "和平紀念日"
+            },
+            {
+              "date": "2026-02-28",
+              "name": "和平紀念日"
+            },
+            {
+              "date": "2026-04-03",
+              "name": "兒童節及民族掃墓節"
+            },
+            {
+              "date": "2026-04-04",
+              "name": "兒童節及民族掃墓節"
+            },
+            {
+              "date": "2026-04-05",
+              "name": "兒童節及民族掃墓節"
+            },
+            {
+              "date": "2026-04-06",
+              "name": "兒童節及民族掃墓節"
+            },
+            {
+              "date": "2026-05-01",
+              "name": "勞動節"
+            },
+            {
+              "date": "2026-06-19",
+              "name": "端午節"
+            },
+            {
+              "date": "2026-09-25",
+              "name": "中秋節"
+            },
+            {
+              "date": "2026-09-28",
+              "name": "孔子誕辰紀念日/ 教師節"
+            },
+            {
+              "date": "2026-10-09",
+              "name": "國慶日"
+            },
+            {
+              "date": "2026-10-10",
+              "name": "國慶日"
+            },
+            {
+              "date": "2026-10-23",
+              "name": "薔琵颱風停止交易",
+              "manual": true
+            },
+            {
+              "date": "2026-10-25",
+              "name": "臺灣光復暨金門古寧頭大捷紀念日"
+            },
+            {
+              "date": "2026-10-26",
+              "name": "臺灣光復暨金門古寧頭大捷紀念日"
+            },
+            {
+              "date": "2026-12-25",
+              "name": "行憲紀念日"
+            }
+          ],
+          "trading": [
+            {
+              "date": "2026-01-02",
+              "name": "國曆新年開始交易日"
+            },
+            {
+              "date": "2026-02-11",
+              "name": "農曆春節前最後交易日"
+            },
+            {
+              "date": "2026-02-23",
+              "name": "農曆春節後開始交易日"
+            }
+          ]
+        }
+      }
+    },
+    "NYSE": {
+      "source": "https://www.nyse.com/markets/hours-calendars",
+      "years": {
+        "2026": {
+          "recorded_at": "2026-11-10",
+          "closed": [
+            {
+              "date": "2026-01-01",
+              "name": "New Year's Day"
+            },
+            {
+              "date": "2026-01-19",
+              "name": "Martin Luther King, Jr. Day"
+            },
+            {
+              "date": "2026-02-16",
+              "name": "Washington's Birthday"
+            },
+            {
+              "date": "2026-04-03",
+              "name": "Good Friday"
+            },
+            {
+              "date": "2026-05-25",
+              "name": "Memorial Day"
+            },
+            {
+              "date": "2026-06-19",
+              "name": "Juneteenth National Independence Day"
+            },
+            {
+              "date": "2026-07-03",
+              "name": "Independence Day (observed)"
+            },
+            {
+              "date": "2026-09-07",
+              "name": "Labor Day"
+            },
+            {
+              "date": "2026-11-26",
+              "name": "Thanksgiving Day"
+            },
+            {
+              "date": "2026-12-25",
+              "name": "Christmas Day"
+            }
+          ],
+          "half": [
+            {
+              "date": "2026-11-27",
+              "name": "Day after Thanksgiving"
+            },
+            {
+              "date": "2026-12-24",
+              "name": "Christmas Eve"
+            }
+          ]
+        },
+        "2027": {
+          "recorded_at": "2026-11-10",
+          "closed": [
+            {
+              "date": "2027-01-01",
+              "name": "New Year's Day"
+            },
+            {
+              "date": "2027-01-18",
+              "name": "Martin Luther King, Jr. Day"
+            },
+            {
+              "date": "2027-02-15",
+              "name": "Washington's Birthday"
+            },
+            {
+              "date": "2027-03-26",
+              "name": "Good Friday"
+            },
+            {
+              "date": "2027-05-31",
+              "name": "Memorial Day"
+            },
+            {
+              "date": "2027-06-18",
+              "name": "Juneteenth National Independence Day (observed)"
+            },
+            {
+              "date": "2027-07-05",
+              "name": "Independence Day (observed)"
+            },
+            {
+              "date": "2027-09-06",
+              "name": "Labor Day"
+            },
+            {
+              "date": "2027-11-25",
+              "name": "Thanksgiving Day"
+            },
+            {
+              "date": "2027-12-24",
+              "name": "Christmas Day (observed)"
+            }
+          ],
+          "half": [
+            {
+              "date": "2027-11-26",
+              "name": "Day after Thanksgiving"
+            }
+          ]
+        },
+        "2028": {
+          "recorded_at": "2026-11-10",
+          "closed": [
+            {
+              "date": "2028-01-17",
+              "name": "Martin Luther King, Jr. Day"
+            },
+            {
+              "date": "2028-02-21",
+              "name": "Washington's Birthday"
+            },
+            {
+              "date": "2028-04-14",
+              "name": "Good Friday"
+            },
+            {
+              "date": "2028-05-29",
+              "name": "Memorial Day"
+            },
+            {
+              "date": "2028-06-19",
+              "name": "Juneteenth National Independence Day"
+            },
+            {
+              "date": "2028-07-04",
+              "name": "Independence Day"
+            },
+            {
+              "date": "2028-09-04",
+              "name": "Labor Day"
+            },
+            {
+              "date": "2028-11-23",
+              "name": "Thanksgiving Day"
+            },
+            {
+              "date": "2028-12-25",
+              "name": "Christmas Day"
+            }
+          ],
+          "half": [
+            {
+              "date": "2028-07-03",
+              "name": "Day before Independence Day"
+            },
+            {
+              "date": "2028-11-24",
+              "name": "Day after Thanksgiving"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

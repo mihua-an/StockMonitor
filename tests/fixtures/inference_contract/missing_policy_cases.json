@@ -1,0 +1,32 @@
+[
+  {
+    "input": null,
+    "expected": "__MISSING__"
+  },
+  {
+    "input": {
+      "nan": true
+    },
+    "expected": "__MISSING__"
+  },
+  {
+    "input": "",
+    "expected": "__MISSING__"
+  },
+  {
+    "input": "   ",
+    "expected": "__MISSING__"
+  },
+  {
+    "input": " Open ",
+    "expected": "Open"
+  },
+  {
+    "input": "open",
+    "expected": "open"
+  },
+  {
+    "input": "UNSEEN_STATE",
+    "expected": "UNSEEN_STATE"
+  }
+]

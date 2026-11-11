@@ -1,0 +1,166 @@
+/* 價量 (price_flow_component.js): per traded price, 大單／小單 買賣量. */
+
+.price-flow-table tbody td,
+.price-flow-table thead th {
+  height: 20px;
+  box-sizing: border-box;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.price-flow {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  background: var(--surface-panel);
+}
+
+/* The 大單 / 小單 內外盤比 bars, below the table: they take whatever height the whole-row table leaves
+   (core/whole_row_fit.js). */
+.price-flow-summary {
+  flex: 1 1 auto;
+  min-height: 52px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 2px 0;
+  border-top: 1px solid var(--pane-border);
+}
+
+.price-flow-summary[hidden] {
+  display: none;
+}
+
+.price-flow-scroll {
+  min-height: 0;
+  overflow: auto;
+}
+
+.price-flow-table {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.price-flow-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  color: var(--slate-500x-2);
+  font-weight: 500;
+  font-size: 11px;
+  text-align: right;
+  padding: 3px 4px;
+  border-bottom: 1px solid var(--pane-border);
+  white-space: nowrap;
+}
+
+.price-flow-table td {
+  padding: 1px 4px;
+  text-align: right;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.price-flow-table .is-center {
+  text-align: center;
+}
+
+.price-flow-table .is-hug {
+  text-align: right;
+  width: 1%;
+}
+
+.price-flow-row.is-current td {
+  background: var(--sky-400-a14);
+}
+
+.price-flow-row.is-reference .price-flow-price {
+  text-decoration: underline dotted;
+}
+
+.price-flow-buy {
+  color: var(--price-up-color);
+}
+
+.price-flow-sell {
+  color: var(--price-down-color);
+}
+
+.price-flow-track {
+  width: 22%;
+  min-width: 48px;
+}
+
+.price-flow-bar {
+  position: relative;
+  height: 14px;
+}
+
+.price-flow-axis {
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  bottom: -2px;
+  border-left: 1px solid var(--slate-600);
+}
+
+.price-flow-seg {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+}
+
+.price-flow-seg.is-large-buy {
+  background: var(--price-up-color);
+}
+
+.price-flow-seg.is-small-buy {
+  background: var(--price-up-color);
+}
+
+.price-flow-seg.is-large-sell {
+  background: var(--price-down-color);
+}
+
+.price-flow-seg.is-small-sell {
+  background: var(--price-down-color);
+}
+
+.price-flow-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+.price-flow-body[data-whole-rows] {
+  flex: 0 0 var(--whole-rows-height);
+}
+
+.price-flow-body > .price-flow-scroll {
+  flex: 1 1 auto;
+  scrollbar-width: none;
+}
+
+.price-flow-body > .price-flow-rail {
+  top: 20px;
+  z-index: 3;
+}
+
+.price-flow-body .price-flow-table {
+  width: calc(100% - var(--shared-row-rail-width));
+}
+
+.price-flow-table.lined-rows > tbody > tr.is-current,
+.price-flow-table.lined-rows > tbody > tr.is-current > td {
+  background: var(--sky-400-a14);
+}
+
+/* 價量明細: its column titles stay in view while the rows scroll. */
+:where(.price-flow-table) > thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}

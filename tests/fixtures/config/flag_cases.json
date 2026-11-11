@@ -1,0 +1,21 @@
+[
+  {"input": null, "fallback": false, "expected": false},
+  {"input": null, "fallback": true, "expected": true},
+  {"input": "", "fallback": true, "expected": true},
+  {"input": "  ", "fallback": false, "expected": false},
+  {"input": "1", "fallback": false, "expected": true},
+  {"input": " TRUE ", "fallback": false, "expected": true},
+  {"input": "yes", "fallback": false, "expected": true},
+  {"input": "on", "fallback": false, "expected": true},
+  {"input": "0", "fallback": true, "expected": false},
+  {"input": "false", "fallback": true, "expected": false},
+  {"input": "False", "fallback": true, "expected": false},
+  {"input": "no", "fallback": true, "expected": false},
+  {"input": "off", "fallback": true, "expected": false},
+  {"input": true, "fallback": false, "expected": true},
+  {"input": false, "fallback": true, "expected": false},
+  {"input": "flase", "fallback": false, "error": true},
+  {"input": "2", "fallback": false, "error": true},
+  {"input": 1, "fallback": false, "error": true},
+  {"input": [], "fallback": false, "error": true}
+]

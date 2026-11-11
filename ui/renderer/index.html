@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; connect-src 'self' __STOCKMONITOR_CONNECT_SOURCES__; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-src 'none';"
+  />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StockMonitor</title>
+  <link rel="stylesheet" href="./styles/index.css" />
+</head>
+
+<body data-startup-active>
+  <div id="startupOverlay" class="startup-overlay" role="status" aria-live="polite" aria-label="Stock Monitor 啟動進度">
+    <div class="startup-progress-card">
+      <div class="startup-progress-heading">
+        <div>
+          <div class="startup-progress-eyebrow">STOCK MONITOR</div>
+          <h1>應用程式啟動中</h1>
+        </div>
+        <div id="startupTotalElapsed" class="startup-total-elapsed">0ms</div>
+      </div>
+      <div class="startup-progress-meta">
+        <div class="startup-progress-subtitle">正在確認必要服務與主介面，完成後會自動進入系統。</div>
+        <div id="startupOverallProgress" class="startup-overall-progress">完成 0 / 0 個啟動單元</div>
+      </div>
+      <div id="startupStepList" class="startup-step-list">
+        <div class="startup-step-placeholder">正在取得啟動單元…</div>
+      </div>
+      <div id="startupProgressMessage" class="startup-progress-message">準備啟動...</div>
+    </div>
+  </div>
+
+  <div class="app app-bottom-nav">
+    <main class="main main-with-bottom-nav">
+      <section id="pageContainer" class="page-container" data-trend-lookup-host></section>
+    </main>
+
+    <footer class="bottom-dock">
+      <nav class="bottom-nav">
+        <button class="dock-nav-item active" data-page="realtime">即時報價</button>
+        <button class="dock-nav-item" data-page="history">歷史回放</button>
+        <button class="dock-nav-item" data-page="training">模型中心</button>
+        <button class="dock-nav-item" data-page="datacenter">資料中心</button>
+        <button class="dock-nav-item" data-page="account">帳務中心</button>
+        <button class="dock-nav-item" data-page="settings">設定</button>
+      </nav>
+
+      <div class="dock-screens" data-role="dock-screens" role="group" aria-label="即時報價畫面"></div>
+
+      <div class="dock-right">
+
+        <button id="globalAddTradeBtn" class="dock-add-trade-btn" type="button">新增交易</button>
+        <button id="globalOpenWorkspaceBtn" class="dock-workspace-btn" type="button">Workspace</button>
+
+        <button class="api-status service-status service-status-button" type="button" data-service-diagnostics="websocket" aria-label="查看 WebSocket 診斷">
+          <div id="wsStatusDot" class="status-dot offline"></div>
+          <span id="wsStatusText">WebSocket 未連線</span>
+        </button>
+
+        <button class="api-status service-status service-status-button" type="button" data-service-diagnostics="fastapi" aria-label="查看 FastAPI 診斷">
+          <div id="apiStatusDot" class="status-dot offline"></div>
+          <span id="apiStatusText">FASTAPI 未連線</span>
+        </button>
+
+        <button class="api-status service-status service-status-button" type="button" data-service-diagnostics="shioaji" aria-label="查看 Shioaji 診斷">
+          <div id="shioajiStatusDot" class="status-dot offline"></div>
+          <span id="shioajiStatusText">永豐 未連線</span>
+        </button>
+
+        <button class="api-status service-status service-status-button" type="button" data-service-diagnostics="moomoo" aria-label="查看 Futu / Moomoo OpenD 診斷">
+          <div id="moomooStatusDot" class="status-dot offline"></div>
+          <span id="moomooStatusText">Futu 未連線</span>
+        </button>
+
+        <div id="currentTimeText" class="dock-time">--:--:--</div>
+      </div>
+    </footer>
+
+    <div id="serviceDiagnosticsPopover" class="service-diagnostics-popover" hidden aria-hidden="true">
+      <div class="service-diagnostics-header"><b>系統連線診斷</b><button id="serviceDiagnosticsCloseBtn" class="service-diagnostics-close" type="button" aria-label="關閉">×</button></div>
+      <div id="serviceDiagnosticsBody" class="service-diagnostics-grid"><p class="dg-empty">讀取中…</p></div>
+    </div>
+
+
+
+  </div>
+    <script type="module" src="./app.js"></script>
+</body>
+</html>

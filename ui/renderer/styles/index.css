@@ -1,0 +1,62 @@
+/* The renderer's stylesheet. Each file owns one concern; general before specific:
+ *   tokens      colours, sizes, z-index -- the only place a colour literal is defined
+ *   base        element defaults and app-wide primitives (buttons, badges, state colours, focus)
+ *   layout/     the application frame and the resizable workspaces
+ *   components/ one file per shared component; a component looks the same on every page and in every window
+ *   pages/      how each page lays its components out
+ * A window loads this file and then its own sheet under windows/.
+ *
+ * Class names say who owns them (names.json, enforced by tests/renderer_css_naming_contract.mjs):
+ *   state / modifier  one word from names.json `words` (active, up, buy, open ...), or is-* / has-* / mode-*
+ *   base              app-wide primitives: btn, badge, search, price-up / price-down / price-flat, limit-up-price ...
+ *   layout            the frame and the workspaces: app-*, dock-*, panel, workspace-*, dashboard-*, pane-*, splitter
+ *   component         the component's own name is its root class, its parts carry it as prefix:
+ *                     .orderbook > .orderbook-table, .tick-details > .tick-details-popout, .trend-chart > .trend-titlebar
+ *   page              the page's name: realtime-*, history-*, account-* (實際／模擬帳務), dc-* (資料中心), mc-* (模型中心)
+ *   window            trade-window-*, watch-*
+ * The settings-style controls (components/settings.css, settings-*) are one component set shared by 設定 and the
+ * windows built the same way.
+ * Each prefix has exactly one owner. No name carries a data source (a component is the same for Shioaji and Futu)
+ * or a page's former name. */
+@import url("tokens.css");
+@import url("base.css");
+@import url("layout/app-shell.css");
+@import url("layout/workspace.css");
+@import url("components/data-grid.css");
+@import url("components/tabs.css");
+@import url("components/startup-overlay.css");
+@import url("components/product-list.css");
+@import url("components/sort-glyph.css");
+@import url("components/expand-picker.css");
+@import url("components/direction-glyph.css");
+@import url("components/quote-header.css");
+@import url("components/trend-chart.css");
+@import url("components/io-ratio.css");
+@import url("components/orderbook.css");
+@import url("components/tick-details.css");
+@import url("components/event-feed.css");
+@import url("components/trade-details.css");
+@import url("components/trade-flow.css");
+@import url("components/price-flow.css");
+@import url("components/order-ticket.css");
+@import url("components/paper-ledger.css");
+@import url("components/paper-order-popover.css");
+@import url("components/industry-index-list.css");
+@import url("components/diagnostics-panel.css");
+@import url("components/job-status.css");
+@import url("components/load-state.css");
+@import url("components/analysis-rebuild.css");
+@import url("components/settings.css");
+@import url("components/replay-bar.css");
+@import url("components/mini-candle.css");
+@import url("components/technical-window.css");
+@import url("pages/realtime.css");
+@import url("pages/layouts.css");
+@import url("pages/history.css");
+@import url("pages/account.css");
+@import url("pages/account-replay.css");
+@import url("pages/account-trade-editor.css");
+@import url("pages/account-mobile-cards.css");
+@import url("pages/account-order-history.css");
+@import url("pages/training.css");
+@import url("pages/data-center.css");

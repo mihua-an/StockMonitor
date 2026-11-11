@@ -1,0 +1,110 @@
+/* The 新增交易 window. */
+
+/* ===== Borderless compact standalone trade BrowserWindow =====
+ * The window's content width (ui/main/secondary_window_factory.js TRADE_WINDOW_CONTENT_WIDTH) is the form's width;
+ * the shell fills it. */
+html,
+body.trade-window-body {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  background: var(--surface-app);
+  overflow: hidden;
+}
+
+.trade-window-body {
+  color: var(--blue-50x);
+}
+
+/* BrowserWindow 本身就是容器，裡面不再畫一張外框 Card。 */
+:where(.trade-window-body) .trade-window-shell {
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  display: block;
+  background: var(--surface-panel);
+}
+
+:where(.trade-window-body) .trade-window-dialog {
+  position: static;
+  inset: auto;
+  transform: none;
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  scrollbar-gutter: auto;
+  border: 0;
+  border-radius: 0;
+  background: var(--slate-900);
+  box-shadow: none;
+}
+
+:where(.trade-window-body) .trade-window-content {
+  padding: 16px 18px 14px;
+  overflow: visible;
+  border: 0;
+}
+
+:where(.trade-window-body) .trade-window-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+:where(.trade-window-body) .trade-window-message {
+  min-height: 20px;
+  margin-top: 8px;
+}
+
+:where(.trade-window-body) .trade-window-message:empty {
+  min-height: 0;
+  margin-top: 0;
+}
+
+:where(.trade-window-body) .trade-window-message.error {
+  color: var(--status-error);
+}
+
+:where(.trade-window-body) .trade-window-message.success {
+  color: var(--status-ok);
+}
+
+:where(.trade-window-body) .trade-window-footer {
+  position: static;
+  padding: 0 18px 16px;
+  border: 0;
+  background: var(--slate-900);
+  z-index: auto;
+}
+
+/* The window's global message under the form. */
+.trade-window-global-message {
+  min-height: 20px;
+  margin-top: 12px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: var(--slate-900-a48);
+  font-size: 11px;
+}
+
+.trade-window-global-message:empty {
+  min-height: 0;
+  margin-top: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.trade-window-global-message.error {
+  color: var(--status-error);
+  background: color-mix(in srgb, var(--status-error) 18%, transparent);
+}
+
+.trade-window-global-message.success {
+  color: var(--status-ok);
+}

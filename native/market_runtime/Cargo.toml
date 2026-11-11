@@ -1,0 +1,15 @@
+[package]
+name = "market_runtime"
+version = "0.3.0"
+edition = "2021"
+description = "Market Runtime: the sole live authority process"
+license = "Apache-2.0"
+
+[lib]
+name = "market_runtime"
+crate-type = ["rlib"]
+
+[dependencies]
+miniz_oxide = { version = "0.9.1", default-features = false, features = ["with-alloc"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }

@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' __STOCKMONITOR_CONNECT_SOURCES__; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-src 'none';" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Multi-Symbol Workspace</title>
+  <link rel="stylesheet" href="styles/index.css" />
+</head>
+<body class="workspace-page">
+  <main id="workspaceColumns" class="workspace-columns"></main>
+  <footer class="workspace-dock dashboard-card"><div id="workspaceDock" class="workspace-dock-row"></div></footer>
+  <script type="module" src="workspace_view.js"></script>
+</body>
+</html>

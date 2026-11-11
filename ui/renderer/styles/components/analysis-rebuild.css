@@ -1,0 +1,50 @@
+/* analysis-rebuild: 分析資料重建中 laid over a pane whose data is Rust B's while B rebuilds or catches up
+   (js/core/analysis_rebuild_notice.js builds it; ComponentHost places it as the host's last child). The host it is laid
+   over is marked data-analysis-sourced and is the overlay's containing block. */
+[data-analysis-sourced] {
+  position: relative;
+}
+
+.analysis-rebuild {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background: color-mix(in srgb, var(--surface-panel) 72%, transparent);
+}
+
+.analysis-rebuild-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  min-width: 160px;
+  padding: 10px 14px;
+  border: 1px solid var(--pane-border);
+  border-radius: var(--pane-radius);
+  background: var(--surface-header);
+  color: var(--slate-300);
+  font-size: 12px;
+  text-align: center;
+}
+
+.analysis-rebuild-text {
+  font-weight: 700;
+}
+
+.analysis-rebuild-percent {
+  margin-left: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-rebuild-bar {
+  height: 4px;
+  margin-top: 8px;
+  border-radius: 2px;
+  background: var(--surface-inset);
+  overflow: hidden;
+}
+
+.analysis-rebuild-fill {
+  height: 100%;
+  background: var(--slate-400);
+}

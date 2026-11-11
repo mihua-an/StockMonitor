@@ -1,0 +1,1169 @@
+/* The settings-style controls (macOS / iOS 設定頁): the category frame, rounded group cards of one item per row, and
+   the controls inside a row -- switch, select showing only its value, inline input, status dot, text link, the
+   action bar -- plus the floating message. One sheet for 設定 and every window built the same way; colours are tokens
+   only. Markup builders live in js/core/settings_ui.js. */
+
+/* ===== Frame: category nav on the left, one category at a time ===== */
+.settings-page {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.settings-layout {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 10px;
+  border-right: 1px solid var(--blue-800x-19);
+  background: var(--blue-900x-5);
+}
+
+.settings-nav h2 {
+  margin: 0 6px 12px;
+  font-size: 18px;
+}
+
+.settings-nav-item {
+  text-align: left;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--slate-300);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.settings-nav-item:hover:not(:disabled) {
+  background: var(--slate-400-a10);
+}
+
+.settings-nav-item.is-active {
+  background: var(--blue-600-a22);
+  color: var(--white);
+  font-weight: 700;
+}
+
+.settings-nav-item.has-alert {
+  color: var(--status-error);
+}
+
+.settings-nav-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* The scrollbar matches the App's local scrollviews. */
+.settings-page-scroll {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 18px max(10px, env(safe-area-inset-right)) 70px 22px;
+  scrollbar-gutter: stable;
+}
+
+/* Every category shares one left edge: the frame is centred on the widest page (系統) and an ordinary page keeps its
+   content narrower and to the left, so the title does not move when the category changes. Children with side margins
+   (group titles, section titles) take theirs off the width so their right edge meets the cards'. */
+.settings-pagewrap {
+  --settings-content-max: 712px;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 28px 24px 60px;
+}
+
+.settings-pagewrap.is-wide {
+  --settings-content-max: 100%;
+}
+
+.settings-pagewrap[hidden] {
+  display: none;
+}
+
+.settings-pagewrap > * {
+  max-width: var(--settings-content-max);
+}
+
+.settings-pagewrap > .settings-group-title {
+  max-width: calc(var(--settings-content-max) - 28px);
+}
+
+.settings-page-title {
+  display: flex;
+  align-items: center;
+  margin: 0 0 22px;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--slate-50);
+}
+
+/* A title in a row of its own with the page's switches (帳務), not above the content. */
+.settings-page-title.is-inline {
+  margin: 0;
+}
+
+/* A full page's title row in 設定's look (資料中心, 模型中心, 帳務): outside the page's scroll area so it stays at the
+   top, as wide as the centred column under it; its actions sit at the right. */
+.settings-page-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 22px 24px 18px;
+  box-sizing: border-box;
+}
+
+.settings-page-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* ===== Group title: the name on the left, a status or one text button on the right ===== */
+.settings-group-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  margin: 26px 14px 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--slate-400);
+}
+
+.settings-group-title:first-of-type {
+  margin-top: 0;
+}
+
+.settings-group-title[hidden] {
+  display: none;
+}
+
+.settings-group-title-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  font-weight: 400;
+}
+
+/* ===== Group card ===== */
+.settings-group {
+  border-radius: 12px;
+  background: var(--slate-900);
+  overflow: hidden;
+}
+
+.settings-group[hidden] {
+  display: none;
+}
+
+/* A second card of the same group (Google Form 新增交易, 編輯連接埠's revision lines) sits close to the first. */
+.settings-group:not([hidden]) + .settings-group {
+  margin-top: 8px;
+}
+
+/* The list a search box filters sits just under it. */
+.settings-search + .settings-group {
+  margin-top: 8px;
+}
+
+/* ===== One item per row ===== */
+.settings-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 16px;
+  font-size: 14px;
+  color: var(--slate-100);
+}
+
+.settings-item[hidden] {
+  display: none;
+}
+
+/* The line between rows starts after the row's inset, as in iOS: a 1 px line of its own, so a row's hover, selection or
+   sub-row background reaches the card's left edge (a card-coloured inset shadow hiding the line's first 16 px also
+   covered the row's whole left 16 px). */
+.settings-item + .settings-item::before,
+.settings-item-sub + .settings-item::before,
+.settings-item + .settings-item-sub::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 0;
+  height: 1px;
+  background: var(--pane-border);
+  pointer-events: none;
+}
+
+.settings-item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.settings-item-main b {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* A row nested under the one above it (保存 under its source). */
+.settings-item-main.is-nested {
+  padding-left: 16px;
+}
+
+/* Pills: a row's on/off choices side by side (資料儲存's 近月／遠月, 現貨／期貨; 訂閱管理's 明細／五檔). */
+.settings-pills {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.settings-pill {
+  min-width: 52px;
+  padding: 4px 10px;
+  border-radius: 13px;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--slate-800);
+  color: var(--slate-500);
+}
+
+.settings-pill.is-active {
+  background: var(--control-selected-bg);
+  color: var(--control-selected-fg);
+}
+
+/* 期貨 and its months: the accent colour. */
+.settings-pill.is-accent.is-active {
+  background: var(--diagnostics-part-7);
+  color: var(--surface-app);
+}
+
+/* The near month: always on, shown, not pressable. */
+.settings-pill.is-locked,
+.settings-pill:disabled {
+  cursor: default;
+  opacity: .8;
+}
+
+/* A large block of a page (訂閱管理's 永豐 / 富途): a step above a group title, the second one set apart. */
+.settings-section-title {
+  display: flex;
+  align-items: center;
+  margin: 0 4px 10px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--slate-100);
+}
+
+.settings-pagewrap > .settings-section-title {
+  max-width: calc(var(--settings-content-max) - 8px);
+}
+
+.settings-section-title ~ .settings-section-title {
+  margin-top: 40px;
+  padding-top: 22px;
+  border-top: 1px solid var(--pane-border);
+}
+
+.settings-section-title + .settings-group + .settings-group-title {
+  margin-top: 22px;
+}
+
+/* A long list in a group: scrolls inside. */
+.settings-scroll {
+  max-height: 440px;
+  overflow-y: auto;
+}
+
+.settings-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 10px;
+  background: var(--slate-800);
+  color: var(--slate-100);
+  font-size: 14px;
+}
+
+.settings-search::placeholder {
+  color: var(--slate-500);
+}
+
+.settings-item.is-clickable {
+  cursor: pointer;
+}
+
+.settings-item.is-clickable:hover {
+  background: var(--row-hover-bg);
+}
+
+.settings-item.is-selected,
+.settings-item.is-selected:hover {
+  background: var(--row-active-bg);
+}
+
+/* Small icon buttons in a row (drag, remove). */
+.settings-icon-btn {
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--slate-400);
+  font-size: 14px;
+  cursor: pointer;
+  flex: none;
+}
+
+.settings-icon-btn:hover:not(:disabled) {
+  background: var(--slate-800);
+  color: var(--slate-100);
+}
+
+.settings-icon-btn:disabled {
+  opacity: .3;
+  cursor: default;
+}
+
+.settings-icon-btn.is-danger {
+  color: var(--status-error);
+}
+
+.settings-icon-btn[draggable="true"] {
+  cursor: grab;
+}
+
+/* Subscription quota: the number, a bar by part, the connections. */
+.settings-quota {
+  padding: 14px 16px;
+}
+
+.settings-quota-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.settings-quota-num {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--slate-50);
+}
+
+.settings-quota-num small {
+  margin-left: 4px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--slate-400);
+}
+
+.settings-quota-bar {
+  display: flex;
+  height: 8px;
+  margin: 10px 0 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--slate-800);
+}
+
+.settings-quota-part {
+  height: 100%;
+}
+
+.settings-quota-part.is-trade {
+  background: var(--diagnostics-part-1);
+}
+
+.settings-quota-part.is-orderbook {
+  background: var(--diagnostics-part-3);
+}
+
+.settings-quota-part.is-index {
+  background: var(--diagnostics-part-6);
+}
+
+.settings-quota-part.is-futures {
+  background: var(--diagnostics-part-7);
+}
+
+.settings-quota-part.is-base {
+  background: var(--diagnostics-part-5);
+}
+
+.settings-quota-part.is-draining {
+  background: var(--diagnostics-part-4);
+}
+
+.settings-quota-conns {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--slate-400);
+}
+
+.settings-quota-conns .is-on {
+  color: var(--slate-200);
+}
+
+.settings-quota-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--slate-600);
+  vertical-align: 1px;
+}
+
+.settings-quota-conns .is-on .settings-quota-dot {
+  background: var(--status-ok);
+}
+
+/* A sub-row's words (加到 / 從…移除) and its buttons at its end. */
+.settings-sub-label {
+  align-self: center;
+  color: var(--slate-400);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.settings-sub-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.settings-item-code {
+  min-width: 56px;
+  color: var(--slate-400);
+  font-size: 13px;
+}
+
+.settings-item-value {
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--slate-400);
+  font-size: 13px;
+}
+
+.settings-item-value.is-error {
+  color: var(--status-error);
+}
+
+.settings-item-value.is-mono {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+}
+
+/* A line under a row that belongs to it (a pending storage location, the last port apply). */
+.settings-item-sub {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px 12px;
+  background: var(--surface-subrow);
+  color: var(--slate-400);
+  font-size: 13px;
+}
+
+.settings-item-sub[hidden] {
+  display: none;
+}
+
+/* ===== Action bar: one group's actions side by side at its bottom right. As in macOS the main action (blue) is
+   rightmost, the others leftwards, a dangerous one (red outline) left of the main one; only the note (an error, or
+   what is running) sits on the left. ===== */
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.settings-actions[hidden] {
+  display: none;
+}
+
+.settings-group > .settings-actions {
+  margin-top: 0;
+  padding: 10px 16px;
+  box-shadow: inset 0 1px 0 var(--pane-border);
+}
+
+.settings-actions-note {
+  margin-right: auto;
+  font-size: 13px;
+  color: var(--slate-400);
+}
+
+.settings-actions-note.is-error {
+  color: var(--status-error);
+}
+
+/* A bar whose actions can run at the same time: each action owns its note, one line each, all on the left. */
+.settings-actions-notes {
+  display: flex;
+  flex-direction: column;
+  margin-right: auto;
+}
+
+/* An action bar that holds only a note (a group whose choices apply at once) shows only while there is one. */
+.settings-actions.is-note-only:has(> .settings-actions-note:empty) {
+  display: none;
+}
+
+/* ===== Single choice: the chosen row carries a check mark ===== */
+.settings-choice {
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.settings-checkmark {
+  flex: none;
+  width: 18px;
+  text-align: center;
+  color: var(--blue-400);
+  font-weight: 700;
+}
+
+.settings-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin: 0 4px 0 0;
+  border-radius: 2px;
+}
+
+.settings-swatch.is-red {
+  background: var(--market-red);
+}
+
+.settings-swatch.is-green {
+  background: var(--market-green);
+}
+
+/* ===== Switch ===== */
+.settings-switch {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 42px;
+  height: 25px;
+  margin: 0;
+  border-radius: 13px;
+  background: var(--slate-700);
+  cursor: pointer;
+  transition: background 0.18s;
+}
+
+.settings-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  background: var(--white);
+  transition: transform 0.18s;
+}
+
+.settings-switch:checked {
+  background: var(--status-ok);
+}
+
+.settings-switch:checked::after {
+  transform: translateX(17px);
+}
+
+.settings-switch:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* ===== Select: only the value and ⌄ ===== */
+.settings-select {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+.settings-select select {
+  appearance: none;
+  padding: 4px 18px 4px 6px;
+  border: none;
+  background: transparent;
+  color: var(--slate-300);
+  font-size: 14px;
+  text-align: right;
+  cursor: pointer;
+}
+
+.settings-select select option {
+  background: var(--slate-900);
+  color: var(--slate-100);
+}
+
+.settings-select::after {
+  content: "⌄";
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  color: var(--slate-500);
+  pointer-events: none;
+}
+
+.settings-select select:disabled {
+  color: var(--slate-600);
+  cursor: default;
+}
+
+/* ===== Inline input: no frame, right-aligned ===== */
+.settings-input {
+  flex: none;
+  width: 240px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 7px;
+  background: var(--slate-800);
+  color: var(--slate-100);
+  font-size: 14px;
+  text-align: right;
+}
+
+.settings-input.is-short {
+  width: 110px;
+}
+
+.settings-input.is-wide {
+  width: 380px;
+  text-align: left;
+}
+
+.settings-input::placeholder {
+  color: var(--slate-500);
+}
+
+/* A value that breaks the field's rule (a saved amount that is not whole 萬): marked until it is fixed. */
+.settings-input.is-invalid {
+  box-shadow: inset 0 0 0 1px var(--status-error);
+}
+
+/* A read-only input reads as a value: right-aligned like the other rows' values. */
+.settings-input:disabled {
+  padding-right: 0;
+  background: transparent;
+  color: var(--slate-400);
+  text-align: right;
+}
+
+/* ===== Status: a dot and a word ===== */
+.settings-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--slate-300);
+  white-space: nowrap;
+}
+
+.settings-status::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--slate-500);
+}
+
+.settings-status.is-ok::before {
+  background: var(--status-ok);
+}
+
+.settings-status.is-warn::before {
+  background: var(--amber-400);
+}
+
+.settings-status.is-error::before {
+  background: var(--status-error);
+}
+
+/* A status in a column narrower than its words: the words are cut with …, the dot stays. */
+.settings-status.is-fitted {
+  max-width: 100%;
+}
+
+.settings-status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ===== Text button (right of a group title, in the floating message) ===== */
+.settings-link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--blue-400);
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.settings-link[hidden] {
+  display: none;
+}
+
+/* ===== 系統: each service's row and the 總計 row share one set of fixed columns -- name, state, CPU, the last
+   2 minutes, memory, port, and 新連接埠 while editing -- so a long value never moves the columns after it. ===== */
+.settings-item.is-service {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px 64px 90px 72px 128px;
+}
+
+.settings-item.is-service.is-editing {
+  grid-template-columns: minmax(0, 1fr) 104px 64px 90px 72px 128px 130px;
+}
+
+/* A value in its column: one line, cut with … when it is longer (the whole value is its title). */
+.settings-num {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+  font-size: 13px;
+  color: var(--slate-300);
+  white-space: nowrap;
+}
+
+.settings-num.is-state {
+  text-align: left;
+}
+
+.settings-spark {
+  flex: none;
+  color: var(--blue-400);
+}
+
+/* One step of a port apply (排空, 綁定 ...), under its service. */
+.settings-step {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--status-ok) 15%, transparent);
+  color: var(--status-ok);
+  font-size: 12px;
+}
+
+.settings-step.is-error {
+  background: color-mix(in srgb, var(--status-error) 18%, transparent);
+  color: var(--status-error);
+}
+
+/* The broker SDK installer's own output while it runs. */
+.settings-log {
+  max-height: 180px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--slate-900);
+  color: var(--slate-300);
+  font: 12px/1.4 Consolas, "Cascadia Mono", monospace;
+  white-space: pre-wrap;
+}
+
+.settings-log[hidden] {
+  display: none;
+}
+
+/* ===== Segmented choice: one capsule, the chosen part's background slides to it (台股／美股, 實際／模擬, 上漲／下跌).
+   settings_ui.js syncSegmented places the background after the choice changes. ===== */
+.settings-seg {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--slate-800);
+}
+
+.settings-seg-btn {
+  position: relative;
+  z-index: 1;
+  padding: 5px 14px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--slate-400);
+  font-size: 13px;
+  cursor: pointer;
+  transition: color .2s;
+}
+
+.settings-seg-btn.is-active {
+  color: var(--white);
+  font-weight: 600;
+}
+
+.settings-seg-btn:disabled {
+  opacity: .4;
+  cursor: default;
+}
+
+.settings-seg-btn[hidden] {
+  display: none;
+}
+
+/* Under the active button: syncSegmented (settings_ui.js) writes its offset and width. */
+.settings-seg-thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: var(--settings-seg-left, 0px);
+  width: var(--settings-seg-width, 0px);
+  border-radius: 7px;
+  background: var(--slate-600);
+  transition: left .32s cubic-bezier(0.32, 0.72, 0, 1), width .32s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* The paper ledger's choice: amber, the paper ledger's colour. */
+.settings-seg.is-paper .settings-seg-thumb {
+  background: var(--amber-700x-3);
+}
+
+/* A segmented choice across its whole column (the 帳務 ledger under the nav). */
+.settings-seg.is-fill {
+  display: flex;
+}
+
+.settings-seg.is-fill .settings-seg-btn {
+  flex: 1;
+  padding: 6px 0;
+}
+
+/* A segmented choice 28px tall, as a 28px title row and the search box beside it (模擬帳務's 委託・成交 / 已實現,
+   刪改's 刪單 / 改價). Only the height: its width stays its own or is-fill's. */
+.settings-seg.is-row {
+  box-sizing: border-box;
+  height: 28px;
+}
+
+.settings-seg.is-row .settings-seg-btn {
+  padding-block: 0;
+  line-height: 24px;
+}
+
+/* ===== Number tiles: one card cut into cells -- a small label, a large number, a line under it ===== */
+.settings-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--pane-border);
+}
+
+.settings-tiles.is-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.settings-tiles.is-5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+/* A small pane's tiles (模擬帳務): the same cells, closer to their figures. */
+.settings-tiles.is-compact .settings-tile {
+  padding: 7px 12px 8px;
+}
+
+.settings-tiles.is-compact .settings-tile-value {
+  margin-top: 2px;
+}
+
+/* A row of figures each on one line: the label at the left, the value at the right (模擬帳務's 收益 … 成本). */
+.settings-tiles.is-inline .settings-tile {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 8px 12px;
+}
+
+.settings-tiles.is-inline .settings-tile > b {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The value takes the tile's colour unless it carries its own (a profit's up / down colour). */
+.settings-tile {
+  min-width: 0;
+  padding: 14px 16px 13px;
+  background: var(--slate-900);
+  color: var(--slate-50);
+}
+
+.settings-tile-label {
+  font-size: 13px;
+  color: var(--slate-400);
+}
+
+.settings-tile-value {
+  margin-top: 4px;
+  font-size: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.settings-tile-value.is-mid {
+  font-size: 20px;
+}
+
+.settings-tile-value small {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--slate-400);
+}
+
+.settings-tile-note {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--slate-400);
+}
+
+/* A tile holding two values side by side (多 / 空). */
+.settings-tile-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+/* A usage bar under a value (今日已用額度). */
+.settings-meter {
+  height: 6px;
+  margin-top: 8px;
+  border-radius: 3px;
+  background: var(--slate-800);
+  overflow: hidden;
+}
+
+.settings-meter-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--blue-400);
+}
+
+/* ===== Two columns of groups side by side (當沖分析's figures, 模型中心's two sides) ===== */
+.settings-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.settings-columns > * {
+  min-width: 0;
+}
+
+/* ===== An empty group: a line in the middle, optionally with a check mark above it ===== */
+.settings-empty {
+  padding: 36px 16px;
+  text-align: center;
+  color: var(--slate-400);
+  font-size: 14px;
+}
+
+.settings-empty-icon {
+  display: block;
+  width: 34px;
+  height: 34px;
+  margin: 0 auto 8px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--status-ok) 18%, transparent);
+  color: var(--status-ok);
+  font-size: 18px;
+  line-height: 34px;
+}
+
+/* ===== Badge: a word in a capsule (買進 red, 賣出 green, 當沖 / 一般 plain) ===== */
+.settings-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 11px;
+  background: var(--slate-800);
+  color: var(--slate-300);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.settings-badge.is-buy {
+  background: color-mix(in srgb, var(--price-up-color) 16%, transparent);
+  color: var(--price-up-color);
+}
+
+.settings-badge.is-sell {
+  background: color-mix(in srgb, var(--price-down-color) 16%, transparent);
+  color: var(--price-down-color);
+}
+
+/* A state: green done, amber a gap or a retry, blue repaired, red a failure. */
+.settings-badge.is-pass {
+  background: color-mix(in srgb, var(--status-ok) 16%, transparent);
+  color: var(--status-ok);
+}
+
+.settings-badge.is-warn {
+  background: color-mix(in srgb, var(--amber-400) 16%, transparent);
+  color: var(--amber-400);
+}
+
+.settings-badge.is-info {
+  background: color-mix(in srgb, var(--blue-400) 16%, transparent);
+  color: var(--blue-400);
+}
+
+.settings-badge.is-fail {
+  background: color-mix(in srgb, var(--status-error) 16%, transparent);
+  color: var(--status-error);
+}
+
+/* ===== A row's own action: an icon and a word in a capsule (編輯, 走勢) ===== */
+.settings-row-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 11px 0 9px;
+  border: 0;
+  border-radius: 13px;
+  background: var(--slate-800);
+  color: var(--slate-200);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color .15s, color .15s;
+}
+
+.settings-row-btn svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.settings-row-btn:hover:not(:disabled),
+.settings-row-btn.is-open {
+  background: color-mix(in srgb, var(--blue-400) 20%, transparent);
+  color: var(--blue-400);
+}
+
+.settings-row-btn:disabled {
+  opacity: .35;
+  cursor: default;
+}
+
+/* ===== Floating messages: capsules stacked at the top centre, one per success (and an optional 復原); each goes by
+ * itself ===== */
+.settings-toast-stack {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.settings-toast-stack[hidden] {
+  display: none;
+}
+
+.settings-toast {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 10px 18px;
+  border-radius: 22px;
+  background: var(--slate-800);
+  color: var(--slate-100);
+  font-size: 14px;
+  box-shadow: 0 0 0 1px var(--pane-border), 0 14px 38px var(--black-a42);
+  pointer-events: auto;
+}
+
+.settings-toast[hidden] {
+  display: none;
+}
+
+.settings-toast-text {
+  min-width: 0;
+}
+
+.settings-toast .settings-link {
+  font-weight: 600;
+}
+
+@media (max-width: 760px) {
+  .settings-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .settings-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-right: 0;
+    border-bottom: 1px solid var(--blue-800x-19);
+  }
+
+  .settings-nav h2 {
+    display: none;
+  }
+}

@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' __STOCKMONITOR_CONNECT_SOURCES__; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-src 'none';" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>交易</title>
+  <link rel="stylesheet" href="./styles/index.css" />
+  <link rel="stylesheet" href="./styles/windows/trade.css" />
+</head>
+<body class="trade-window-body">
+  <!-- The shared TradeEditor form (js/features/account/trade_editor_form.js, window variant) builds its content. -->
+  <main class="trade-window-shell"></main>
+
+  <script type="module" src="./trade_window.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+StockMonitor
+Copyright 2026 mihua-an
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+Third-party software it ships, and the licenses it is shipped under, are listed in THIRD_PARTY_NOTICES.md.
+
+config/market_holidays.json lists market holidays taken from the Taiwan Stock Exchange's open data (openapi.twse.com.tw).

@@ -1,0 +1,240 @@
+/* The monitor event feed: filters, date selector and its table. */
+
+.event-feed-date-caret {
+  flex: 0 0 auto;
+  color: var(--slate-400);
+  font-size: 10px;
+  transition: transform .12s ease;
+}
+
+.event-feed-date-picker.open .event-feed-date-caret {
+  transform: rotate(180deg);
+}
+
+.event-feed-date-menu {
+  padding: 3px;
+  border: 1px solid var(--blue-700x-10);
+  border-radius: 5px;
+  background: var(--surface-panel);
+  box-shadow: 0 10px 24px var(--black-a38);
+}
+
+/* At home in the picker: under the button, its right edge on the button's. */
+.event-feed-date-picker > .event-feed-date-menu {
+  position: absolute;
+  top: calc(100% + 1px);
+  right: 0;
+  width: 132px;
+  max-width: min(180px, 60vw);
+  z-index: 80;
+}
+
+.event-feed-date-menu[hidden] {
+  display: none;
+}
+
+.event-feed-date-list {
+  max-height: 190px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.event-feed-date-option {
+  display: block;
+  width: 100%;
+  height: 27px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--blue-200x-7);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.event-feed-date-option:hover {
+  background: var(--surface-tab-active);
+  color: var(--white);
+}
+
+.event-feed-date-option.active {
+  background: var(--sky-800x-7);
+  color: var(--white);
+  font-weight: 800;
+}
+
+/* Replay event date is a right-side tool, not a boxed control.  The host owns
+ * the single boundary divider; the button itself has no surrounding frame. */
+.event-feed-date-picker {
+  position: relative;
+  z-index: 12;
+  flex: 0 0 112px;
+  width: 112px;
+  min-width: 112px;
+  max-width: 112px;
+  height: 100%;
+  box-sizing: border-box;
+  border-left: 1px solid var(--pane-border);
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 0;
+  background: var(--surface-panel);
+}
+
+.event-feed-date-button {
+  height: 30px;
+  color: var(--slate-50);
+  font-family: Consolas, "Microsoft JhengHei", monospace;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0 7px;
+  width: 100%;
+  min-width: 100%;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  cursor: pointer;
+  text-align: left;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.event-feed-date-button:hover,
+.event-feed-date-button:focus-visible {
+  background: var(--slate-800);
+}
+
+/* The replay date menu portalled above card/title stacking contexts, where event_feed_component.js places it. */
+.event-feed-date-menu.event-feed-date-menu-portal {
+  max-width: min(180px, 60vw);
+  position: fixed;
+  z-index: var(--z-portal-menu);
+  top: var(--event-feed-date-menu-top);
+  left: var(--event-feed-date-menu-left);
+  width: var(--event-feed-date-menu-width);
+  margin: 0;
+  pointer-events: auto;
+}
+
+.event-feed-table tbody tr {
+  height: var(--row-height-event);
+}
+
+.event-feed-table tbody td {
+  height: var(--row-height-event);
+  box-sizing:border-box;
+}
+
+
+.event-feed-table th:first-child,
+.event-feed-table td:first-child {
+  white-space: nowrap;
+}
+
+.event-feed-time {
+  color: var(--blue-300x-3);
+  font-family: Consolas, "Microsoft JhengHei", monospace;
+}
+
+.event-feed-name {
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.event-feed-info {
+  max-width: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 900;
+}
+
+/* The event text's tokens: a limit-aware up / down / neutral colour. */
+.event-feed-token {
+  font-weight: 900;
+}
+
+.event-feed-token.up {
+  color: var(--price-up-color);
+}
+
+.event-feed-token.down {
+  color: var(--price-down-color);
+}
+
+.event-feed-token.neutral {
+  color: var(--blue-50x);
+}
+
+/* 歷史事件 (mode-replay): a panel-width table (data-grid-x="hidden": vertical scrolling only). */
+.event-feed.mode-replay .event-feed-table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: 100%;
+  overscroll-behavior-x: none;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.event-feed.mode-replay .event-feed-table {
+  max-width: 100%;
+  table-layout: fixed;
+  box-sizing: border-box;
+}
+
+.event-feed.mode-replay .event-feed-table :is(th, td) {
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.event-feed.mode-replay .event-feed-table :is(th, td):first-child {
+  text-overflow: clip;
+}
+
+.event-feed.mode-replay :is(.event-feed-info, .event-feed-name) {
+  max-width: none;
+}
+
+.event-feed-table th {
+  color: var(--slate-500);
+  border-bottom-color: var(--pane-border);
+  font-weight: 600;
+}
+
+/* ===== Replay event date picker + three-scope trade history ===== */
+/* A record-panel-filter-row the date menu opens out of, above the table. */
+.event-feed-filter-row {
+  overflow: visible;
+  position: relative;
+  z-index: 7;
+}
+
+/* Both axes scroll (the table is at least 640px wide); 歷史事件 (mode-replay, above) scrolls vertically only. */
+.event-feed-table-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.event-feed-table {
+  min-width: 640px;
+  width: 100%;
+}
+
+.event-feed-table th,
+.event-feed-table td {
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}

@@ -1,0 +1,506 @@
+/* The product (quote) list: its table, columns, sort glyphs, page selector and column settings. */
+
+/* A list too narrow for its table: only the cards (features/realtime/components/product_cards.js). */
+.product-list-cards {
+  display: none;
+}
+
+.product-list[data-list-view="cards"] .product-list-header,
+.product-list[data-list-view="cards"] .product-list-table-wrap {
+  display: none;
+}
+
+.product-list[data-list-view="cards"] .product-list-cards {
+  display: block;
+  height: 100%;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.product-list-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+
+.product-list-table td {
+  padding: 5px 10px;
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+/* Both provider product components share this semantic width contract. Futu's
+ * ComponentHost does not always carry realtime-product-panel, which would
+ * let its intrinsic table width collapse to the left. */
+.product-list .product-list-table-wrap,
+.product-list-table-wrap:has(> [data-role="product-list-table"]) {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+[data-role="product-list-table"] {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  table-layout: fixed;
+}
+
+/* 商品列表's tool buttons (⚙ 欄位設定, ✎ 編輯商品頁) and 成交明細's ⚙: one small round icon button. */
+.product-list-tool-btn {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--slate-400);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.product-list-tool-btn:hover {
+  background: var(--slate-800);
+  color: var(--slate-100);
+}
+
+.product-list {
+  position:relative;
+  min-width:0;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  background:var(--surface-panel);
+}
+
+.product-list-table th,
+.product-list-table td {
+  white-space:nowrap;
+  text-overflow:ellipsis;
+}
+
+/* A cell clips its text, except the one holding a row's 現／月份 picker: the picker opens over the cells beside it. */
+.product-list-table th,
+.product-list-table td:not(.has-picker) {
+  overflow:hidden;
+}
+
+/* The picker is read after the rows are drawn: its cell has no vertical padding, so the pill fits inside the row pitch
+ * the list already scrolls by and no row ends up taller than the others. */
+.product-list-table tbody td.has-picker {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* 商品列表分頁：項目過多時保留可見的水平 scrollbar，不再將分頁截斷。 */
+.product-list-header > .product-list-pages {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 31px;
+  min-height: 31px;
+  align-items: flex-start;
+  overflow: clip;
+  scrollbar-width: none;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.product-list-header > .product-list-pages > .product-list-pages-content {
+  display: flex;
+  align-items: stretch;
+  width: max-content;
+  min-width: max-content;
+  height: 31px;
+  transition: transform 80ms linear;
+  will-change: transform;
+}
+
+.product-list-header > .product-list-tools {
+  height: 31px;
+  margin-left: auto;
+  padding: 0 5px;
+  border-left: 1px solid var(--blue-700x-7);
+  background: var(--surface-panel);
+}
+
+.product-list-header > .product-list-pages-rail {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  z-index: 4;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.product-list-header > .product-list-pages-rail[hidden] {
+  display: none;
+}
+
+.product-list-header .product-list-pages-thumb {
+  height: 100%;
+  min-width: 28px;
+  border-radius: inherit;
+  background: var(--app-scrollbar-thumb);
+  cursor: ew-resize;
+  touch-action: none;
+  will-change: transform;
+}
+
+.product-list-header .product-list-pages-thumb:hover {
+  background: var(--app-scrollbar-thumb-hover);
+}
+
+.product-list-table tbody tr.active {
+  box-shadow: inset 2px 0 0 var(--blue-400);
+}
+
+/* The column settings panel (core/components/column_settings_editor.js), shared by every table with a ⚙. */
+.product-list-column-settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-settings-overlay);
+  background: var(--black-a16);
+}
+
+.product-list-column-settings-overlay[hidden] {
+  display: none;
+}
+
+/* Placed beside the component whose ⚙ opened it (column_settings_editor.js placeBeside). */
+.product-list-column-settings-panel {
+  position: absolute;
+  top: var(--column-settings-top);
+  left: var(--column-settings-left);
+  width: 300px;
+  max-height: min(650px, calc(100vh - 16px));
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-panel);
+  border: 1px solid var(--blue-800x-20);
+  border-radius: 12px;
+  box-shadow: 0 18px 44px var(--black-a42);
+  overflow: hidden;
+}
+
+.product-list-column-settings-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 10px 9px 14px;
+}
+
+.product-list-column-settings-icon {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: var(--blue-600-a20);
+  color: var(--blue-400x-2);
+  font-size: 12px;
+}
+
+.product-list-column-settings-head b {
+  flex: 1;
+  color: var(--blue-50x-3);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.product-list-column-settings-close {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: var(--slate-800);
+  color: var(--slate-400);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.product-list-column-settings-close:hover {
+  background: var(--slate-700);
+  color: var(--blue-50x-3);
+}
+
+.product-list-column-settings-list {
+  display: grid;
+  gap: 3px;
+  padding: 2px 8px 6px;
+  overflow-y: auto;
+}
+
+/* A row is the column's tick: the whole row toggles it. */
+.product-list-column-setting-row {
+  position: relative;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 6px 0 9px;
+  border-radius: 9px;
+  background: var(--blue-900x-11);
+  color: var(--blue-300x-2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.product-list-column-setting-row:hover {
+  background: var(--blue-900x-14);
+}
+
+.product-list-column-setting-row.selected {
+  background: var(--blue-600-a10);
+  color: var(--blue-100x-4);
+}
+
+/* A column its source has no figure for (Futu 成交明細's 總量): greyed out, marked 無資料, never ticked. */
+.product-list-column-setting-row.disabled {
+  background: transparent;
+  color: var(--slate-500);
+  cursor: not-allowed;
+}
+
+.product-list-column-setting-row.dragging {
+  opacity: .42;
+}
+
+.product-list-column-setting-row.is-drag-over {
+  box-shadow: inset 0 2px 0 var(--sky-500x-5);
+}
+
+/* The real checkbox stays for the keyboard and the change event; the round mark beside it is what shows. */
+.product-list-column-check-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.product-list-column-check {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  border: 1.5px solid var(--blue-500x-3);
+  border-radius: 50%;
+}
+
+.product-list-column-check svg {
+  width: 9px;
+  height: 9px;
+  fill: none;
+  stroke: var(--white);
+  stroke-width: 2.4;
+  opacity: 0;
+}
+
+.product-list-column-setting-row.selected .product-list-column-check {
+  border-color: var(--blue-500x);
+  background: var(--blue-500x);
+}
+
+.product-list-column-setting-row.selected .product-list-column-check svg {
+  opacity: 1;
+}
+
+/* The last shown column: its tick is held (it cannot be unticked). */
+.product-list-column-setting-row[data-column-locked] .product-list-column-check {
+  box-shadow: 0 0 0 3px var(--blue-600-a20);
+}
+
+.product-list-column-setting-row.disabled .product-list-column-check {
+  border-style: dashed;
+  border-color: var(--blue-700x-9);
+}
+
+.product-list-column-check-input:focus-visible + .product-list-column-check {
+  outline: 2px solid var(--blue-500x);
+  outline-offset: 2px;
+}
+
+.product-list-column-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.product-list-column-tag {
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--slate-800);
+  color: var(--slate-500);
+  font-size: 10px;
+}
+
+.product-list-column-drag {
+  width: 18px;
+  height: 22px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--slate-500);
+  cursor: grab;
+}
+
+.product-list-column-drag svg {
+  width: 10px;
+  height: 14px;
+  fill: currentColor;
+}
+
+.product-list-column-setting-row:hover .product-list-column-drag {
+  color: var(--blue-300x-2);
+}
+
+.product-list-column-drag:active {
+  cursor: grabbing;
+}
+
+.product-list-column-settings-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--blue-800x-20);
+}
+
+.product-list-column-settings-cancel,
+.product-list-column-settings-done {
+  height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.product-list-column-settings-cancel {
+  background: var(--slate-800);
+  color: var(--blue-100x-4);
+}
+
+.product-list-column-settings-cancel:hover {
+  background: var(--slate-700);
+}
+
+.product-list-column-settings-done {
+  background: var(--blue-500x);
+  color: var(--white);
+}
+
+.product-list-column-settings-done:hover {
+  background: var(--sky-500x-5);
+}
+
+/* The fixed right action rail owns exactly one divider at its left boundary. */
+/* Realtime 商品頁：左側 tab rail is the only scrollable region.  Settings /
+ * edit stay pinned on the right no matter how many watch pages exist. */
+/* ===== 商品列表 Title 設定（草稿 / 完成後才儲存） ===== */
+/* ⚙ and ✎: in a slot they are items of the slot's tab row (like every component's controls); without a slot they
+   end the list's own page tabs, behind a divider. */
+.product-list-tools {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Moomoo US quote domain: independent function pages share the standard tab language. */
+
+.product-list>.product-list-header {
+  display:flex;
+}
+
+/* Custom watch pages could not be read: say so next to the tabs instead of showing none. */
+.product-list-pages-error {
+  align-self: center;
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--status-error);
+  white-space: nowrap;
+}
+
+/* Each product row paints on its own (a positioned row is its own paint layer): a quote changing one row re-records
+ * that row, the others are reused as painted. `contain: paint` meant this but does nothing on a table row. Render
+ * bench (user 11-11): paint 2.34 -> 1.95 s per 12 s at the opening-burst rate. */
+.product-list-table tbody tr[data-realtime-code] {
+  position: relative;
+  cursor: pointer;
+}
+
+.product-list-table tbody tr {
+  cursor: pointer;
+  height: var(--row-height-watchlist);
+}
+
+.product-list-table tbody td {
+  height: var(--row-height-watchlist);
+  box-sizing: border-box;
+}
+
+.product-list-table tbody tr.product-list-selected-row td {
+  outline-color: var(--blue-400-a95);
+}
+
+/* The selected row's background, on every cell but a limit price: that cell keeps base.css's red / green box. */
+.product-list-table tbody tr.product-list-selected-row td:not(.limit-up-price, .limit-down-price) {
+  background: var(--row-active-bg);
+}
+
+/* The visible page rail is the custom one; the tab strip itself never paints a native scrollbar. */
+.product-list-pages {
+  overflow-x: clip;
+  -ms-overflow-style: none;
+}
+
+.product-list-table-wrap {
+  flex:1;
+  min-height:0;
+}
+
+.product-list-table th {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--pane-border);
+  color: var(--slate-500);
+  font-weight: 600;
+}
+
+.product-list-table > thead > tr > th {
+  overflow: visible;
+}
+
+.product-list-header {
+  height: 35px;
+  min-height: 35px;
+  position: relative;
+}

@@ -1,0 +1,174 @@
+{
+  "name": "stock-monitor-shioaji-desktop",
+  "version": "0.1.0",
+  "description": "Shioaji Taiwan Stock Monitor Desktop App",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mihua-an/StockMonitor.git"
+  },
+  "main": "ui/main/main.js",
+  "engines": {
+    "node": "24.18.0"
+  },
+  "scripts": {
+    "start": "node scripts/launch_desktop.js",
+    "dev": "node scripts/launch_desktop.js",
+    "controller": "node health/main.js",
+    "launch": "node scripts/launch_desktop.js",
+    "electron-only": "electron .",
+    "check": "python scripts/diagnostics/check_offline.py",
+    "check:python": "python scripts/diagnostics/check_offline.py --only python",
+    "check:js": "python scripts/diagnostics/check_offline.py --only javascript",
+    "ci": "python scripts/tooling/run_ci_locally.py",
+    "check:audit-packaging": "node --test tests/audit_packaging.cjs",
+    "release": "python scripts/tooling/build_release.py",
+    "release:dir": "python scripts/tooling/build_release.py --dir",
+    "dist": "electron-builder --win --publish=never",
+    "dist:dir": "electron-builder --win --dir --publish=never"
+  },
+  "devDependencies": {
+    "acorn": "8.19.0",
+    "acorn-walk": "8.3.5",
+    "electron": "44.4.3",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "beforePack": "scripts/tooling/audit_packaging.cjs",
+    "asarUnpack": [
+      "config/js/**/*",
+      "health/**/*",
+      "service/platform/js/**/*",
+      "config/*.json"
+    ],
+    "appId": "com.stockmonitor.desktop",
+    "productName": "StockMonitor",
+    "directories": {
+      "output": "dist",
+      "buildResources": "packaging"
+    },
+    "files": [
+      "package.json",
+      "ui/main/**/*",
+      "ui/renderer/**/*",
+      "!**/*.map",
+      "config/js/**/*",
+      "config/*.json",
+      "service/platform/js/**/*",
+      "health/**/*.js",
+      "!**/node_modules/.cache/**",
+      "!**/tests/**"
+    ],
+    "extraResources": [
+      {
+        "from": "LICENSE",
+        "to": "LICENSE"
+      },
+      {
+        "from": "NOTICE",
+        "to": "NOTICE"
+      },
+      {
+        "from": "THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.md"
+      },
+      {
+        "from": "packaging/licenses",
+        "to": "licenses"
+      },
+      {
+        "from": "main.py",
+        "to": "app-runtime/main.py"
+      },
+      {
+        "from": "api",
+        "to": "app-runtime/api",
+        "filter": [
+          "**/*.py"
+        ]
+      },
+      {
+        "from": "backend",
+        "to": "app-runtime/backend",
+        "filter": [
+          "**/*.py"
+        ]
+      },
+      {
+        "from": "config",
+        "to": "app-runtime/config",
+        "filter": [
+          "**/*.py",
+          "**/*.json"
+        ]
+      },
+      {
+        "from": "service",
+        "to": "app-runtime/service",
+        "filter": [
+          "**/*.py"
+        ]
+      },
+      {
+        "from": "requirements",
+        "to": "app-runtime/requirements",
+        "filter": [
+          "*.lock",
+          "environment-evidence.json",
+          "toolchain-evidence.json"
+        ]
+      },
+      {
+        "from": "native/market_runtime/target/release/market_runtime_daemon.exe",
+        "to": "native/market_runtime_daemon.exe"
+      },
+      {
+        "from": "native/analysis_runtime/target/release/analysis_runtime.exe",
+        "to": "native/analysis_runtime.exe"
+      },
+      {
+        "from": "packaging/vc_runtime",
+        "to": "native",
+        "filter": [
+          "*.dll"
+        ]
+      },
+      {
+        "from": "packaging/launch_stock_monitor.ps1",
+        "to": "launch_stock_monitor.ps1"
+      },
+      {
+        "from": "packaging/install_provider_sdk.ps1",
+        "to": "install_provider_sdk.ps1"
+      },
+      {
+        "from": "packaging/installed_flavor.json",
+        "to": "installed_flavor.json"
+      },
+      {
+        "from": "packaging/python",
+        "to": "app-runtime/python",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "include": "packaging/installer.nsh",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

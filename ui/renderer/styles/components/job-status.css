@@ -1,0 +1,439 @@
+/* job-status: a background job's state in the settings look -- its steps as a bar of dots (done ✓, the running one
+   blue and pulsing), a progress bar, its figures one per row, and its 執行紀錄 under a row of its own that opens and
+   closes (each step's lines, a running phase's bar). Shared by 模型中心's 訓練狀態 and 資料中心's 收盤整理, placed in a
+   settings-group card (js/core/job_status_view.js builds the markup). */
+/* The bar spans the card: the first three steps share the width, the last one sits at its right edge (its own
+   column only as wide as its words, its dot and words right-aligned). */
+.job-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  padding: 16px 16px 14px;
+}
+
+.job-step {
+  position: relative;
+  min-width: 0;
+  padding-top: 30px;
+}
+
+/* The line through the dots: from the first dot's centre to the last one's; green up to a finished step. The last
+   step's own piece is the end of the line coming into its dot, green once the step before it is done. */
+.job-step::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--slate-700);
+}
+
+.job-step:first-child::before {
+  left: 11px;
+}
+
+.job-step:last-child {
+  text-align: right;
+}
+
+.job-step:last-child::before {
+  right: 11px;
+}
+
+.job-step.done::before,
+.job-step.done + .job-step:last-child::before {
+  background: var(--status-ok);
+}
+
+.job-step-n {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--slate-700);
+  color: var(--slate-300);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.job-step:last-child .job-step-n {
+  right: 0;
+  left: auto;
+}
+
+.job-step.done .job-step-n {
+  background: var(--status-ok);
+  color: var(--white);
+}
+
+.job-step.now .job-step-n {
+  background: var(--blue-400);
+  color: var(--white);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue-400) 25%, transparent);
+  animation: job-step-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes job-step-pulse {
+  50% {
+    box-shadow: 0 0 0 7px color-mix(in srgb, var(--blue-400) 10%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .job-step.now .job-step-n {
+    animation: none;
+  }
+}
+
+.job-step-h {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--slate-100);
+}
+
+.job-step.todo .job-step-h {
+  color: var(--slate-400);
+}
+
+.job-step-v {
+  margin-top: 2px;
+  padding-right: 12px;
+  font-size: 12px;
+  color: var(--slate-400);
+}
+
+/* The running step's own share, under its words. */
+.job-step-bar {
+  height: 3px;
+  margin: 6px 12px 0 0;
+  border-radius: 2px;
+  background: var(--slate-800);
+  overflow: hidden;
+}
+
+.job-step:last-child .job-step-v {
+  padding: 0 0 0 12px;
+}
+
+.job-step:last-child .job-step-bar {
+  margin: 6px 0 0 12px;
+}
+
+.job-step:not(.now) .job-step-bar {
+  display: none;
+}
+
+.job-step-bar i {
+  display: block;
+  height: 100%;
+  background: var(--blue-400);
+  transition: width 0.4s;
+}
+
+.job-progress {
+  padding: 0 16px 12px;
+}
+
+.job-progress[hidden] {
+  display: none;
+}
+
+.job-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--slate-800);
+  overflow: hidden;
+}
+
+/* A thin bar (a job's progress, 模型中心's feature weights); the fill's colour and motion are the i's own class. */
+.job-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+}
+
+.job-bar-fill {
+  background: var(--blue-400);
+  transition: width 0.4s;
+}
+
+/* The figures: settings-item rows, its name on the left and its value at the end. */
+.job-stats[hidden] {
+  display: none;
+}
+
+/* The line above each figure, the first too (settings.css draws it between rows only); it starts after the inset. */
+.job-stats > div::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 0;
+  height: 1px;
+  background: var(--pane-border);
+  pointer-events: none;
+}
+
+.job-stats small {
+  flex: 1;
+  min-width: 0;
+  color: var(--slate-100);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.job-stats b {
+  color: var(--slate-300);
+  font-size: 14px;
+  font-weight: 400;
+  text-align: right;
+}
+
+/* A figure that reports a failure. */
+.job-stats b.error {
+  color: var(--status-error);
+}
+
+/* 執行紀錄's row: a record-expand-chevron that turns while the log below it is open. */
+.job-log-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  /* The line above the row starts 16 px in, as the card's separators do. It is a background image, not an inset
+     shadow over the first 16 px, so a hover colour fills the whole row. */
+  background: linear-gradient(var(--pane-border), var(--pane-border)) right top / calc(100% - 16px) 1px no-repeat transparent;
+  color: var(--slate-100);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.job-log-toggle:hover {
+  background-color: var(--row-hover-bg);
+}
+
+.job-log-toggle b {
+  font-weight: 600;
+}
+
+.job-log-toggle-note {
+  color: var(--slate-400);
+  font-size: 13px;
+}
+
+.job-log-pane {
+  padding: 4px 16px 14px;
+  background: var(--surface-subrow);
+}
+
+.job-log-pane[hidden] {
+  display: none;
+}
+
+/* column-reverse over one child: the box is anchored at its bottom, where the newest line is. */
+.job-log {
+  display: flex;
+  flex-direction: column-reverse;
+  max-height: var(--job-log-max-height, 320px);
+  overflow-y: auto;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--slate-900);
+}
+
+/* Its full height, never shrunk to the box: the box scrolls instead. */
+.job-log-list {
+  flex: none;
+}
+
+.job-log-group + .job-log-group,
+.job-log-group + .job-log-row {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--blue-800x-8);
+}
+
+.job-log-head {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 8px 2px;
+  font-size: 13px;
+}
+
+.job-log-step {
+  color: var(--slate-500x-2);
+  font-size: 11px;
+}
+
+.job-log-name {
+  color: var(--blue-50x);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.job-log-group.done .job-log-name::before {
+  content: "✓ ";
+  color: var(--status-ok);
+}
+
+.job-log-group.now .job-log-name::before {
+  content: "● ";
+  color: var(--sky-400);
+}
+
+.job-log-group.warn .job-log-name::before {
+  content: "! ";
+  color: var(--amber-500);
+}
+
+.job-log-group.todo {
+  opacity: 0.55;
+}
+
+.job-log-row {
+  display: grid;
+  grid-template-columns: 62px 16px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.job-log-row.now {
+  background: var(--sky-400-a08);
+}
+
+.job-log-time {
+  color: var(--slate-500x-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.job-log-icon {
+  text-align: center;
+}
+
+.job-log-row.done .job-log-icon {
+  color: var(--status-ok);
+}
+
+.job-log-row.now .job-log-icon {
+  color: var(--sky-400);
+}
+
+.job-log-row.warn .job-log-icon,
+.job-log-row.warn .job-log-text {
+  color: var(--amber-500);
+}
+
+.job-log-row.error .job-log-icon,
+.job-log-row.error .job-log-text {
+  color: var(--status-error);
+}
+
+.job-log-text {
+  color: var(--blue-200x-3);
+  overflow-wrap: anywhere;
+}
+
+.job-log-row.now .job-log-text {
+  color: var(--blue-50x);
+}
+
+.job-log-dur {
+  color: var(--slate-400);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* What a computed date became (events replayed → samples), after its text. */
+.job-log-count {
+  margin-left: 8px;
+  color: var(--slate-400);
+  font-family: Consolas, "Microsoft JhengHei", monospace;
+  font-size: 12px;
+}
+
+/* The pip-style lines under the date being computed: the phase list, then the current phase's bar and figures. */
+.job-log-pip {
+  grid-column: 3 / 5;
+  margin: 2px 0 4px;
+  color: var(--blue-200x-3);
+  font-family: Consolas, "Microsoft JhengHei", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.job-log-phases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  color: var(--slate-500x-2);
+}
+
+.job-log-phase.done {
+  color: var(--status-ok);
+}
+
+.job-log-phase.done::before {
+  content: "✓ ";
+}
+
+.job-log-phase.now {
+  color: var(--sky-400);
+}
+
+.job-log-phase.now::before {
+  content: "▸ ";
+}
+
+.job-log-bar-line {
+  display: grid;
+  grid-template-columns: 6ch minmax(48px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin-top: 2px;
+}
+
+.job-log-bar {
+  height: 8px;
+  overflow: hidden;
+  background: var(--slate-800);
+  border-radius: 4px;
+}
+
+.job-log-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--sky-400);
+}
+
+/* pre: the figures are spaced like a command line. */
+.job-log-figs {
+  white-space: pre;
+  font-variant-numeric: tabular-nums;
+}
+
+.job-log-figs > b {
+  color: var(--blue-50x);
+  font-weight: 400;
+}
+
+.job-log-empty {
+  padding: 6px 8px;
+  color: var(--slate-500x-2);
+  font-size: 13px;
+}

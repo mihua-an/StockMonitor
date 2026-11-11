@@ -1,0 +1,305 @@
+/* Element defaults and app-wide primitives: reset, typography, buttons, badges, state colours (price up / down / flat, limit up / down), focus rings, keyframes. */
+
+body {
+  margin: 0;
+  font-family: "Microsoft JhengHei", "Segoe UI", sans-serif;
+  /* Numbers line up in every column and do not jitter as they change: set once, inherited everywhere. */
+  font-variant-numeric: tabular-nums lining-nums;
+  background: var(--surface-app);
+  color: var(--gray-200);
+}
+
+/* ===== Text ===== */
+h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.muted {
+  color: var(--gray-400);
+}
+
+/* A button without a variant is the neutral one: with no background it showed the platform's white face under the
+   white label (設定 → 還原預設版面 was invisible). */
+.btn {
+  border: none;
+  background: var(--gray-700);
+  color: var(--white);
+  padding: 10px 14px;
+  /* One size on every page: a button's height does not follow the page's font. */
+  font-size: 13px;
+  line-height: 18px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+/* The compact button: action rows under a settings card and small windows' footers carry it themselves (a container
+   does not resize the buttons in it). Heights: .btn 38px, .btn.is-compact 32px, .small-btn 28px. */
+.btn.is-compact {
+  padding: 7px 14px;
+}
+
+.btn.primary {
+  background: var(--blue-600);
+}
+
+.btn.secondary {
+  background: var(--gray-700);
+}
+
+.btn.danger {
+  background: var(--status-error);
+}
+
+.btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+/* A disabled button reads as one: faded, no hand (it looked like a live one, e.g. 連接埠's 2. 儲存 before 1. 檢查). */
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* A dangerous action beside the main one in an action bar (清除金鑰): red outline, not a filled red button. */
+.btn.is-danger {
+  background: transparent;
+  color: var(--status-error);
+  box-shadow: inset 0 0 0 1px var(--status-error);
+}
+
+/* A small pill group, the chosen one filled (走勢's session and 疊圖 choices, 大單流向's 累計 / 分時). The component
+   places it; the buttons carry pill-switch-btn and the chosen one .active. */
+.pill-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 12px;
+  background: var(--slate-800);
+}
+
+.pill-switch[hidden] {
+  display: none;
+}
+
+.pill-switch-btn {
+  height: 20px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--slate-400);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pill-switch-btn:hover {
+  color: var(--slate-100);
+}
+
+.pill-switch-btn.active {
+  background: var(--slate-600);
+  color: var(--white);
+}
+
+/* Text that reports a failure where it is shown (a table's error row). */
+.danger-text {
+  color: var(--status-error);
+}
+
+.small-btn {
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 16px;
+  border-radius: 8px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th,
+td {
+  padding: 10px;
+  border-bottom: 1px solid var(--gray-800);
+  white-space: nowrap;
+}
+
+th {
+  text-align: left;
+  color: var(--slate-300);
+}
+
+.empty {
+  text-align: center;
+  padding: 24px;
+}
+
+/* At zero weight: a table's own cell colour (data-grid.css :where(.data-table) td ...) keeps its empty row's text. */
+:where(.empty) {
+  color: var(--gray-400);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.status-dot.online {
+  background: var(--status-ok);
+}
+
+.status-dot.offline {
+  background: var(--status-error);
+}
+
+.status-dot.degraded {
+  background: var(--yellow-500);
+}
+
+/* 漲 / 跌 / 平 numbers app-wide (prices and signed account values): the colour at regular weight; components do not
+ * re-weight them (the one exception is the orderbook's price, which is bold on its own class). */
+.price-up {
+  color: var(--price-up-color);
+  font-weight: 400;
+}
+
+.price-down {
+  color: var(--price-down-color);
+  font-weight: 400;
+}
+
+/* A model's up / down probability: the price colours, without the weight. */
+.prediction-up {
+  color: var(--price-up-color);
+}
+
+.prediction-down {
+  color: var(--price-down-color);
+}
+
+.price-flat {
+  color: var(--price-flat-color);
+  font-weight: 400;
+}
+
+/* 量變 (utility.js formatVolumeChange): the percentage beside a volume. */
+.volume-change {
+  font-weight: 800;
+  font-family: Consolas, "Microsoft JhengHei", monospace;
+  white-space: nowrap;
+}
+
+.volume-change.up {
+  color: var(--price-up-color);
+}
+
+.volume-change.down {
+  color: var(--price-down-color);
+}
+
+.volume-change.neutral {
+  color: var(--slate-400);
+}
+
+/* 漲跌停：現價格底色直接標示，白字確保可讀性。 */
+.limit-up-price {
+  background: var(--limit-up-bg);
+  color: var(--white);
+  font-weight: 900;
+}
+
+.limit-down-price {
+  background: var(--limit-down-bg);
+  color: var(--white);
+  font-weight: 900;
+}
+
+/* The spinner of every loading state (a primitive several components share). */
+@keyframes loading-spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-spinner {
+  display: inline-block;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--sky-200x-a28);
+  border-top-color: var(--sky-400);
+  border-radius: 50%;
+  animation: loading-spin .8s linear infinite;
+}
+
+.loading-spinner.is-large {
+  width: 22px;
+  height: 22px;
+  border-width: 3px;
+}
+
+/* ===== Unified application scrollbar =====
+ * Page controls remain exclusive to TickDetails' .page-rail-compact. These
+ * rules only unify the native scrollbar appearance everywhere else. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--app-scrollbar-thumb) transparent;
+}
+
+/* The new-row wash shared by 成交明細, 事件列表 and the workspace trades (.row-wash, set by core/row_wash.js on any list's
+ * rows, so it is an app-wide primitive like .lined-rows rather than one list's class), painted on the cells: opaque (the blue mixed onto the list's
+ * surface), so every row arriving washes the same; fading out shows the row again.
+ * row_wash.js steps --row-wash from 1 (the full wash) down to 0 on one clock for every list; a CSS animation per row
+ * kept Chromium restyling and repainting every frame while rows kept arriving. Cell backgrounds are painted on the pixel
+ * grid, so neighbouring rows meet without a seam (a layer over each row sat on half-pixel edges at fractional zoom). */
+tr.row-wash > td {
+  background-color: color-mix(in srgb, color-mix(in srgb, var(--sky-500x-4) 30%, var(--surface-panel)) calc(var(--row-wash, 0) * 100%), transparent);
+}
+
+/* ===== Inputs: the shared text field (.search), on every page and window ===== */
+.search {
+  /* A field sized by its container (width: 100%) includes its padding and border: content-box widths pushed every
+     input 26px past its grid cell, so neighbouring fields overlapped (新增交易). */
+  box-sizing: border-box;
+  background: var(--slate-900);
+  border: 1px solid var(--slate-700);
+  color: var(--white);
+  border-radius: 10px;
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.search:focus {
+  outline: none;
+  border-color: var(--blue-600);
+}
+
+/* Keyboard focus (last on purpose): a control reached by keyboard always shows where focus is, whatever its own
+   rules do with `outline` for mouse focus. Pointer focus keeps each control's own look (:focus-visible only).
+   A control that draws its own keyboard-focus mark says so with data-focus-ring="own" (one mark, never two). */
+:root :is(button, input, select, textarea, a[href], summary, [tabindex]:not([tabindex="-1"]), [contenteditable="true"]):not([data-focus-ring="own"]):focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+:where(tbody > tr.active, tbody > tr.selected) {
+  background: var(--row-active-bg);
+}
+
+/* Not shown, its space kept (a control that does not apply to the current view). */
+.is-invisible {
+  visibility: hidden;
+}

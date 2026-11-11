@@ -1,0 +1,172 @@
+/* 模擬下單's order ticket (features/realtime/components/order_ticket.js): 價格 and 張數 one under the other, 買進 / 賣出,
+ * what they come to. The same in 模擬帳務's 下單 panel and the popover beside a 買賣報價; its holder gives it the width. */
+
+/* One row per field: its name over 市價 / 改零股 at the left, the − ＋ capsule filling the rest. As tall as the capsule,
+ * so a 190px 下單 panel shows a whole price without taking height from the 買賣報價 above it (user 11-11). */
+.order-ticket-fields {
+  display: grid;
+  gap: 6px;
+  padding: 6px 0 4px;
+}
+
+.order-ticket-field {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.order-ticket-field-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  color: var(--gray-400);
+  font-size: 12px;
+  line-height: 15px;
+  white-space: nowrap;
+}
+
+.order-ticket-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--focus-ring-color);
+  font-size: 11px;
+  line-height: 15px;
+  cursor: pointer;
+}
+
+/* A plain line under a field's name where a link would be (刪改's 剩 2 張, 原 212.5). */
+.order-ticket-field-note {
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.order-ticket-link.active {
+  color: var(--control-selected-fg);
+  text-decoration: underline;
+}
+
+/* − value ＋ in one capsule (Apple's stepper): a soft fill, no lines inside; a pressed − or ＋ shows a round fill. */
+.order-ticket-stepper {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  min-width: 0;
+  padding: 0 2px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--slate-400) 16%, transparent);
+}
+
+.order-ticket-step {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--price-flat-color);
+  font-size: 18px;
+  font-weight: 300;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* Typing in it: the capsule's edge lights (the field has no box of its own). */
+.order-ticket-stepper:focus-within {
+  box-shadow: inset 0 0 0 1px var(--blue-600);
+}
+
+.order-ticket-step:active:not(:disabled) {
+  background: color-mix(in srgb, var(--slate-400) 30%, transparent);
+}
+
+.order-ticket-step:disabled {
+  opacity: .35;
+  cursor: default;
+}
+
+.order-ticket-input {
+  flex: 1;
+  width: 0;
+  min-width: 0;
+  height: 28px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--white);
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+/* 價格's digits against 昨收: above red, below green, equal white. */
+.order-ticket-input.up {
+  color: var(--price-up-color);
+}
+
+.order-ticket-input.down {
+  color: var(--price-down-color);
+}
+
+.order-ticket-input.flat {
+  color: var(--price-flat-color);
+}
+
+.order-ticket-sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 2px 0 0;
+}
+
+.order-ticket-side {
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--control-selected-fg);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.order-ticket-side.buy {
+  background: var(--price-up-color);
+}
+
+.order-ticket-side.sell {
+  background: var(--price-down-color);
+}
+
+/* The same buttons in 刪改: 取消 gray, 確認刪單 the error colour, 確認改價 blue (the app's danger / primary). */
+.order-ticket-side.neutral {
+  background: var(--gray-700);
+}
+
+.order-ticket-side.danger {
+  background: var(--status-error);
+}
+
+.order-ticket-side.primary {
+  background: var(--blue-600);
+}
+
+.order-ticket-side:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+/* 預估金額 and 庫存 (and 額度): on one line while it fits, 庫存 under 預估金額 when the holder is narrow. */
+.order-ticket-facts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 8px;
+  padding: 6px 0 8px;
+  color: var(--gray-400);
+  font-size: 12px;
+  white-space: nowrap;
+}

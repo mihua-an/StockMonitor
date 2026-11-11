@@ -1,0 +1,8 @@
+{
+  "schema": "prediction-horizons-v1",
+  "version": 1,
+  "description": "The ONE authority for model prediction horizons. Prediction horizon is not a feature lookback window, a fixed K-bar period, or the raw minute granularity; those are defined elsewhere. 1 minute is deliberately not an allowed model prediction horizon.",
+  "allowed_minutes": [3, 5, 10, 15, 30],
+  "default_enabled_minutes": [3, 5],
+  "directions": ["up", "down"]
+}

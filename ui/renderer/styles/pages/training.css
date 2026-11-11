@@ -1,0 +1,260 @@
+/* 模型中心: training status, coverage and model cards. */
+
+.training-page-panel {
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Under the title row (.settings-page-head), which the panel keeps at its top: the page's only scroll viewport. */
+.training-scroll-area {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 80px;
+  scrollbar-gutter: stable;
+}
+
+/* ===== Model Center + Retention Console + status diagnostics ===== */
+.model-center-warning {
+  margin-bottom: 12px;
+  display: grid;
+  gap: 5px;
+}
+
+.model-center-warning-row {
+  padding: 7px 10px;
+  border: 1px solid var(--slate-700);
+  border-radius: 6px;
+  background: var(--blue-900x-7);
+  color: var(--slate-300);
+  font-size: 12px;
+}
+
+.model-center-warning-row.warning {
+  border-color: var(--amber-500-a42);
+  color: var(--yellow-400);
+}
+
+.model-center-warning-row.error {
+  border-color: color-mix(in srgb, var(--status-error) 42%, transparent);
+  color: var(--status-error);
+}
+
+.model-center-warning-row.info {
+  border-color: var(--blue-400-a28);
+  color: var(--blue-300);
+}
+
+/* ===== 模型中心 (training.html / pages/training/model_center_view.js): 設定's look, one centred column ===== */
+.mc-wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 24px 60px;
+  box-sizing: border-box;
+}
+
+.mc-subtitle {
+  font-size: 13px;
+  color: var(--slate-400);
+}
+
+/* 上線模型: one tile per prediction, its AUC in one colour over a bar from 0.5 to 1.0. */
+.mc-live-auc.is-none {
+  color: var(--slate-600);
+}
+
+.mc-auc-bar {
+  height: 4px;
+  margin-top: 8px;
+  border-radius: 2px;
+  background: var(--slate-800);
+  overflow: hidden;
+}
+
+.mc-auc-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--status-ok);
+}
+
+/* The tile's badge (settings-badge): under the number, and wrapping in a narrow tile instead of running out of it. */
+.mc-live-kind {
+  flex-wrap: wrap;
+  margin-top: 8px;
+  white-space: normal;
+}
+
+/* A failure (a damaged record): the warning colour. */
+.mc-weak {
+  color: var(--amber-400);
+}
+
+/* 每個預測的兩種模型: a row per prediction that opens to both models and the baseline. */
+.mc-pair {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+
+.mc-pair-detail + .mc-pair {
+  box-shadow: inset 0 1px 0 var(--pane-border);
+}
+
+.mc-pair-figure {
+  min-width: 96px;
+  color: var(--slate-400);
+  font-size: 13px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.mc-pair-figure b {
+  color: var(--slate-300);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.mc-pair-detail {
+  padding: 4px 16px 14px;
+  background: var(--surface-subrow);
+}
+
+.mc-pair-detail[hidden] {
+  display: none;
+}
+
+.mc-pair-list {
+  border-radius: 10px;
+  background: var(--slate-900);
+  overflow: hidden;
+}
+
+.mc-pair-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 70px 80px;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: 13px;
+  color: var(--slate-100);
+  font-variant-numeric: tabular-nums;
+}
+
+.mc-pair-row + .mc-pair-row {
+  box-shadow: inset 0 1px 0 var(--pane-border);
+}
+
+.mc-pair-row > span:nth-child(n+2) {
+  text-align: right;
+  color: var(--slate-300);
+}
+
+.mc-pair-row.head {
+  min-height: 30px;
+  color: var(--slate-400);
+  font-size: 12px;
+}
+
+.mc-pair-kind {
+  font-weight: 600;
+}
+
+.mc-pair-row.rejected,
+.mc-pair-row.baseline {
+  color: var(--slate-400);
+}
+
+.mc-pair-note {
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--slate-400);
+}
+
+.mc-best {
+  font-weight: 700;
+}
+
+/* 特徵權重: the two live models of one horizon, each its top features by weight. */
+.mc-imp-title {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 16px 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--slate-100);
+}
+
+.mc-imp-method {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--slate-400);
+}
+
+.mc-imp-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 150px) minmax(0, 1fr) 64px;
+  align-items: center;
+  gap: 10px;
+  min-height: 26px;
+  padding: 0 16px;
+  font-size: 13px;
+}
+
+.mc-imp-rank {
+  color: var(--slate-500);
+  text-align: right;
+}
+
+.mc-imp-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--slate-200);
+}
+
+.mc-imp-fill {
+  background: var(--slate-300);
+  transition: width .38s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.mc-imp-row.up .mc-imp-fill {
+  background: var(--price-up-color);
+}
+
+.mc-imp-row.down .mc-imp-fill {
+  background: var(--price-down-color);
+}
+
+.mc-imp-value {
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--slate-100);
+}
+
+.mc-imp-row.up .mc-imp-value {
+  color: var(--price-up-color);
+}
+
+.mc-imp-row.down .mc-imp-value {
+  color: var(--price-down-color);
+}
+
+.mc-imp-empty,
+.mc-imp-note {
+  padding: 6px 16px 12px;
+  font-size: 12px;
+  color: var(--slate-500);
+}
+
+/* The countdown to the next run ticks every second: its digits keep their width. */
+.mc-countdown {
+  font-variant-numeric: tabular-nums;
+}

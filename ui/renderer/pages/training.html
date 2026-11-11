@@ -1,0 +1,45 @@
+<div class="panel full-page-panel training-page-panel model-center-page">
+  <!-- The title row stays at the top; only the area under it scrolls. -->
+  <div class="settings-page-head">
+    <h1 class="settings-page-title is-inline">模型中心</h1>
+    <span id="modelCenterSubtitle" class="mc-subtitle"></span>
+    <div class="settings-page-head-actions">
+      <button id="refreshTrainingBtn" class="btn secondary" type="button">重新整理</button>
+      <button id="manualTrainBtn" class="btn primary" type="button">重新訓練</button>
+    </div>
+  </div>
+  <div class="training-scroll-area">
+    <div class="mc-wrap">
+      <div id="trainingWarningBar" class="model-center-warning" hidden></div>
+
+      <!-- 訓練狀態: the last run's steps and result, today's phase, and when the next automatic run starts; the log under
+           its own row, closed until opened. -->
+      <div class="settings-group-title"><span>訓練狀態</span></div>
+      <section class="settings-group mc-status" aria-label="訓練狀態">
+        <div id="trainingSteps" class="job-steps"></div>
+        <div id="trainingBar" class="job-progress" hidden></div>
+        <div id="trainingProgress" class="job-stats" hidden></div>
+        <div id="trainingSummary" class="job-stats"></div>
+        <div id="trainingToday" class="job-stats"></div>
+        <button id="trainingLogToggle" class="job-log-toggle" type="button" aria-expanded="false"><span class="record-expand-chevron" aria-hidden="true">›</span><b>執行紀錄</b><span id="trainingLogNote" class="job-log-toggle-note"></span></button>
+        <div id="trainingLogPane" class="job-log-pane" hidden><div id="trainingLog" class="job-log"></div></div>
+      </section>
+
+      <div class="settings-group-title">
+        <span>上線模型 · 驗證 AUC</span>
+        <div id="liveDirection" class="settings-seg" role="tablist" aria-label="方向">
+          <button class="settings-seg-btn is-active" type="button" data-direction="up">上漲</button>
+          <button class="settings-seg-btn" type="button" data-direction="down">下跌</button>
+        </div>
+      </div>
+      <div id="liveModelCards" class="settings-tiles is-5"></div>
+
+      <div class="settings-group-title"><span>每個預測的兩種模型</span><span class="settings-group-title-side">點一列看 Logistic、LightGBM 與常數基準</span></div>
+      <div id="modelPairCards" class="settings-columns"></div>
+
+      <!-- 特徵權重: what the live 上漲 and 下跌 models of one horizon weigh most. -->
+      <div class="settings-group-title"><span>特徵權重</span><div id="importanceHorizons" class="settings-seg" role="tablist" aria-label="預測時間"></div></div>
+      <div id="importanceCards" class="settings-columns"></div>
+    </div>
+  </div>
+</div>

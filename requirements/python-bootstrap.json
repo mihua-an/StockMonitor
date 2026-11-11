@@ -1,0 +1,13 @@
+{
+  "_comment": "Pinned bootstrap artifacts for scripts/tooling/stage_python_runtime.py (R11-03). Every download is checked against sha256 before use. CPython: the sha256 equals python.org's own published value (https://www.python.org/api/v2/downloads/release_file/?release=1110, checked 2026-10-06). pip: the wheel digest PyPI publishes (https://pypi.org/pypi/pip/26.2.1/json). The python version must equal requirements/environment-evidence.json's.",
+  "python_embed": {
+    "version": "3.14.6",
+    "url": "https://www.python.org/ftp/python/3.14.6/python-3.14.6-embed-amd64.zip",
+    "sha256": "df901e84a896ff1ee720ad03377e0c8d8c2244fda79808aeeaff6316df1cb75c"
+  },
+  "pip_wheel": {
+    "version": "26.2.1",
+    "url": "https://files.pythonhosted.org/packages/f3/6e/1736e5b4ae2b778ef2f81c47d797de9f891d4d8acb047a24ca37a60294dd/pip-26.2.1-py3-none-any.whl",
+    "sha256": "71138adf1f4ca900cdb7d289c21b7494329f2332b6d85f0e1c42108c0384ed3e"
+  }
+}

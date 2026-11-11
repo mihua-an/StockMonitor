@@ -1,0 +1,51 @@
+"use strict";
+const { makeTempDir } = require("./support/temp_dirs.cjs");
+const assert = require("node:assert/strict");
+const { EventEmitter } = require("node:events");
+const fs = require("node:fs"), os = require("node:os"), path = require("node:path");
+const { createRendererHealthRegistry } = require("../ui/main/renderer_health");
+(async () => {
+  const output = makeTempDir("renderer-health-contract-");
+  let now = 2000;
+  const registry = createRendererHealthRegistry({ fs, path, outputDir: output, electronPid: 42, now: () => now });
+  const contents = new EventEmitter(); contents.id = 2;
+  registry.observe(contents); await registry.flush();
+  const read = () => JSON.parse(fs.readFileSync(path.join(output, "renderer_health.json")));
+  const payload = { schema: "renderer-runtime-health-v1", subscriptions: [], components: [], active_page: "realtime" };
+  assert.equal(registry.report({ sender: { id: 2 } }, payload), false);
+  assert.equal(registry.report({ sender: contents }, payload), true);
+  assert.equal(registry.report({ sender: contents }, payload), false);
+  await registry.flush(); assert.equal(read().renderers[0].heartbeat_at, 2000);
+  contents.emit("unresponsive"); await registry.flush(); assert.equal(read().renderers[0].responsive, false);
+  contents.emit("responsive");
+  contents.emit("render-process-gone", {}, { reason: "crashed" });
+  await registry.flush(); assert.equal(read().renderers[0].alive, false);
+  contents.emit("did-start-loading"); await registry.flush(); assert.equal(read().renderers[0].telemetry, null);
+  now += 3000;
+  assert.equal(registry.report({ sender: contents }, { ...payload, components: Array(65).fill({}) }), false);
+  contents.emit("destroyed"); await registry.flush();
+  assert.equal(read().renderers.length, 0);
+  assert.equal(read().last_renderers.length, 1);
+  const sampler = fs.readFileSync(path.join(__dirname, "../ui/renderer/js/core/renderer_runtime_health.js"), "utf8");
+  assert.ok(sampler.includes("intervalMs = 2000"));
+  assert.ok(!/fetch\(|push_tick|push_bidask|sendRealtimeWire/.test(sampler));
+  assert.ok(!sampler.includes("last_rendered_sequence"), "subscriber notification is not proof of render");
+  assert.ok(sampler.includes("marketRenderLatencySnapshot"));
+  assert.ok(sampler.includes("selectionTraceSnapshot"));
+  assert.ok(sampler.includes('type: "layout-shift"'));
+  assert.ok(sampler.includes('type: "event"'));
+  now += 10000;
+  const contents2 = new EventEmitter(); contents2.id = 3; registry.observe(contents2);
+  registry.report({ sender: contents2 }, { ...payload, sampled_at: now,
+    event_loop_delay_ms: 4, performance: { long_task_count: 1, long_task_max_ms: 55 },
+    selection_recent: [{ selection_generation: 1, to_code: "2330", marks: { first_visible_paint: 120 }, stages: {} }],
+  });
+  await registry.close();
+  const performanceDir = path.join(output, "performance");
+  const performanceFiles = fs.readdirSync(performanceDir).filter(name => name.endsWith(".jsonl"));
+  assert.ok(performanceFiles.length >= 1);
+  const windows = performanceFiles.flatMap(name => fs.readFileSync(path.join(performanceDir, name), "utf8").trim().split(/\r?\n/).filter(Boolean).map(JSON.parse));
+  assert.ok(windows.some(window => window.schema === "stock-monitor-performance-window-v1"));
+  assert.ok(windows.some(window => window.slow_selections?.some(row => row.to_code === "2330")));
+  console.log("Renderer health process/heartbeat/IPC bounds contract passed");
+})().catch((error) => { console.error(error); process.exitCode = 1; });

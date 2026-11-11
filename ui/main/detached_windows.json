@@ -1,0 +1,4 @@
+{
+  "eventFeed": { "minWidth": 620, "minHeight": 420, "defaultWidth": 920, "defaultHeight": 680 },
+  "technicalWindow": { "minWidth": 760, "minHeight": 480, "defaultWidth": 1280, "defaultHeight": 780 }
+}

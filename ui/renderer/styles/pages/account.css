@@ -1,0 +1,1489 @@
+/* 帳務 (actual account and paper wallet): directory, home summary, trades, stock statistics, daily / pair / day-trade analyses, rankings. */
+
+/* ======================
+   Finance pages
+   實際帳務／模擬帳務（同一頁，頁籤切換）
+====================== */
+
+.finance-table {
+  min-width: 680px;
+}
+
+.finance-form-grid {
+  display: grid;
+  gap: 9px;
+}
+
+.finance-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  color: var(--slate-400);
+  font-size: 12px;
+}
+
+.finance-field .search {
+  width: 100%;
+}
+
+.finance-field .search:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+/* ===== Actual Account Python / SQLite ===== */
+
+.account-trade-row {
+  cursor: pointer;
+}
+
+.account-trade-row:hover {
+  background: var(--blue-500-a13);
+}
+
+/* ===== 帳務's frame: 設定's category nav and page title (components/settings.css); the ledger under the views ===== */
+.account-page {
+  overflow: hidden;
+}
+
+/* 實際｜模擬: the segmented choice at the bottom of the nav, below the views. */
+.account-mode-seg {
+  margin-top: auto;
+}
+
+.account-directory-separator {
+  height: 1px;
+  margin: 8px 6px;
+  background: var(--pane-border);
+}
+
+/* The page's column: its title over the content scroll; both share one centred width. */
+.account-main-pane {
+  --account-content-max: 1180px;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.account-subtitle {
+  font-size: 13px;
+  color: var(--slate-400);
+}
+
+/* The title row is settings-page-head; the account's actions wrap right-aligned on a narrow window. */
+.account-header-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.account-market-switch.is-invisible {
+  visibility: hidden;
+}
+
+.account-load-error-banner {
+  max-width: var(--account-content-max);
+  margin: 0 auto 12px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--status-error) 14%, transparent);
+  color: var(--status-error);
+  font-size: 13px;
+}
+
+.account-load-error-banner[hidden] {
+  display: none;
+}
+
+/* The progress / result / error line floats as 設定's message does (settings-toast); an error keeps its colour. */
+.account-notice-error {
+  color: var(--status-error);
+}
+
+.account-notice-text {
+  min-width: 0;
+}
+
+.account-content-scroll {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.account-content-scroll > .account-view {
+  max-width: var(--account-content-max);
+  margin: 0 auto;
+  padding: 0 24px 60px;
+  box-sizing: border-box;
+}
+
+/* A number at a row's end (資金, 績效亮點, 當沖數據). */
+.account-item-number {
+  color: var(--slate-300);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* A short note beside a group title or under an empty group's line. */
+.account-title-note {
+  margin-left: 10px;
+  font-weight: 400;
+  color: var(--slate-500);
+}
+
+.account-error-text {
+  white-space: normal;
+  color: var(--slate-300);
+}
+
+/* An open day of 每日明細 / 配對明細: its trades or pairs, one per row, in a card on the detail background. */
+.account-detail-list {
+  padding: 14px 16px 16px;
+}
+
+.account-detail-row {
+  min-height: 44px;
+  font-size: 13px;
+}
+
+.account-detail-time {
+  min-width: 48px;
+  color: var(--slate-400);
+  font-variant-numeric: tabular-nums;
+}
+
+.account-detail-fills {
+  display: grid;
+  gap: 2px;
+  min-width: 170px;
+  padding: 6px 0;
+  color: var(--slate-300);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.account-detail-fills i {
+  margin-left: 8px;
+  font-style: normal;
+  color: var(--slate-500);
+}
+
+.account-detail-num {
+  min-width: 70px;
+  color: var(--slate-300);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.account-detail-num.is-wide {
+  min-width: 130px;
+}
+
+.account-detail-cost {
+  min-width: 150px;
+  color: var(--slate-400);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* 資金 (capital_view.js): what is still to settle, by date, after the number. */
+.account-capital-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  font-size: 12px;
+  color: var(--slate-400);
+}
+
+.account-capital {
+  margin-top: 26px;
+}
+
+.account-capital:empty {
+  display: none;
+}
+
+.account-page .account-holdings-table {
+  min-width: 610px;
+}
+
+/* 庫存's numbers sit under their centred titles, as in 個股數據 / 每日明細 / 配對明細 (the generic data-table cell is
+   left-aligned while the title is centred). */
+.account-holdings-table th:where(:not([data-column-align])),
+.account-holdings-table td {
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .account-page-header {
+    flex-wrap: wrap;
+  }
+}
+
+/* ===== Actual Account analytics center ===== */
+.account-view[hidden] {
+  display: none;
+}
+
+.account-view.active {
+  display: block;
+}
+
+.account-analysis-table-wrap {
+  max-height: calc(100vh - 260px);
+}
+
+.account-analysis-table {
+  min-width: 1180px;
+}
+
+.account-analysis-table thead th,
+.account-matrix-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+.account-matrix-wrap {
+  max-height: 470px;
+}
+
+.account-matrix-table thead th:first-child {
+  z-index: 5;
+}
+
+/* ===== Actual Account clean header / daily drill-down / direction tabs ===== */
+/* 每日明細：外層不再有卡片框，頁首本身就是唯一 title。 */
+.account-daily-table-wrap {
+  max-height: none;
+}
+
+.account-row-icon-btn {
+  width: 32px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--slate-700);
+  border-radius: 8px;
+  background: var(--blue-900x-16);
+  color: var(--blue-200);
+  cursor: pointer;
+}
+
+.account-row-icon-btn:hover:not(:disabled) {
+  border-color: var(--blue-500);
+  background: var(--blue-950);
+  color: var(--white);
+}
+
+.account-row-icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.account-row-icon-btn svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.account-row-icon-btn[data-daily-action="play"] svg {
+  fill: currentColor;
+  stroke: currentColor;
+}
+
+.account-direction-filter-table {
+  min-width: 980px;
+}
+
+.account-direction-report-card {
+  margin-top: 12px;
+}
+
+.account-direction-report-card[hidden] {
+  display: none;
+}
+
+/* The day's trades wrap as text does, not as the table's one-line cells. */
+
+.account-row-icon-btn.active {
+  border-color: var(--blue-500);
+  background: var(--blue-950);
+  color: var(--white);
+}
+
+/* 矩陣固定欄寬與置中，標題與收益數字垂直對齊同一欄。 */
+.account-matrix-table {
+  min-width: 1120px;
+  table-layout: fixed;
+}
+
+.account-matrix-table th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--surface-header);
+  width: 145px;
+  min-width: 145px;
+}
+
+.account-matrix-table th:first-child:where(:not([data-column-align])) {
+  text-align: left;
+}
+
+.account-matrix-table th:not(:first-child),
+.account-matrix-table td:not(:first-child) {
+  width: 97px;
+  min-width: 97px;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.account-matrix-table th:not(:first-child):where(:not([data-column-align])),
+.account-matrix-table td:not(:first-child) {
+  text-align: center;
+}
+
+/* 配對明細獨立成與每日明細相同的日期下拉頁面。 */
+.account-pair-table-wrap {
+  max-height: none;
+}
+
+/* The 配對明細 table's own cells only (child selectors): a table opened inside it, such as the 配對回放's 價量, keeps
+   its own columns. */
+.account-pair-table > thead > tr > th:first-child,
+.account-pair-summary-row > td:first-child {
+  width: 176px;
+  min-width: 176px;
+}
+
+/* A day's numbers sit under their centred titles, as in 每日明細 / 個股數據 (the generic data-table cell is left-aligned).
+   Only the day row: the opened pairs under it keep their own layout. */
+.account-pair-table > thead > tr > th:where(:not([data-column-align])),
+.account-pair-summary-row > td {
+  text-align: center;
+}
+
+/* Top 10：壓縮日期與欄間距，10 筆完整展開，不產生內部 scrollbar。 */
+.account-ranking-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  align-items: start;
+}
+
+.account-ranking-table {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.account-ranking-table th:nth-child(2),
+.account-ranking-table td:nth-child(2) {
+  width: 52px;
+}
+
+.account-ranking-table th:nth-child(3),
+.account-ranking-table td:nth-child(3) {
+  width: 38px;
+}
+
+.account-ranking-table th:nth-child(4),
+.account-ranking-table td:nth-child(4),
+.account-ranking-table th:nth-child(5),
+.account-ranking-table td:nth-child(5) {
+  width: 54px;
+}
+
+.account-ranking-table th:nth-child(6),
+.account-ranking-table td:nth-child(6) {
+  width: 48px;
+}
+
+/* 當沖分析摘要不再保留第二行灰色說明，卡片高度因此更乾淨。 */
+
+.account-ranking-table thead th:where(:not([data-column-align])) {
+  text-align: center;
+}
+
+.account-ranking-table th:nth-child(1),
+.account-ranking-table td:nth-child(1) {
+  width: 76px;
+}
+
+.account-ranking-table th:nth-child(7),
+.account-ranking-table td:nth-child(7) {
+  padding-right: 1px;
+  width: 70px;
+}
+
+.account-ranking-table th:nth-child(8),
+.account-ranking-table td:nth-child(8) {
+  padding-left: 1px;
+  width: 56px;
+}
+
+/* 當沖分析目前沒有美股資料，美股按鈕直接反白且不可操作。 */
+
+.account-stock-stat-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px 16px 16px;
+}
+
+/* A stock's figures in the open row: small cards of the settings look on the detail background. */
+.account-stock-stat-group {
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--slate-900);
+}
+
+.account-stock-stat-group h4 {
+  color: var(--slate-200);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.account-stock-stat-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.account-stock-stat-metric {
+  min-width: 0;
+}
+
+.account-stock-stat-metric span {
+  display: block;
+  margin-bottom: 2px;
+  overflow: hidden;
+  color: var(--slate-400);
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
+.account-stock-stat-metric b {
+  display: block;
+  overflow: hidden;
+  color: var(--slate-100);
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 1200px) {
+  .account-stock-stat-detail-grid {
+    grid-template-columns: 1fr;
+  }
+  .account-stock-stat-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.account-stock-name-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* One column as wide as the row it opens under: an auto track takes its widest content's minimum (the trades table's),
+   which drew the cards and the table past the right of the table. */
+.account-stock-stat-expanded-stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.account-stock-stat-expanded-stack > * + * {
+  border-top: 1px solid var(--slate-700-a62);
+}
+
+/* 明細直接在個股數據該列下方展開，不再跳到獨立個股明細頁。 */
+.account-stock-inline-trades {
+  padding: 12px;
+  background: var(--surface-panel);
+}
+
+.account-stock-inline-trades-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+
+.account-stock-inline-trades-title {
+  color: var(--slate-50);
+  font-weight: 800;
+}
+
+/* 零股 / 當沖是緊湊的 segmented control。 */
+.account-stock-inline-mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--blue-800x-20);
+  border-radius: 11px;
+  background: var(--surface-panel);
+  box-shadow: inset 0 0 0 1px var(--slate-400-a03);
+}
+
+.account-stock-inline-mode-btn {
+  min-width: 58px;
+  height: 30px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--slate-400);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease, box-shadow .15s ease;
+}
+
+.account-stock-inline-mode-btn:hover:not(.active) {
+  background: var(--slate-700-a42);
+  color: var(--blue-100);
+}
+
+.account-stock-inline-mode-btn.active {
+  background: var(--blue-600);
+  color: var(--white);
+  box-shadow: 0 2px 8px var(--blue-600-a30);
+}
+
+.account-stock-inline-table-wrap {
+  max-height: none;
+}
+
+.account-stock-inline-table th,
+.account-stock-inline-table td {
+  padding: 8px 7px;
+  white-space: nowrap;
+}
+
+/* 實際帳務捲動區不再保留頂部 padding，sticky title 可真正貼齊最上方。 */
+.account-content-scroll {
+  scroll-behavior: smooth;
+}
+
+/* Top 10 表頭與資料都使用相同置中規則。 */
+.account-ranking-table th,
+.account-ranking-table td {
+  padding: 6px 4px;
+  font-size: 12px;
+}
+
+.account-ranking-table th:where(:not([data-column-align])),
+.account-ranking-table td {
+  text-align: center;
+}
+
+/* 個股統計區塊的標題可承載右上角筆數。 */
+.account-stock-stat-group-heading {
+  min-height: 24px;
+  margin-bottom: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.account-stock-stat-group-heading h4 {
+  margin: 0;
+}
+
+.account-stock-stat-group-heading > span {
+  color: var(--slate-400);
+  font-weight: 800;
+}
+
+.account-stock-stat-group-heading h4 i {
+  padding: 0 7px;
+  color: var(--slate-600);
+  font-style: normal;
+  font-weight: 500;
+}
+
+/* 多空拆成左右兩半，視覺上一眼就能比較。 */
+.account-stock-direction-grid {
+  border-top: 1px solid var(--slate-700-a55);
+}
+
+.account-stock-direction-side {
+  min-width: 0;
+}
+
+.account-stock-direction-side + .account-stock-direction-side {
+  border-left: 1px solid var(--slate-700-a72);
+}
+
+.account-stock-direction-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.account-stock-direction-row + .account-stock-direction-row {
+  margin-top: 8px;
+}
+
+.account-stock-direction-row .account-stock-stat-metric {
+  background: var(--slate-900-a58);
+}
+
+/* 個股明細當沖模式最右側新增與配對明細相同的回放按鈕。 */
+.account-stock-inline-table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.account-stock-inline-table th:nth-child(11):where(:not([data-column-align])),
+.account-stock-inline-table td:nth-child(11) {
+  text-align: center;
+}
+
+.account-stock-inline-action-cell {
+  padding-left: 3px;
+  padding-right: 3px;
+}
+
+@media (max-width: 1100px) {
+  .account-stock-direction-grid {
+    grid-template-columns: 1fr;
+  }
+  .account-stock-direction-side + .account-stock-direction-side {
+    padding: 10px 0 2px;
+    border-left: 0;
+    border-top: 1px solid var(--slate-700-a72);
+  }
+}
+
+/* 當沖 8 個欄位維持乾淨 4x2；總次數只放在右上角。 */
+.account-stock-daytrade-group .account-stock-stat-group-heading span {
+  min-width: 52px;
+  text-align: right;
+  color: var(--blue-200);
+}
+
+/* 多 / 空真正拆成左右兩塊，不再共用一排標題。 */
+.account-stock-direction-group {
+  padding: 0;
+  overflow: hidden;
+}
+
+.account-stock-direction-grid-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0;
+  min-height: 100%;
+}
+
+.account-stock-direction-grid-split .account-stock-direction-side {
+  padding: 14px 16px 15px;
+  background: var(--blue-900x-a48);
+}
+
+.account-stock-direction-grid-split .account-stock-direction-side + .account-stock-direction-side {
+  border-left: 1px solid var(--blue-800x-20);
+}
+
+.account-stock-direction-side-heading {
+  margin-bottom: 11px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--slate-700-a72);
+  color: var(--slate-50);
+  font-weight: 800;
+}
+
+.account-stock-direction-side-heading b {
+  margin-left: 4px;
+  color: var(--blue-200);
+}
+
+.account-stock-direction-grid-split .account-stock-direction-row {
+  gap: 8px;
+}
+
+.account-stock-direction-grid-split .account-stock-stat-metric {
+  min-height: 62px;
+}
+
+@media (max-width: 1100px) {
+  .account-stock-direction-grid-split {
+    grid-template-columns: 1fr;
+  }
+  .account-stock-direction-grid-split .account-stock-direction-side + .account-stock-direction-side {
+    border-left: 0;
+    border-top: 1px solid var(--blue-800x-20);
+  }
+}
+
+/* 個股數據：主表只保留快速比較欄位，完整統計在列內展開。 */
+.account-daily-raw-row:hover {
+  background: var(--blue-600-a06);
+}
+
+/* ===== Diagnostic fixes / compact transaction details ===== */
+/* 個股數據 fills its card and never scrolls sideways: its columns are shares of the card's width (the colgroup is
+   their only width), so a narrower window narrows every column instead of pushing the last ones out of view. */
+.account-stock-stats-table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.account-stock-stats-table col.stock-col-code {
+  width: 11%;
+}
+
+.account-stock-stats-table col.stock-col-name {
+  width: 8.5%;
+}
+
+.account-stock-stats-table col.stock-col-qty {
+  width: 6%;
+}
+
+.account-stock-stats-table col.stock-col-money {
+  width: 8.4%;
+}
+
+.account-stock-stats-table col.stock-col-rate {
+  width: 7.5%;
+}
+
+.account-stock-stats-table col.stock-col-ratio {
+  width: 8.3%;
+}
+
+/* 個股數據主表使用固定 colgroup，表頭與資料共用同一欄寬。 */
+.account-stock-stats-table th,
+.account-stock-stats-table :where(tr:not([data-row-detail])) > td {
+  padding: 9px 7px;
+  white-space: nowrap;
+  box-sizing: border-box;
+  padding-left: 5px;
+  padding-right: 5px;
+  width: auto;
+}
+
+.account-stock-stats-table th:where(:not([data-column-align])),
+.account-stock-stats-table td {
+  text-align: center;
+}
+
+.account-stock-stats-table th:nth-child(2):where(:not([data-column-align])),
+.account-stock-stats-table td:nth-child(2) {
+  text-align: left;
+}
+
+/* 個股明細：所有標題與資料統一置中；零股欄位依帳務檢查需求重排。 */
+
+.account-stock-inline-normal-table th,
+.account-stock-inline-normal-table td {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+/* A stock's trades fill the open row and never scroll sideways: each column is a share of the row's width. */
+.account-stock-inline-normal-table > thead > tr > th:nth-child(1) {
+  width: 10%;
+}
+.account-stock-inline-normal-table > thead > tr > th:nth-child(2) {
+  width: 7%;
+}
+.account-stock-inline-normal-table > thead > tr > th:nth-child(3),
+.account-stock-inline-normal-table > thead > tr > th:nth-child(4) {
+  width: 11%;
+}
+.account-stock-inline-normal-table > thead > tr > th:nth-child(5) {
+  width: 7%;
+}
+.account-stock-inline-normal-table > thead > tr > th:nth-child(6),
+.account-stock-inline-normal-table > thead > tr > th:nth-child(7) {
+  width: 9%;
+}
+.account-stock-inline-normal-table > thead > tr > th:nth-child(8) {
+  width: 10%;
+}
+.account-stock-inline-normal-table > thead > tr > th:nth-child(9) {
+  width: 8%;
+}
+.account-stock-inline-normal-table > thead > tr > th:nth-child(10),
+.account-stock-inline-normal-table > thead > tr > th:nth-child(11) {
+  width: 9%;
+}
+
+.account-stock-inline-daytrade-table > thead > tr > th:nth-child(1) {
+  width: 9.5%;
+}
+.account-stock-inline-daytrade-table > thead > tr > th:nth-child(2) {
+  width: 5%;
+}
+.account-stock-inline-daytrade-table > thead > tr > th:nth-child(3) {
+  width: 6.5%;
+}
+.account-stock-inline-daytrade-table > thead > tr > th:nth-child(4),
+.account-stock-inline-daytrade-table > thead > tr > th:nth-child(5) {
+  width: 9.5%;
+}
+.account-stock-inline-daytrade-table > thead > tr > th:nth-child(6) {
+  width: 6.5%;
+}
+.account-stock-inline-daytrade-table > thead > tr > th:nth-child(7),
+.account-stock-inline-daytrade-table > thead > tr > th:nth-child(8) {
+  width: 7.5%;
+}
+.account-stock-inline-daytrade-table > thead > tr > th:nth-child(9) {
+  width: 8.5%;
+}
+.account-stock-inline-daytrade-table > thead > tr > th:nth-child(10),
+.account-stock-inline-daytrade-table > thead > tr > th:nth-child(11),
+.account-stock-inline-daytrade-table > thead > tr > th:nth-child(12) {
+  width: 7%;
+}
+.account-stock-inline-daytrade-table > thead > tr > th:nth-child(13) {
+  width: 6%;
+}
+
+/* 配對明細展開內容整體內縮，且時間/股號間距與右側費稅欄更平均。 */
+
+.account-daily-table th:where(:not([data-column-align])),
+.account-daily-table td {
+  text-align: center;
+}
+
+/* 只讓個股數據主表的 thead sticky；展開後的交易明細表頭不可被主表 selector 捕捉，
+   否則往下捲時會浮進交易資料中。 */
+[data-account-view-panel="stockStats"] .account-stock-inline-table > thead > tr > th {
+  position: static;
+}
+
+/* 每日明細：明確的欄位表格，股數/單價的多 fill 會垂直對齊顯示。 */
+.account-daily-raw-row {
+  border-bottom: 1px solid var(--slate-700-a50);
+  min-height: 44px;
+  cursor: default;
+  padding: 7px 4px 7px 10px;
+}
+
+/* 主資訊只出現一次；多成交只在股數 / 單價 / 價金欄向下增加。 */
+
+/* ===== Daytrade detail + replay ===== */
+.account-ranking-table th:nth-child(9),
+.account-ranking-table td:nth-child(9) {
+  width: 42px;
+}
+
+.account-ranking-table th:nth-child(9):where(:not([data-column-align])),
+.account-ranking-table td:nth-child(9) {
+  text-align: center;
+}
+
+.account-daytrade-report-table {
+  table-layout: fixed;
+}
+
+.account-daytrade-report-table th,
+.account-daytrade-report-table td {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.account-daytrade-report-table th:where(:not([data-column-align])),
+.account-daytrade-report-table td {
+  text-align: center;
+}
+
+.account-daytrade-report-table th:nth-child(1) {
+  width: 92px;
+}
+
+.account-daytrade-report-table th:nth-child(2) {
+  width: 62px;
+}
+
+.account-daytrade-report-table th:nth-child(3) {
+  width: 92px;
+}
+
+.account-daytrade-report-table th:nth-child(4),
+.account-daytrade-report-table th:nth-child(5) {
+  width: 66px;
+}
+
+.account-daytrade-report-table th:nth-child(6) {
+  width: 56px;
+}
+
+.account-daytrade-report-table th:nth-child(7),
+.account-daytrade-report-table th:nth-child(8) {
+  width: 76px;
+}
+
+.account-daytrade-report-table th:nth-child(9),
+.account-daytrade-report-table th:nth-child(10) {
+  width: 70px;
+}
+
+.account-daytrade-report-table th:nth-child(11) {
+  width: 54px;
+}
+
+/* ===== Daytrade bucket drill-down ===== */
+.account-daytrade-bucket-row {
+  cursor: pointer;
+  transition: background-color .14s ease, box-shadow .14s ease;
+}
+
+.account-daytrade-bucket-row:hover {
+  background: var(--sky-400-a08);
+}
+
+.account-daytrade-bucket-row.active {
+  background: var(--sky-400-a14);
+  box-shadow: inset 3px 0 0 var(--sky-400-a85);
+}
+
+.account-daytrade-bucket-detail {
+  border-top: 1px solid var(--slate-400-a18);
+}
+
+.account-daytrade-bucket-detail-table {
+  min-width: 980px;
+  table-layout: fixed;
+}
+
+.account-daytrade-bucket-detail-table th:where(:not([data-column-align])),
+.account-daytrade-bucket-detail-table td {
+  text-align: center;
+}
+
+.account-daytrade-bucket-detail-table th:nth-child(1) {
+  width: 88px;
+}
+
+.account-daytrade-bucket-detail-table th:nth-child(2) {
+  width: 60px;
+}
+
+.account-daytrade-bucket-detail-table th:nth-child(3) {
+  width: 88px;
+}
+
+.account-daytrade-bucket-detail-table th:nth-child(4) {
+  width: 48px;
+}
+
+.account-daytrade-bucket-detail-table th:nth-child(5),
+.account-daytrade-bucket-detail-table th:nth-child(6) {
+  width: 64px;
+}
+
+.account-daytrade-bucket-detail-table th:nth-child(7) {
+  width: 54px;
+}
+
+.account-daytrade-bucket-detail-table th:nth-child(8),
+.account-daytrade-bucket-detail-table th:nth-child(9),
+.account-daytrade-bucket-detail-table th:nth-child(10),
+.account-daytrade-bucket-detail-table th:nth-child(11) {
+  width: 70px;
+}
+
+.account-daytrade-bucket-detail-table th:nth-child(12) {
+  width: 46px;
+}
+
+/* ===== Compact inline daytrade drill-down ===== */
+
+.account-daytrade-metric-table {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.account-daytrade-metric-table > thead > tr > th,
+.account-daytrade-metric-table > tbody > tr.account-daytrade-bucket-row > td {
+  padding: 7px 4px;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-daytrade-metric-table > thead > tr > th:where(:not([data-column-align])),
+.account-daytrade-metric-table > tbody > tr.account-daytrade-bucket-row > td {
+  text-align: center;
+}
+
+.account-daytrade-metric-table > thead > tr > th:first-child,
+.account-daytrade-metric-table > tbody > tr.account-daytrade-bucket-row > td:first-child {
+  width: 12.5%;
+}
+
+.account-daytrade-bucket-detail-inline {
+  border-top: 1px solid var(--sky-400-a20);
+  padding: 5px 6px 7px;
+}
+
+.account-daytrade-bucket-detail-table th,
+.account-daytrade-bucket-detail-table td {
+  padding-left: 5px;
+  padding-right: 5px;
+  padding: 3px 5px;
+  line-height: 1.22;
+}
+
+.account-daytrade-bucket-detail-table thead th {
+  font-size: 11px;
+}
+
+.account-daytrade-bucket-detail-table tbody td {
+  font-size: 12px;
+}
+
+/* ===== Daytrade drill-down replay space / ranking replay placement ===== */
+.account-daytrade-bucket-detail-wrap {
+  /* 310px 只夠明細列；回放插進該筆交易下一列時圖會被截掉。 */
+  max-height: 640px;
+}
+
+/* ===== Actual-account daily compact + no horizontal scrollbar ===== */
+
+.account-page .account-daily-table {
+  min-width: 0;
+  max-width: 100%;
+  table-layout: fixed;
+}
+
+.account-page .account-daily-table th,
+.account-page .account-daily-table :where(tr:not([data-row-detail])) > td {
+  min-width: 0;
+  padding-left: 3px;
+  padding-right: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-page .account-daily-table thead th {
+  letter-spacing: -0.2px;
+}
+
+/* The date column is as wide as 配對明細's: the expand caret at its left, the date centred, not squeezed like the
+   statistics columns (a fixed-layout table takes only width). */
+.account-page .account-daily-table th:first-child,
+.account-page .account-daily-table td:first-child {
+  width: 176px;
+}
+
+/* ===== Row-click replay affordance ===== */
+.account-stock-inline-daytrade-table tbody tr.account-stock-inline-replayable {
+  cursor: pointer;
+}
+
+.account-stock-inline-daytrade-table tbody tr.account-stock-inline-replayable:hover > td {
+  background-color: var(--blue-600-a10);
+}
+
+.account-page .account-pair-table {
+  min-width: 0;
+  max-width: 100%;
+  table-layout: fixed;
+}
+
+.account-page .account-pair-table > thead > tr > th,
+.account-page .account-pair-table > tbody > :where(tr:not([data-row-detail])) > td {
+  min-width: 0;
+  padding-left: 5px;
+  padding-right: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 圓角由 wrapper 真正裁切，排序反白不再把第一 / 最後欄視覺切成直角。 */
+.account-page .account-daily-table thead,
+.account-page .account-pair-table > thead,
+.account-page .account-stock-stats-table thead {
+  overflow: hidden;
+}
+
+.account-daytrade-detail-replayable,
+.account-daytrade-report-replayable {
+  cursor: pointer;
+}
+
+.account-daytrade-detail-replayable:hover > td,
+.account-daytrade-report-replayable:hover > td {
+  background: var(--blue-600-a10);
+}
+
+/* 每日 / 配對主表讓 wrapper 負責真正的圓角裁切；排序 th 反白不會把角落蓋成直角。 */
+.account-page .account-daily-table,
+.account-page .account-pair-table {
+  border-collapse: separate;
+}
+
+.account-page .account-daily-table tbody tr:last-child > td:first-child,
+.account-page .account-pair-table > tbody > tr:last-child > td:first-child {
+  border-bottom-left-radius: 11px;
+}
+
+.account-page .account-daily-table tbody tr:last-child > td:last-child,
+.account-page .account-pair-table > tbody > tr:last-child > td:last-child {
+  border-bottom-right-radius: 11px;
+}
+
+/* 回放來源 Row 持續保留選取提示，使用者在 Replay 展開後仍能辨認自己點的是哪一筆。 */
+.account-active-source-row > td,
+.account-active-source-row.account-daily-pair-row {
+  background: var(--row-active-bg);
+  box-shadow: inset 3px 0 0 var(--blue-400);
+}
+
+/* Keep the complete segmented control on one line even when the account pane
+   gets narrow. The content below may resize, but this control must not drift. */
+.account-page .account-daytrade-tabs {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* 持有時間 / 進場時間不要再把展開的交易明細與 Replay 關在小型內部 scroll 區。
+   讓內容自然撐高，由整個實際帳務頁面負責上下捲動，播放列就能完整露出。 */
+.account-page .account-daytrade-metric-wrap {
+  max-height: none;
+}
+
+/* 時間 Bucket 本身稍微拉高，分組之間更清楚，也給展開區更多呼吸空間。 */
+.account-page .account-daytrade-metric-table > thead > tr > th,
+.account-page .account-daytrade-metric-table > tbody > tr.account-daytrade-bucket-row > td {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+/* 這兩張分析表現在由頁面捲動，因此表頭不再在卡片內做第二層 sticky，避免壓住展開內容。 */
+.account-page .account-daytrade-metric-table > thead > tr > th {
+  position: static;
+}
+
+/* 展開後的回放區域與明細之間再留一點距離，避免播放列視覺上黏在內層表格底部。 */
+.account-page .account-daytrade-bucket-replay-host:not(:empty) {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+/* 個股數據 / 每日明細 / 配對明細的欄位 Title 使用完全相同的字級、行高與背景。 */
+.account-page .account-stock-stats-table > thead > tr > th,
+.account-page .account-daily-table > thead > tr > th,
+.account-page .account-pair-table > thead > tr > th {
+  box-shadow: 0 1px 0 var(--slate-700);
+}
+
+.account-page .account-daily-table > thead > tr > th:first-child,
+.account-page .account-pair-table > thead > tr > th:first-child,
+.account-page .account-stock-stats-table > thead > tr > th:first-child {
+  border-top-left-radius: 11px;
+}
+
+.account-page .account-daily-table > thead > tr > th:last-child,
+.account-page .account-pair-table > thead > tr > th:last-child,
+.account-page .account-stock-stats-table > thead > tr > th:last-child {
+  border-top-right-radius: 11px;
+}
+
+/* 底部 當沖 / 多單 / 空單交易明細確實是內層可捲動表；JS 會先捲這層再捲外層頁面。 */
+.account-page .account-direction-report-card .account-analysis-table-wrap {
+  overscroll-behavior: contain;
+}
+
+/* ===== Daytrade period / weekday analytics ===== */
+.account-daytrade-period-grid {
+  margin-bottom: 12px;
+}
+
+.account-daytrade-period-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.account-daytrade-period-wrap {
+  max-height: 356px;
+}
+
+.account-daytrade-period-table th,
+.account-daytrade-period-table td {
+  padding: 7px 5px;
+}
+
+.account-daytrade-period-table th:where(:not([data-column-align])),
+.account-daytrade-period-table td {
+  text-align: center;
+}
+
+.account-daytrade-weekday-row {
+  cursor: pointer;
+  transition: background-color .14s ease, box-shadow .14s ease;
+}
+
+.account-daytrade-weekday-row:hover > td {
+  background: var(--sky-400-a08);
+}
+
+.account-daytrade-weekday-row.active > td {
+  background: var(--sky-400-a14);
+}
+
+.account-daytrade-weekday-row.active > td:first-child {
+  box-shadow: inset 3px 0 0 var(--sky-400-a90);
+}
+
+.account-daytrade-weekday-detail {
+  padding: 7px 7px 10px;
+  border-top: 1px solid var(--sky-400-a22);
+}
+
+.account-daytrade-weekday-detail-wrap {
+  max-height: 660px;
+}
+
+@media (max-width: 1450px) {
+  .account-daytrade-period-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 「交易資料」頁沒有外層卡片/說明框，只有表格本身。 */
+.account-trades-view {
+  min-width: 0;
+}
+
+.account-page .account-trades-wrap {
+  max-height: 520px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.account-page .account-trades-table {
+  min-width: 820px;
+  table-layout: fixed;
+}
+
+.account-page .account-trades-table th,
+.account-page .account-trades-table td {
+  padding: 8px 6px;
+}
+
+.account-page .account-trades-table th:where(:not([data-column-align])),
+.account-page .account-trades-table td {
+  text-align: center;
+}
+
+.account-page .account-trades-table th:nth-child(1),
+.account-page .account-trades-table td:nth-child(1) {
+  width: 92px;
+}
+
+.account-page .account-trades-table th:nth-child(2),
+.account-page .account-trades-table td:nth-child(2) {
+  width: 66px;
+}
+
+.account-page .account-trades-table th:nth-child(3),
+.account-page .account-trades-table td:nth-child(3) {
+  width: 66px;
+}
+
+.account-page .account-trades-table th:nth-child(4),
+.account-page .account-trades-table td:nth-child(4) {
+  width: 92px;
+}
+
+.account-page .account-trades-table th:nth-child(4):where(:not([data-column-align])),
+.account-page .account-trades-table td:nth-child(4) {
+  text-align: left;
+}
+
+.account-page .account-trades-table th:nth-child(5),
+.account-page .account-trades-table td:nth-child(5) {
+  width: 54px;
+}
+
+.account-page .account-trades-table th:nth-child(6),
+.account-page .account-trades-table td:nth-child(6) {
+  width: 74px;
+}
+
+.account-page .account-trades-table th:nth-child(7),
+.account-page .account-trades-table td:nth-child(7) {
+  width: 78px;
+}
+
+.account-page .account-trades-table th:nth-child(8),
+.account-page .account-trades-table td:nth-child(8) {
+  width: 78px;
+}
+
+.account-page .account-trades-table th:nth-child(9),
+.account-page .account-trades-table td:nth-child(9) {
+  width: 82px;
+}
+
+.account-page .account-trades-table th:nth-child(10),
+.account-page .account-trades-table td:nth-child(10) {
+  width: 82px;
+}
+
+/* 多筆成交：第二筆以後只顯示「股數 / 單價」，其餘欄位保持空白。 */
+.account-page .account-trade-fill-subrow > td {
+  background: var(--blue-900x-a42);
+  border-bottom-color: var(--gray-800-a72);
+}
+
+.account-page .account-trade-fill-subrow > td:not(.account-trade-fill-qty-cell):not(.account-trade-fill-price-cell) {
+  color: transparent;
+}
+
+.account-page .account-trade-fill-qty-cell,
+.account-page .account-trade-fill-price-cell {
+  font-family: Consolas, "Microsoft JhengHei", monospace;
+  font-weight: 800;
+}
+
+/* 週 / 月頻率當沖總計永遠在卡片內完成排版，不再用 min-width 撐出左右 scrollbar。 */
+
+.account-page .account-daytrade-period-table,
+.account-page .account-daytrade-period-overview-table {
+  min-width: 0;
+  max-width: 100%;
+  table-layout: fixed;
+}
+
+.account-page .account-daytrade-period-table th,
+.account-page .account-daytrade-period-table td {
+  min-width: 0;
+  padding-left: 3px;
+  padding-right: 3px;
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-page .account-daytrade-period-table th:first-child,
+.account-page .account-daytrade-period-table td:first-child {
+  width: 88px;
+}
+
+/* WeekDay 目前固定 10 欄；避免表頭因新欄位名稱拉高或橫向溢出。 */
+.account-daytrade-weekday-table {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.account-daytrade-weekday-table > thead > tr > th,
+.account-daytrade-weekday-table > tbody > tr.account-daytrade-weekday-row > td {
+  padding: 9px 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: 4px;
+  padding-right: 4px;
+  font-size: 11px;
+}
+
+.account-daytrade-weekday-table > thead > tr > th:where(:not([data-column-align])),
+.account-daytrade-weekday-table > tbody > tr.account-daytrade-weekday-row > td {
+  text-align: center;
+}
+
+.account-daytrade-weekday-table > thead > tr > th:first-child,
+.account-daytrade-weekday-table > tbody > tr.account-daytrade-weekday-row > td:first-child {
+  width: 68px;
+}
+
+/* Analysis/detail tables keep their original max-heights but their scrollbar
+   remains visible whenever content exceeds that height. */
+
+.account-page :is(
+  .account-stock-stats-table-wrap,
+  .account-daily-table-wrap,
+  .account-pair-table-wrap,
+  .account-trades-wrap,
+  .account-stock-inline-table-wrap,
+  .account-analysis-table-wrap
+) {
+  contain: paint;
+}
+
+/* The inline trade row whose replay is open is marked like an open record row (data-grid.css .record-expand-row). */
+.account-page .account-stock-inline-active-replay > td {
+  background-color: var(--row-expanded-bg);
+}
+
+/* A main table view (個股數據 / 每日明細 / 配對明細 / 交易資料) gives the whole remaining height to its table card, whose
+   body scrolls; the page itself does not. */
+.account-content-scroll.account-table-workspace-active {
+  overflow: hidden;
+}
+
+.account-view.active:is(
+  [data-account-view-panel="stockStats"],
+  [data-account-view-panel="daily"],
+  [data-account-view-panel="pairs"],
+  [data-account-view-panel="trades"]
+) {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding-bottom: 24px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.account-view.active:is(
+  [data-account-view-panel="stockStats"],
+  [data-account-view-panel="daily"],
+  [data-account-view-panel="pairs"],
+  [data-account-view-panel="trades"]
+) > .finance-table-wrap {
+  flex: 1 1 auto;
+  max-height: none;
+}
+
+/* Inner finance tables keep their own max-height; the data grid moves their scrollbar to the row viewport. */
+.finance-table-wrap {
+  width: 100%;
+  max-width: 100%;
+}
+
+/* ===== Daytrade direction tabs position =====
+   The account page header lives OUTSIDE #actualAccountContentScroll, so sticky offsets
+   that add it (55/59px, --actual-account-sticky-header-height) count it twice and push 總覽 / 多單 / 空單 down.
+   The tabs belong to the daytrade content scroll itself, so their sticky origin
+   must be the top of that scroll viewport. */
+.account-page .account-view[data-account-view-panel="daytrade"] > .account-daytrade-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 65;
+  align-self: flex-start;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 12px;
+}
+
+.account-content-scroll {
+  scrollbar-gutter: auto;
+}

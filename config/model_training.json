@@ -1,0 +1,9 @@
+{
+  "schema": "model-training-v1",
+  "note": "Read by Health (health/training_job_runner.js: when to start the job) and by the job itself (service/analysis/online_training/job.py: what to train). The automatic run starts when the Shioaji session owner publishes the STK day session materialized (output/materialization_jobs/settled/shioaji.json), never at a clock time; a failed run is tried again retry_minutes later; no run starts inside quiet (Asia/Taipei, the TW stock day session), it waits for its end. The model_training switch in feature_settings.json turns training off. How many trading dates a run uses and how long the training data is kept are user settings (config/training_data_settings.py).",
+  "auto": {
+    "retry_minutes": 30,
+    "quiet": { "from": "09:00", "to": "13:30" }
+  },
+  "keep_datasets": 3
+}

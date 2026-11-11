@@ -1,0 +1,72 @@
+/* The sort glyphs of a reorderable list's row controls (js/core/components/sort_glyph.js): 拖曳 (three bars),
+ * 置頂 (a bar over an up triangle), 置底 (a bar under a down triangle), drawn in the button's text colour. The button
+ * around a glyph (its size, hover, disabled) belongs to the list that has it. */
+.sort-glyph {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+  pointer-events: none;
+}
+
+.sort-glyph.drag::before,
+.sort-glyph.drag::after,
+.sort-glyph.drag span {
+  content: "";
+  position: absolute;
+  left: 1px;
+  width: 14px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.sort-glyph.drag::before {
+  top: 3px;
+}
+
+.sort-glyph.drag span {
+  top: 7px;
+}
+
+.sort-glyph.drag::after {
+  top: 11px;
+}
+
+.sort-glyph.edge::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  width: 12px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.sort-glyph.edge::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+}
+
+.sort-glyph.edge.top::before {
+  top: 2px;
+}
+
+.sort-glyph.edge.top::after {
+  top: 6px;
+  border-bottom: 7px solid currentColor;
+}
+
+.sort-glyph.edge.bottom::before {
+  bottom: 2px;
+}
+
+.sort-glyph.edge.bottom::after {
+  bottom: 6px;
+  border-top: 7px solid currentColor;
+}

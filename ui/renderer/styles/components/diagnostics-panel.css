@@ -1,0 +1,863 @@
+/* The system diagnostics panel (core/diagnostics_panel.js): the topology, Health's heartbeat and per-node numbers.
+ * It is shown in the dock's diagnostics popover on every page and in 設定 → 系統: a component, not a page's. */
+
+/* ---------------------------------------------------------------------------
+ * 系統連線診斷: topology + Health heartbeat + per-node numbers
+ * (js/core/diagnostics_panel.js)
+ * ------------------------------------------------------------------------- */
+.dg-card {
+  border: 1px solid var(--blue-800x-15);
+  border-radius: 10px;
+  background: var(--blue-900x-7);
+  min-width: 0;
+}
+
+/* The row under the cards is as tall as the topology drawn at the width the cards on top leave it (the SVG keeps its
+   proportions), so the map card has no empty room (user 10-22). The detail beside it adds no height of its own
+   (.dg-inspector contain: size); every detail fits that height. */
+.dg-map-card {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The card's title (系統拓樸). */
+.dg-card-head {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--blue-800x-9);
+}
+
+.dg-card-head h4 {
+  margin: 0;
+  color: var(--blue-50x);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dg-map-wrap {
+  min-width: 0;
+  padding: 10px;
+}
+
+.dg-map {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.dg-empty {
+  margin: 8px 2px;
+  color: var(--slate-400x-2);
+  font-size: 13px;
+}
+
+/* The four cards on top: 延遲, 系統 CPU, 記憶體, 儲存空間 across both columns (user 10-22). 儲存空間 is as wide as the
+   detail column under it (260 px, the same gap: its edges line up with the detail's); 系統 CPU and 記憶體 rings like it,
+   each as wide as its longest list needs (all seven groups, 訓練 and 收盤整理 shown: 222 and 240 px); 延遲 as wide as
+   its legend line (P99 and the three stages) and nothing more (user 10-22) -- the popover takes its width from this
+   row. A window too narrow for it wraps the legend; at 820 px and under (the panel one column) the cards go two a row
+   in equal halves of the width there is. */
+.dg-kpis {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, max-content) 222px 240px 260px;
+  gap: 10px;
+}
+
+.dg-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--blue-800x-15);
+  border-radius: 10px;
+  background: var(--blue-900x-7);
+}
+
+.dg-kpi-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 18px;
+  color: var(--slate-400x-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.dg-kpi-big {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--blue-50x);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.dg-kpi-pending {
+  color: var(--slate-400x-2);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.dg-kpi-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--blue-800x-9);
+}
+
+.dg-kpi-bar i {
+  display: block;
+  height: 100%;
+  background: var(--dg-part);
+}
+
+.dg-kpi-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  color: var(--slate-400x-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dg-kpi-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.dg-kpi-legend i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--dg-part);
+}
+
+/* The share a part or a latency stage takes, one colour per part: a bar segment, a ring arc and a swatch paint it. */
+.dg-part-1 {
+  --dg-part: var(--diagnostics-part-1);
+}
+
+.dg-part-2 {
+  --dg-part: var(--diagnostics-part-2);
+}
+
+.dg-part-3 {
+  --dg-part: var(--diagnostics-part-3);
+}
+
+.dg-part-4 {
+  --dg-part: var(--diagnostics-part-4);
+}
+
+.dg-part-5 {
+  --dg-part: var(--diagnostics-part-5);
+}
+
+.dg-part-6 {
+  --dg-part: var(--diagnostics-part-6);
+}
+
+.dg-part-7 {
+  --dg-part: var(--diagnostics-part-7);
+}
+
+/* 系統 CPU, 記憶體 and 儲存空間: the ring with the total in its middle, the parts listed beside it (name, then its figure
+   on the right). The list keeps to the card's right edge: room the card has to spare lies between the ring and the list
+   (user 10-22). */
+.dg-ring {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.dg-donut {
+  flex: none;
+  align-self: center;
+  width: 80px;
+  height: 80px;
+}
+
+.dg-donut-track {
+  fill: none;
+  stroke: var(--blue-800x-9);
+  stroke-width: 13;
+}
+
+.dg-donut-arc {
+  fill: none;
+  stroke: var(--dg-part);
+  stroke-width: 13;
+}
+
+.dg-donut-total {
+  fill: var(--blue-50x);
+  font-size: 19px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.dg-donut-unit {
+  fill: var(--slate-400x-2);
+  font-size: 11px;
+}
+
+.dg-ring-list {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: end;
+  /* The row of cards is as tall as 儲存空間's longer list: a shorter list spreads over the card's height instead of
+     leaving an empty band (user 10-28). */
+  align-content: space-evenly;
+  gap: 2px 10px;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dg-ring-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--slate-400x-2);
+  white-space: nowrap;
+}
+
+.dg-ring-part i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--dg-part);
+}
+
+.dg-ring-list b {
+  color: var(--blue-50x);
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* 系統 CPU and 記憶體: the total's last 2 minutes, a line in the title row from just after the name to the card's
+   right edge (user 10-22). It takes the room left, so it never makes the card wider. */
+.dg-kpi-trend {
+  flex: 1 1 0;
+  min-width: 0;
+  display: block;
+  height: 18px;
+  margin-left: 4px;
+}
+
+.dg-spark-area {
+  fill: var(--diagnostics-spark-area);
+}
+
+.dg-spark-line {
+  fill: none;
+  stroke: var(--cyan-400x);
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+
+/* 延遲: per source, the overall figure beside its stage bar, then P99 and each stage. The row of cards is as tall as
+   its tallest (儲存空間's list); the sources share the card's height, each centred in its half, so no empty band is
+   left under the last one (user 10-28). */
+.dg-lat-row {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+
+.dg-lat-row + .dg-lat-row {
+  padding-top: 6px;
+  border-top: 1px solid var(--blue-800x-9);
+}
+
+.dg-lat-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dg-lat-top .dg-kpi-bar {
+  flex: 1 1 auto;
+}
+
+.dg-lat-src {
+  min-width: 52px;
+  color: var(--slate-300);
+  font-size: 12px;
+}
+
+.dg-lat-top b {
+  color: var(--blue-50x);
+  font-size: 19px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.dg-lat-top b.dg-tone-warn {
+  color: var(--orange-300x);
+}
+
+.dg-lat-top b.dg-lat-none {
+  color: var(--slate-400x-2);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+/* A low window (an 11" 1280 x 720 screen): the cards and the detail closer together, so everything still fits without
+   scrolling and the topology keeps its room. */
+@media (max-height: 760px) {
+  .dg-kpi {
+    gap: 4px;
+    padding: 8px 10px;
+  }
+  .dg-kpi-big {
+    font-size: 19px;
+  }
+  .dg-lat-top b {
+    font-size: 17px;
+  }
+  .dg-kpi-legend {
+    gap: 2px 8px;
+    font-size: 10.5px;
+  }
+  .dg-ring-list {
+    gap: 1px 12px;
+    font-size: 11px;
+  }
+  .dg-inspector {
+    padding: 10px 12px;
+  }
+  .dg-member {
+    margin-top: 10px;
+  }
+  .dg-groups {
+    margin-top: 6px;
+    gap: 6px;
+  }
+  .dg-tiles {
+    gap: 6px;
+  }
+  .dg-tile {
+    padding: 6px 9px 7px;
+  }
+}
+
+.dg-map .dg-tone-ok,
+.dg-pill.dg-tone-ok,
+.dg-tile.dg-tone-ok {
+  --dg-tone: var(--status-ok);
+  --dg-tone-bg: color-mix(in srgb, var(--status-ok) 12%, transparent);
+}
+
+.dg-map .dg-tone-fail,
+.dg-pill.dg-tone-fail,
+.dg-tile.dg-tone-fail {
+  --dg-tone: var(--status-error);
+  --dg-tone-bg: color-mix(in srgb, var(--status-error) 12%, transparent);
+}
+
+.dg-map .dg-tone-warn,
+.dg-pill.dg-tone-warn,
+.dg-tile.dg-tone-warn {
+  --dg-tone: var(--orange-300x);
+  --dg-tone-bg: var(--orange-300x-a13);
+}
+.dg-tile.dg-tone-pending b {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--slate-400x-2);
+}
+
+.dg-map .dg-tone-unknown,
+.dg-map .dg-tone-off,
+.dg-pill.dg-tone-unknown,
+.dg-pill.dg-tone-off {
+  --dg-tone: var(--slate-400x);
+  --dg-tone-bg: var(--slate-400x-a12);
+}
+
+/* Health band */
+.dg-map.stale .dg-body {
+  opacity: .45;
+}
+
+.dg-map.stale .dg-traffic, .dg-map.stale .dg-pulse {
+  display: none;
+}
+
+/* lanes */
+/* Three depths: card #0b1520 < lane < node, each a visible step apart. */
+.dg-lane {
+  fill: var(--blue-900x-17);
+  stroke: var(--slate-800);
+}
+
+/* 行情來源 / 資料處理 / 畫面渲染 / 服務端點: the whole lane is one button. */
+/* Its nodes are not buttons of their own: the pointer goes through them to the lane. */
+.dg-lane-pick {
+  cursor: pointer;
+  outline: none;
+}
+
+.dg-lane-pick > .dg-node {
+  pointer-events: none;
+}
+
+.dg-lane-pick:hover > .dg-lane {
+  stroke: var(--sky-600x-5);
+}
+
+.dg-lane-pick:focus-visible > .dg-lane {
+  stroke: var(--cyan-400x);
+  stroke-width: 2;
+}
+
+.dg-lane-pick.selected > .dg-lane {
+  stroke: var(--cyan-400x);
+  stroke-width: 1.6;
+}
+
+.dg-lane-title {
+  fill: var(--slate-400x-2);
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: .4px;
+}
+
+/* WAL inside the Market Runtime node, in its own tone. */
+.dg-wal-box {
+  fill: var(--blue-900x-19);
+  stroke: var(--blue-700x-8);
+}
+
+.dg-wal .title {
+  fill: var(--blue-50x);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.dg-wal .state {
+  fill: var(--dg-tone);
+  font-size: 12px;
+}
+
+/* links: only "live" carries traffic dots, and only when data really moved */
+.dg-edge {
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+/* The edges' arrowheads (diagnostics_panel.js <marker> paths). */
+.dg-arrow {
+  fill: none;
+  stroke-width: 1.4;
+}
+
+.dg-arrow.live {
+  stroke: var(--topology-arrow-live);
+}
+
+.dg-arrow.idle {
+  stroke: var(--topology-arrow-muted);
+}
+
+.dg-arrow.broken {
+  stroke: var(--topology-arrow-broken);
+}
+
+.dg-edge.live {
+  stroke: var(--sky-600x-4);
+  marker-end: url(#dgLive);
+}
+
+.dg-edge.idle {
+  stroke: var(--slate-700);
+  marker-end: url(#dgMuted);
+}
+
+.dg-edge.unknown {
+  stroke: var(--blue-700x-12);
+  stroke-dasharray: 3 5;
+  marker-end: url(#dgMuted);
+}
+
+.dg-edge.broken {
+  stroke: var(--status-error);
+  stroke-dasharray: 6 5;
+  marker-end: url(#dgBad);
+}
+
+.dg-edge.api {
+  stroke: var(--sky-700x-3);
+  marker-end: url(#dgMuted);
+}
+
+.dg-edge.dg-no-arrow {
+  marker-end: none;
+}
+
+/* Every label sits beside its line (diagnostics_panel.js EDGES), so it needs no halo: a halo in the lane colour showed
+   as a dark patch where a label sits on a node (寫入 inside Market Runtime). */
+.dg-edge-label {
+  font-size: 13px;
+  fill: var(--sky-400x);
+}
+
+.dg-edge-label.muted {
+  fill: var(--slate-600x);
+}
+
+.dg-fault circle {
+  fill: var(--pink-900x);
+  stroke: var(--status-error);
+}
+
+.dg-fault path {
+  stroke: var(--status-error);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.dg-traffic {
+  fill: var(--cyan-200x);
+}
+
+/* nodes */
+.dg-node {
+  cursor: pointer;
+  outline: none;
+}
+
+.dg-node .box {
+  fill: var(--blue-800x-9);
+  stroke: var(--blue-700x-8);
+}
+
+.dg-node .stripe {
+  fill: var(--dg-tone);
+}
+
+.dg-node.dg-tone-unknown .box {
+  fill: var(--blue-900x-19);
+  stroke-dasharray: 4 4;
+}
+
+.dg-node:hover .box {
+  stroke: var(--sky-600x-5);
+  fill: var(--sky-800x-10);
+}
+
+.dg-node:focus-visible .box {
+  stroke: var(--cyan-400x);
+  stroke-width: 2;
+}
+
+.dg-node.selected .box {
+  stroke: var(--cyan-400x);
+  stroke-width: 1.6;
+  fill: var(--sky-800x-10);
+}
+
+.dg-node .title {
+  fill: var(--blue-50x);
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.dg-node.dg-tone-unknown .title {
+  fill: var(--blue-200x-4);
+}
+
+.dg-node .state {
+  fill: var(--dg-tone);
+  font-size: 14.5px;
+}
+
+.dg-node .dg-badge-bg {
+  fill: var(--dg-tone-bg);
+}
+
+.dg-node .dg-badge-txt {
+  fill: var(--dg-tone);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.dg-ask rect {
+  fill: var(--sky-900x);
+  stroke: var(--sky-600x-3);
+}
+
+.dg-ask text {
+  fill: var(--sky-300x-2);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* Health heartbeat: drawn once per new Health pass, on the nodes Health actually asks */
+.dg-pulse {
+  fill: none;
+  stroke: var(--cyan-400x);
+  stroke-width: 2;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: dg-ping 1.6s ease-out 1;
+}
+
+.dg-pulse.dg-no-reply {
+  stroke: var(--status-error);
+}
+
+/* Events per second over the last 2 minutes, bottom-right of each node data passes through */
+.dg-node-rate path {
+  fill: none;
+  stroke: var(--blue-400);
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+  opacity: .9;
+}
+
+.dg-node-rate text {
+  fill: var(--blue-200x-4);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* node detail: numbers only, two lines per tile. Every detail lies in the same grid cell and only the picked one
+   (.current) shows. Beside the topology it takes the row's height and gives none (contain: size, user 10-22); one
+   column (a narrow window) has no topology beside it: as tall as its tallest detail. */
+.dg-inspector {
+  box-sizing: border-box;
+  padding: 14px;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  contain: size;
+}
+
+.dg-pane {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+.dg-pane:not(.current) {
+  visibility: hidden;
+}
+
+@media (max-width: 820px) {
+  .dg-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dg-inspector {
+    overflow-y: visible;
+    contain: none;
+  }
+}
+
+.dg-ins-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.dg-ins-head h3 {
+  margin: 0;
+  color: var(--blue-50x);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.dg-pill {
+  flex: none;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dg-tone);
+  background: var(--dg-tone-bg);
+}
+
+/* A lane's detail: one line per node (white name, its state), then its tiles. */
+.dg-member {
+  margin-top: 14px;
+}
+
+.dg-member-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.dg-member-head h4 {
+  margin: 0;
+  color: var(--blue-50x);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* A node's groups: one under another, as far apart as two tiles (one rule for a lane's detail and a node's own). */
+.dg-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+/* Two tiles a row at most (user 10-22). */
+.dg-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.dg-tile {
+  position: relative;
+  overflow: hidden;
+  background: var(--blue-900x-20);
+  border: 1px solid var(--blue-800x-19);
+  border-radius: 9px;
+  padding: 8px 10px 9px;
+  min-width: 0;
+}
+
+.dg-tile.wide {
+  grid-column: 1 / -1;
+}
+
+.dg-tile small {
+  display: block;
+  font-size: 11px;
+  color: var(--slate-400x-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dg-tile b {
+  display: block;
+  margin-top: 2px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--dg-tone, var(--blue-50x));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A value that is a list (連線中的程式): every item shows, on as many lines as it takes. */
+.dg-tile.dg-tile-wrap b {
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+.dg-tile .sub {
+  display: block;
+  font-size: 11px;
+  color: var(--slate-400x-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dg-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--blue-800x-22);
+}
+
+.dg-bar i {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  background: var(--dg-tone, var(--focus-ring-color));
+}
+
+.dg-action {
+  margin-top: 14px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--sky-600x-3);
+  border-radius: 8px;
+  background: var(--sky-900x);
+  color: var(--sky-300x-2);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.dg-action:hover {
+  background: var(--sky-800x-5);
+}
+
+.dg-action:disabled {
+  opacity: .6;
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dg-pulse {
+    animation: none;
+  }
+  .dg-traffic {
+    display: none;
+  }
+}
+
+@keyframes dg-ping { 0% { opacity: 0; transform: scale(1); } 12% { opacity: .95; } 80%, 100% { opacity: 0; transform: scale(1.07); } }
+
+/* The storage move under way, under 儲存空間's ring. */
+.dg-storage-move {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--slate-400x-2);
+}
+
+.dg-storage-move-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dg-storage-move-bar {
+  height: 4px;
+  margin: 4px 0;
+  border-radius: 2px;
+  background: var(--slate-800);
+  overflow: hidden;
+}
+
+.dg-storage-move-bar i {
+  display: block;
+  height: 100%;
+  background: var(--market-red);
+}
+
+.dg-storage-move-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+}

@@ -1,0 +1,27 @@
+{
+  "schema": "stock-monitor-trading-sessions-v1",
+  "version": "sessions-2026-10-08",
+  "note": "Intraday trading minutes per source|market, in exchange-local minute-of-day of the WAL partition's calendar date (session_identity_contract: trading_date = exchange calendar date). Intervals are inclusive minute STARTS. `print_instants` are exchange-local minutes outside the intervals at whose first second (hh:mm:00) the venue stamps a single match or publication, not trading minutes (no bar of their own, no clock): TW stocks 13:33 (delayed closing match) and 14:30 (盤後定價 match), TW indices 13:33 (the published closing index); an outage touching one is a trading outage (native/market_runtime/src/evidence.rs). A session's first print instant after its last interval is its closing publication and closes that last trading minute's bar (Calendar::bar_minute); a later one (14:30) has no bar. A business session is one continuous accumulation scope: recent windows never bridge two sessions; breaks inside a session (lunch) are non-trading minutes, not missing data. `continues_previous_day` joins a session tail after midnight to the previous calendar partition's session of the same name. Holidays need no entry: no data, no clock scope, no minutes. shioaji|FUT is partitioned per business session (2026-10-01): a DAY partition holds 08:45-13:45 of its date; a NIGHT partition is dated by the day it opens and its minutes continue past midnight (00:00 = 1440, 05:00 = 1740). futu|US has the 24-hour overnight session (20:00-03:59 New York, 2026-10-08): 20:00-23:59 of a date, then 00:00-03:59 of the next date's partition continuing it. `half_day_intervals`: a session's trading minutes on an exchange half day (US half days, config/market_holidays.json NYSE `half` or OpenD's MORNING days: the regular session closes at 13:00 and the after-hours session runs 13:00-17:00).",
+  "markets": {
+    "shioaji|STK": [{"session": "DAY", "intervals": [[540, 810]], "print_instants": [813, 870]}],
+    "shioaji|OTC": [{"session": "DAY", "intervals": [[540, 810]], "print_instants": [813, 870]}],
+    "shioaji|IDX": [{"session": "DAY", "intervals": [[540, 810]], "print_instants": [813]}],
+    "shioaji|FUT": [
+      {"session": "DAY", "intervals": [[525, 825]]},
+      {"session": "NIGHT", "intervals": [[900, 1740]]}
+    ],
+    "futu|US": [
+      {"session": "OVERNIGHT", "intervals": [[0, 239]], "continues_previous_day": true},
+      {"session": "PRE", "intervals": [[240, 569]]},
+      {"session": "REGULAR", "intervals": [[570, 959]], "half_day_intervals": [[570, 779]]},
+      {"session": "POST", "intervals": [[960, 1199]], "half_day_intervals": [[780, 1019]]},
+      {"session": "OVERNIGHT", "intervals": [[1200, 1439]]}
+    ],
+    "futu|HK": [{"session": "DAY", "intervals": [[570, 719], [780, 969]]}],
+    "futu|SH": [{"session": "DAY", "intervals": [[570, 690], [780, 900]]}],
+    "futu|SZ": [{"session": "DAY", "intervals": [[570, 690], [780, 900]]}],
+    "futu|CC": [{"session": "DAY", "intervals": [[0, 1439]]}]
+  },
+  "unknown_market": {"session": "DAY", "intervals": [[0, 1439]], "calendar_quality": "UNKNOWN_MARKET"},
+  "late_allowance_seconds": 5
+}

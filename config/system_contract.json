@@ -1,0 +1,73 @@
+{
+  "schema": "stock-monitor-system-contract-v1",
+  "spec": "docs/system-architecture (system-ab-config-v1)",
+  "note": "One contract read by Python (config/system_contract.py), Node (config/js/system_contract.js) and Rust (include_str!). Tests prove all three agree.",
+
+  "market_runtime_roles": {
+    "viewer": ["view.subscribe", "view.unsubscribe", "view.snapshot", "view.resync", "trades.page", "focus.set", "workspace.replace", "latency.report", "flow.large_orders", "replay.open", "replay.control", "replay.close", "signals.snapshot", "session.current", "events.subscribe", "events.unsubscribe", "health"],
+    "provider": ["event.ingest", "event.ingest.batch", "event.durable.subscribe", "ingest.hello", "ingest.loss", "ingest.outage", "ingest.backfill", "evidence.seal", "evidence.quarantine", "evidence.mark_repaired", "evidence.prune", "adapter.register", "adapter.subscription.status", "health"],
+    "analysis_runtime": ["durable.subscribe", "projection.publish", "projection.reset", "analysis.status", "flow.large_orders.result", "signals.publish", "replay.timeline", "health"],
+    "signal_producer": ["signals.publish", "health"],
+    "controller": ["health", "metrics", "demand.status", "background.replace", "breadth.configure", "checkpoint.now", "wal.prune", "drain", "shutdown"]
+  },
+  "role_ingest_kinds": {
+    "provider": ["quote", "trade", "orderbook", "minute_bar", "reference"],
+    "signal_producer": ["analysis_signals"]
+  },
+
+  "data_children": {
+    "_note": "Directory names under DATA_ROOT owned by the native runtimes (paper_matching: the 模擬下單 orders paper_account_api writes and the results Rust B writes, docs/system-architecture/11). market_sessions is the one file named here: market_runtime writes it (the Shioaji sessions that opened on their first print and the closures it observed, native/market_runtime/src/rollover.rs MarketSessions), analysis_runtime and config/market_holidays.py read it. us_trading_calendar: the Futu provider writes the US exchange calendar OpenD published (service/market/futu/trading_calendar.py); market_runtime and config/market_holidays.py read it. traded_codes: each account ledger writes <ledger>.json there (the codes it traded, service/account/account_ledger_service.py publish_traded_codes); the historical store's manager (run by analysis_runtime) keeps their raw history forever. rollover_cutoffs: market_runtime writes its session rollover cutoffs there whenever they move; the historical store's manager (native/market_runtime/src/historical_store.rs, run by analysis_runtime and its materialization jobs) judges retention against them. voided_events: the durable events of market_runtime's stream the user decided are void, written by hand (native/market_runtime/src/voided.rs); market_runtime, analysis_runtime and its materialization jobs read it, and it lives with the WAL whose sequences it names. live-engine is where market_runtime's WAL/checkpoints have always lived; the materializer, reset tooling and storage layout read the same name.",
+    "market_runtime": "live-engine",
+    "analysis_runtime": "analysis-runtime",
+    "paper_matching": "accounts/paper/matching",
+    "traded_codes": "accounts/traded_codes",
+    "market_sessions": "live-engine/market_sessions.json",
+    "rollover_cutoffs": "live-engine/rollover_cutoffs.json",
+    "voided_events": "live-engine/voided_events.json",
+    "us_trading_calendar": "futu/us_trading_calendar.json"
+  },
+
+  "service_states": ["RUNNING", "STARTING", "STOPPING", "DISABLED", "FAILED", "UNKNOWN", "STALE", "EXTERNAL", "RESERVED"],
+  "config_states": ["default", "saved", "effective", "observed"],
+
+  "metric_availability": ["OK", "NO_SAMPLE", "WARMING", "STALE", "UNSUPPORTED", "TEMPORARILY_UNAVAILABLE", "NOT_APPLICABLE"],
+  "metric_kinds": ["counter", "gauge", "histogram", "rate", "resource"],
+
+  "operation_states": ["PENDING", "RUNNING", "APPLIED", "PARTIALLY_APPLIED", "FAILED", "ROLLING_BACK", "ROLLED_BACK", "ROLLBACK_FAILED", "CONFLICT", "REJECTED"],
+  "operation_service_steps": ["drain", "stop", "release_verified", "candidate_fenced", "bind", "readiness", "identity_verified", "effective_recorded"],
+
+  "effect_modes": {
+    "display": "immediate",
+    "background_list": "runtime_apply",
+    "flow_event_rules": "replay_cutover",
+    "model_options": "owner_versioned",
+    "provider": "reconnect",
+    "service_port": "controlled_restart",
+    "controller_or_settings_port": "full_restart_bootstrap",
+    "storage_retention": "runtime_apply",
+    "storage_location": "full_restart_bootstrap"
+  },
+
+  "event": {
+    "schema": "market-event-v2",
+    "raw_kinds": ["quote", "trade", "orderbook", "minute_bar", "reference", "source_status", "clock"],
+    "derived_kinds": ["analysis_signals"],
+    "time_quality": ["exchange", "backend_clock", "synthetic", "missing"],
+    "percent_unit": "percent",
+    "ratio_unit": "decimal_ratio",
+    "epoch_ns_transport": "string"
+  },
+
+  "windows_minutes": [1, 3, 5, 15, 30, 60],
+  "fixed_kbar_minutes": [3, 5, 15, 30, 60],
+  "kbar_retention_months": {"1": 3, "5": 5, "15": 7, "30": 9, "60": 11},
+
+  "minute_quality": ["TRADED", "NO_TRADE_SYNTHETIC", "NO_TRADE_NO_PRICE", "MISSING", "PARTIAL"],
+  "minute_state": ["FORMING", "FINALIZED"],
+  "block_completeness": ["COMPLETE", "PARTIAL", "WARMUP", "MISSING", "RECOVERING", "STALE", "UNAVAILABLE"],
+
+  "monitoring": {
+    "publish_interval_ms": 2000,
+    "trend_retention_ms": 300000
+  }
+}

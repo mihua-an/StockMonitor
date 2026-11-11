@@ -1,0 +1,24 @@
+[package]
+name = "analysis_runtime"
+version = "0.1.0"
+edition = "2021"
+description = "Rust B (analysis_runtime): minute/window/flow/event accumulation, online features and inference from the Market Runtime durable stream"
+license = "Apache-2.0"
+
+[lib]
+name = "analysis_runtime"
+path = "src/lib.rs"
+
+[[bin]]
+name = "analysis_runtime"
+path = "src/main.rs"
+
+[dependencies]
+# The durable stream's event types come from Market Runtime itself, so this worker parses exactly
+# the protocol the base commits to rather than a hand-kept copy of it.
+market_runtime = { path = "../market_runtime" }
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = { version = "1", features = ["float_roundtrip", "raw_value"] }
+# ONNX Runtime for the trained models (W4): CPU only, the prebuilt runtime statically linked -- no DLL beside the exe.
+# The first build downloads the prebuilt runtime (cached afterwards).
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "download-binaries", "tls-native", "api-22"] }

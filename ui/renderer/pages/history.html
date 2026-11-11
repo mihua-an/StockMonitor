@@ -1,0 +1,91 @@
+<div class="history-replay-page history-replay-layout">
+  <div class="history-main-column">
+    <div class="history-dashboard-grid history-dashboard">
+      <div class="history-top-workspace">
+        <!-- 左：個股走勢（一個分頁的插槽，控制項在分頁列，同即時報價；TrendChart 的回放樣式）。 -->
+        <div class="dashboard-card history-chart-card history-dashboard-card" data-component-slot="replayPrimary"></div>
+
+        <div class="history-workspace-splitter history-workspace-splitter-vertical" data-history-workspace-splitter="top" role="separator" aria-orientation="vertical" aria-label="調整走勢圖與歷史資訊寬度"></div>
+
+        <!-- 右：歷史事件 / 歷史明細上下堆疊；兩張卡完全同寬，兩者之間不提供 splitter。 -->
+        <div class="history-right-stack">
+          <div class="dashboard-card history-dashboard-card" data-component-slot="replayEvent"></div>
+
+          <div class="dashboard-card history-dashboard-card" data-component-slot="replayTradeDetails"></div>
+        </div>
+      </div>
+
+      <div class="history-workspace-splitter history-workspace-splitter-horizontal" data-history-workspace-splitter="horizontal" role="separator" aria-orientation="horizontal" aria-label="調整上方與下方回放工作區高度"></div>
+
+      <!-- 下排：技術分析 / 買賣報價 / 成交明細 / 價量 / 大單流向, a pane workspace (features/history/pane_defaults.js):
+           a feature's tab moves to another pane or to a pane's edge; none is closed or added. -->
+      <div class="history-bottom-tools">
+        <div class="dashboard-card" data-component-slot="replayTechnical" data-component-hydrate="0"></div>
+        <div class="dashboard-card" data-component-slot="replaySecondary" data-component-hydrate="0"></div>
+        <div class="dashboard-card" data-component-slot="replayTertiary"></div>
+        <div class="dashboard-card" data-component-slot="replayPriceFlow" data-component-hydrate="0"></div>
+        <div class="dashboard-card" data-component-slot="replayAuxiliary"></div>
+      </div>
+    </div>
+
+    <!-- 播放列（components/replay-bar.css，與帳務配對回放同一個元件）：« ‹ 播放 › » ↺、目前的時:分:秒、
+         時間條（第一筆到最後一筆成交，秒）、速度。 -->
+    <div class="history-timeline-panel panel replay-bar">
+      <div class="replay-bar-transport">
+        <button data-history-shift="-30" type="button" aria-label="往回 30 秒"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6L3 12l9 6zM21 6l-9 6 9 6z"/></svg></button>
+        <button data-history-shift="-5" type="button" aria-label="往回 5 秒"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 6l-9 6 9 6z"/></svg></button>
+        <button id="historyPlayBtn" class="is-play" type="button">播放</button>
+        <button data-history-shift="5" type="button" aria-label="往前 5 秒"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6l9 6-9 6z"/></svg></button>
+        <button data-history-shift="30" type="button" aria-label="往前 30 秒"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6l9 6-9 6zM12 6l9 6-9 6z"/></svg></button>
+        <button id="historyResetBtn" type="button" aria-label="重新播放">↺</button>
+      </div>
+
+      <output id="historyTimeNow" class="replay-bar-now" for="historyTimeRange">--:--:--</output>
+
+      <div class="replay-bar-track">
+        <span id="historyStartTime">09:00</span>
+        <div id="historyTimeTrack" class="history-time-track">
+          <output id="historyTimeHover" class="history-time-hover" aria-hidden="true" hidden></output>
+          <div class="history-time-bar">
+            <!-- One bar, YouTube-like: not built yet, built (Rust B's analysis held), played to the thumb. -->
+            <div class="history-time-rail" aria-hidden="true">
+              <div id="historyTimeBuffer" class="history-time-buffer"></div>
+              <div class="history-time-played"></div>
+            </div>
+            <input id="historyTimeRange" class="history-time-range" type="range" min="0" max="0" value="0" step="1" disabled aria-label="歷史回放時間" />
+          </div>
+        </div>
+        <span id="historyEndTime">13:30</span>
+      </div>
+
+      <div class="replay-bar-speed">
+        <button class="is-active" data-history-speed="1" type="button">1x</button>
+        <button data-history-speed="2" type="button">2x</button>
+        <button data-history-speed="5" type="button">5x</button>
+        <button data-history-speed="10" type="button">10x</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右側商品列表：固定最小寬度，不再跟著視窗比例放大 -->
+  <aside class="history-stock-sidebar panel">
+    <div class="history-date-select-wrap">
+      <!-- The select is the canonical value/state owner (history.js and deep-link replay
+           flows read it). The native Windows/Chromium popup cannot take the App scrollbar
+           theme, so a DOM menu is drawn in front of it and dispatches the same change
+           event back to this select. -->
+      <select id="historyDateSelect" class="history-native-date-select" aria-hidden="true" tabindex="-1"></select>
+      <div id="historyDatePicker" class="history-sidebar-date-picker">
+        <button id="historyDateButton" class="search history-select history-sidebar-date" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="交易日期">
+          <span id="historyDateLabel">----</span><span class="history-sidebar-date-chevron" aria-hidden="true">▾</span>
+        </button>
+        <div id="historyDateMenu" class="event-feed-date-menu history-sidebar-date-menu" hidden>
+          <div id="historyDateList" class="event-feed-date-list history-sidebar-date-list" role="listbox" aria-label="交易日期清單"></div>
+        </div>
+      </div>
+    </div>
+    <div id="historyStockList" class="history-stock-list" role="listbox" aria-label="當日股票清單"></div>
+    <!-- Drawn over the list (history.css): a spinner while the day's products load, a failure at the list's foot. -->
+    <div id="historyProductLoadStatus" class="history-product-load-status" role="status" aria-live="polite" data-state="idle"><span class="loading-spinner is-large" aria-hidden="true"></span><span id="historyProductLoadText"></span></div>
+  </aside>
+</div>

@@ -1,0 +1,322 @@
+/* The product quote header and info tape shared by the trend chart, order book and history panes. */
+
+/* The price's box: at 漲停 / 跌停 base.css's .limit-up-price / .limit-down-price paint it 紅底白字 / 綠底白字. */
+.quote-main-price {
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+/* 大盤是五位數，Y 軸左側預留較寬空間由 canvas 動態處理。 */
+
+/* ===== Market info colors / tab close / H-L spacing ===== */
+/* .trend-info-row b 本身有較高 specificity，只加 price-up/down class
+   仍會被白色蓋掉。監控報價與即時資訊共用這組規則。 */
+
+.product-quote-header.product-quote-replay .quote-main-price {
+  padding: 1px 4px;
+}
+
+/* 個股資訊列最低寬度直接依可讀文字計算；放大時仍按比例延展。 */
+
+/* ===== Unified metrics + reliable splitters + synchronized detail tabs ===== */
+/* 上方兩組數據可以分區，但視覺上是同一塊資訊帶：背景、標題字級、標題顏色完全一致。 */
+
+/* 走勢下方資訊：標題與數值留出清楚間距；標題固定灰藍，數值依狀態著色。 */
+
+/* 漲停價 / 跌停價本身是狀態資料：白字紅底 / 白字綠底。 */
+
+/* 下方第三排大盤家數：台股顏色規則。 */
+
+.product-quote-name,
+.product-quote-code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-quote-center {
+  min-width: 0;
+  text-align: center;
+  white-space: nowrap;
+  font-weight: 900;
+}
+
+.product-quote-center.product-quote-status-error {
+  color: var(--status-error);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.product-quote-center[hidden] {
+  display: none;
+}
+
+.product-quote-price-box {
+  min-width: max-content;
+  width: max-content;
+  margin-left: auto;
+  text-align: right;
+}
+
+.product-quote-price-box .quote-main-price,
+.product-quote-price-box .quote-change {
+  display: block;
+  width: auto;
+  margin-left: auto;
+  text-align: right;
+}
+
+/* Orderbook typography is not restated here: the canonical product-header block
+ * at the end of this file styles every instance, trend and orderbook alike. */
+.product-quote-header.compact .quote-main-price {
+  min-width: 0;
+}
+
+/* The middle cell is reserved for contextual content such as replay P&L; live volume is not a header concern and
+ * remains in the trend information strip. */
+.product-quote-header {
+  align-self: stretch;
+  width: 100%;
+  min-width: 100%;
+  max-width: none;
+}
+
+/* A header its host lets the user drag by (Workspace drags a column by its trend's header). */
+.product-quote-header[draggable="true"] {
+  cursor: grab;
+}
+
+.product-quote-header[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+:is(.product-quote-name, .product-quote-code) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 個股走勢 footer: eight fixed cells, two rows of four (trend_chart_component.js stockMetricsTapeHtml):
+ * 漲停 | 漲幅 | A分上漲 | B分上漲 / 跌停 | 振幅 | A分下跌 | B分下跌 -- every cell keeps its position. */
+
+/* =========================================================================
+ * THE PRODUCT HEADER -- one row in every panel: 個股走勢 / 期貨走勢 / 加權走勢 / 技術分析 / 買賣報價 /
+ * Futu 個股走勢 / Futu 買賣報價 / 歷史回放.
+ * [code box] 股名 ........ 價格 漲跌 (漲跌幅), as tall as the 成交明細 column header. A flex row: the
+ * identity at the start, the price box pushed to the end, the centre cell absolutely centred over it.
+ *
+ * All four panels render the same component (productQuoteHeaderShell in
+ * ui/renderer/js/core/components/product_quote_header.js). The modifier classes
+ * they still carry -- compact, orderbook-header, trend-titlebar,
+ * trend-us-titlebar -- identify the panel, they do NOT get to change
+ * how the header looks: height, padding and the four text styles are decided
+ * here and nowhere else, so the股名/股號/股價/漲跌 row is pixel-identical in
+ * every panel. Anything that needs a different geometry is a different
+ * component, not another override of this one.
+ * ========================================================================= */
+.product-quote-header,
+.product-quote-header.compact {
+  height: var(--product-quote-header-height);
+  min-height: var(--product-quote-header-height);
+  max-height: var(--product-quote-header-height);
+  flex: 0 0 var(--product-quote-header-height);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  /* The left edge is the tab bar's (its tab list's 6px): the code box lines up with the tab above it. The end leaves
+     room for what a host places beside the header (--product-quote-header-end). */
+  padding: 0 var(--product-quote-header-end, 12px) 0 6px;
+  position: relative;
+  overflow: visible;
+  background: transparent;
+}
+
+.product-quote-header .product-quote-identity {
+  max-width: calc(50% - 12px);
+  padding-right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: visible;
+}
+
+.product-quote-header .product-quote-name {
+  color: var(--slate-100);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.product-quote-header .product-quote-code {
+  color: var(--slate-400x-3);
+  margin-top: 1px;
+  font-size: 11px;
+  line-height: 18px;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.product-quote-header[data-searchable="true"] .product-quote-code {
+  display: none;
+}
+
+.product-quote-header[data-searchable="false"] .product-quote-search {
+  display: none;
+}
+
+/* A row that only shows 價格 and 漲跌 (模擬帳務's 下單 panel: its title already names the stock). */
+.product-quote-header[data-identity="hidden"] .product-quote-identity {
+  display: none;
+}
+
+.product-quote-header .product-quote-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: calc(100% - 210px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 11px;
+}
+
+.product-quote-header .product-quote-price-box {
+  margin: 0;
+  margin-left: auto;
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
+  position: static;
+  transform: none;
+  white-space: nowrap;
+}
+
+.product-quote-header .product-quote-price,
+.product-quote-header .product-quote-price-box .quote-main-price {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* "漲跌 漲跌幅" (formatQuoteChange): the two numbers a little apart, as in the replay cards. */
+.product-quote-header .product-quote-change,
+.product-quote-header .product-quote-price-box .quote-change {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  margin: 0;
+  word-spacing: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.product-quote-search {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+/* As wide as four characters (2327, MU, AAPL); a longer code scrolls inside the box. */
+.product-quote-code-input {
+  box-sizing: border-box;
+  width: calc(4ch + 14px);
+  height: 20px;
+  padding: 0 6px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  color: var(--slate-100);
+  background: var(--slate-800);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  outline: none;
+}
+
+/* The box alone in a title row (模擬帳務's 委託): room for a name, its list opening leftwards from the row's end. It
+ * narrows with what holds it (never past it); its holder may set its height to its row's. */
+.product-quote-search.wide {
+  width: var(--product-quote-search-width, 150px);
+  max-width: 100%;
+}
+
+.product-quote-search.wide .product-quote-code-input {
+  width: 100%;
+  height: var(--product-quote-search-height, 22px);
+  padding: 0 6px;
+}
+
+.product-quote-search.wide .product-quote-search-results {
+  left: auto;
+  right: 0;
+}
+
+.product-quote-search-opens-up .product-quote-search-results {
+  top: auto;
+  bottom: calc(100% + 3px);
+}
+
+.product-quote-code-input:focus {
+  border-color: var(--blue-400);
+}
+
+.product-quote-search-results {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 3px);
+  left: 0;
+  min-width: 240px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--blue-900x-7);
+  border: 1px solid var(--sky-700x-5);
+  border-radius: 4px;
+}
+
+.product-quote-search-results[hidden] {
+  display: none;
+}
+
+.product-quote-search-result {
+  display: grid;
+  grid-template-columns: 7ch 1fr auto;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--blue-100x-4);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.product-quote-search-result em {
+  color: var(--slate-400);
+  font-style: normal;
+  font-size: 11px;
+}
+
+.product-quote-search-result.active,
+.product-quote-search-result:hover {
+  background: var(--blue-800x-4);
+}
+
+.product-quote-search-empty {
+  padding: 6px 8px;
+  color: var(--slate-400);
+  font-size: 12px;
+}
+
+/* 上漲/下跌/漲停/跌停/平盤 (and 開盤/最高/最低/昨收/總量): each cell on ONE line -- the label never wraps
+   into two -- with tight spacing. */
+

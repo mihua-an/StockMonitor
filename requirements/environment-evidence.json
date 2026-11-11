@@ -1,0 +1,810 @@
+{
+  "captured_on": "2026-10-06",
+  "python": "3.14.6",
+  "platform": "win32",
+  "machine": "AMD64",
+  "packages": {
+    "annotated-doc": {
+      "version": "0.0.4",
+      "requires_dist": []
+    },
+    "annotated-types": {
+      "version": "0.7.0",
+      "requires_dist": [
+        "typing-extensions>=4.0.0; python_version < '3.9'"
+      ]
+    },
+    "anyio": {
+      "version": "4.14.1",
+      "requires_dist": [
+        "exceptiongroup>=1.0.2; python_version < \"3.11\"",
+        "idna>=2.8",
+        "typing_extensions>=4.5; python_version < \"3.13\"",
+        "trio>=0.32.0; extra == \"trio\""
+      ]
+    },
+    "certifi": {
+      "version": "2026.6.17",
+      "requires_dist": []
+    },
+    "charset-normalizer": {
+      "version": "3.4.7",
+      "requires_dist": []
+    },
+    "click": {
+      "version": "8.4.2",
+      "requires_dist": [
+        "colorama; platform_system == 'Windows'"
+      ]
+    },
+    "colorama": {
+      "version": "0.4.6",
+      "requires_dist": []
+    },
+    "cramjam": {
+      "version": "2.11.0",
+      "requires_dist": [
+        "black==22.3.0 ; extra == 'dev'",
+        "numpy ; extra == 'dev'",
+        "pytest>=5.30 ; extra == 'dev'",
+        "pytest-xdist ; extra == 'dev'",
+        "pytest-benchmark ; extra == 'dev'",
+        "hypothesis==6.60.0 ; extra == 'dev'"
+      ]
+    },
+    "fastapi": {
+      "version": "0.139.0",
+      "requires_dist": [
+        "starlette>=0.46.0",
+        "pydantic>=2.9.0",
+        "typing-extensions>=4.8.0",
+        "typing-inspection>=0.4.2",
+        "annotated-doc>=0.0.2",
+        "fastapi-cli[standard]>=0.0.8; extra == \"standard\"",
+        "fastar>=0.9.0; extra == \"standard\"",
+        "httpx<1.0.0,>=0.23.0; extra == \"standard\"",
+        "jinja2>=3.1.5; extra == \"standard\"",
+        "python-multipart>=0.0.18; extra == \"standard\"",
+        "email-validator>=2.0.0; extra == \"standard\"",
+        "uvicorn[standard]>=0.12.0; extra == \"standard\"",
+        "pydantic-settings>=2.0.0; extra == \"standard\"",
+        "pydantic-extra-types>=2.0.0; extra == \"standard\"",
+        "fastapi-cli[standard-no-fastapi-cloud-cli]>=0.0.8; extra == \"standard-no-fastapi-cloud-cli\"",
+        "httpx<1.0.0,>=0.23.0; extra == \"standard-no-fastapi-cloud-cli\"",
+        "jinja2>=3.1.5; extra == \"standard-no-fastapi-cloud-cli\"",
+        "python-multipart>=0.0.18; extra == \"standard-no-fastapi-cloud-cli\"",
+        "email-validator>=2.0.0; extra == \"standard-no-fastapi-cloud-cli\"",
+        "uvicorn[standard]>=0.12.0; extra == \"standard-no-fastapi-cloud-cli\"",
+        "pydantic-settings>=2.0.0; extra == \"standard-no-fastapi-cloud-cli\"",
+        "pydantic-extra-types>=2.0.0; extra == \"standard-no-fastapi-cloud-cli\"",
+        "fastapi-cli[standard]>=0.0.8; extra == \"all\"",
+        "httpx<1.0.0,>=0.23.0; extra == \"all\"",
+        "jinja2>=3.1.5; extra == \"all\"",
+        "python-multipart>=0.0.18; extra == \"all\"",
+        "itsdangerous>=1.1.0; extra == \"all\"",
+        "pyyaml>=5.3.1; extra == \"all\"",
+        "email-validator>=2.0.0; extra == \"all\"",
+        "uvicorn[standard]>=0.12.0; extra == \"all\"",
+        "pydantic-settings>=2.0.0; extra == \"all\"",
+        "pydantic-extra-types>=2.0.0; extra == \"all\""
+      ]
+    },
+    "fastparquet": {
+      "version": "2026.5.0",
+      "requires_dist": [
+        "pandas>=1.5.0",
+        "numpy",
+        "cramjam>=2.3",
+        "fsspec",
+        "packaging",
+        "python-lzo; extra == \"lzo\""
+      ]
+    },
+    "flatbuffers": {
+      "version": "25.12.19",
+      "requires_dist": []
+    },
+    "fsspec": {
+      "version": "2026.6.0",
+      "requires_dist": [
+        "adlfs; extra == 'abfs'",
+        "adlfs; extra == 'adl'",
+        "pyarrow>=1; extra == 'arrow'",
+        "dask; extra == 'dask'",
+        "distributed; extra == 'dask'",
+        "pre-commit; extra == 'dev'",
+        "ruff>=0.5; extra == 'dev'",
+        "numpydoc; extra == 'doc'",
+        "sphinx; extra == 'doc'",
+        "sphinx-design; extra == 'doc'",
+        "sphinx-rtd-theme; extra == 'doc'",
+        "yarl; extra == 'doc'",
+        "dropbox; extra == 'dropbox'",
+        "dropboxdrivefs; extra == 'dropbox'",
+        "requests; extra == 'dropbox'",
+        "adlfs; extra == 'full'",
+        "aiohttp!=4.0.0a0,!=4.0.0a1; extra == 'full'",
+        "dask; extra == 'full'",
+        "distributed; extra == 'full'",
+        "dropbox; extra == 'full'",
+        "dropboxdrivefs; extra == 'full'",
+        "fusepy; extra == 'full'",
+        "gcsfs>2024.2.0; extra == 'full'",
+        "libarchive-c; extra == 'full'",
+        "ocifs; extra == 'full'",
+        "panel; extra == 'full'",
+        "paramiko; extra == 'full'",
+        "pyarrow>=1; extra == 'full'",
+        "pygit2; extra == 'full'",
+        "requests; extra == 'full'",
+        "s3fs>2024.2.0; extra == 'full'",
+        "smbprotocol; extra == 'full'",
+        "tqdm; extra == 'full'",
+        "fusepy; extra == 'fuse'",
+        "gcsfs>2024.2.0; extra == 'gcs'",
+        "pygit2; extra == 'git'",
+        "requests; extra == 'github'",
+        "gcsfs; extra == 'gs'",
+        "panel; extra == 'gui'",
+        "pyarrow>=1; extra == 'hdfs'",
+        "aiohttp!=4.0.0a0,!=4.0.0a1; extra == 'http'",
+        "libarchive-c; extra == 'libarchive'",
+        "ocifs; extra == 'oci'",
+        "s3fs>2024.2.0; extra == 's3'",
+        "paramiko; extra == 'sftp'",
+        "smbprotocol; extra == 'smb'",
+        "paramiko; extra == 'ssh'",
+        "aiohttp!=4.0.0a0,!=4.0.0a1; extra == 'test'",
+        "numpy; extra == 'test'",
+        "pytest; extra == 'test'",
+        "pytest-asyncio!=0.22.0; extra == 'test'",
+        "pytest-benchmark; extra == 'test'",
+        "pytest-cov; extra == 'test'",
+        "pytest-mock; extra == 'test'",
+        "pytest-recording; extra == 'test'",
+        "pytest-rerunfailures; extra == 'test'",
+        "requests; extra == 'test'",
+        "aiobotocore<3.0.0,>=2.5.4; extra == 'test-downstream'",
+        "dask[dataframe,test]; extra == 'test-downstream'",
+        "moto[server]<5,>4; extra == 'test-downstream'",
+        "pytest-timeout; extra == 'test-downstream'",
+        "xarray; extra == 'test-downstream'",
+        "adlfs; extra == 'test-full'",
+        "aiohttp!=4.0.0a0,!=4.0.0a1; extra == 'test-full'",
+        "backports-zstd; (python_version < '3.14') and extra == 'test-full'",
+        "cloudpickle; extra == 'test-full'",
+        "dask; extra == 'test-full'",
+        "distributed; extra == 'test-full'",
+        "dropbox; extra == 'test-full'",
+        "dropboxdrivefs; extra == 'test-full'",
+        "fastparquet; extra == 'test-full'",
+        "fusepy; extra == 'test-full'",
+        "gcsfs; extra == 'test-full'",
+        "jinja2; extra == 'test-full'",
+        "kerchunk; extra == 'test-full'",
+        "libarchive-c; extra == 'test-full'",
+        "lz4; extra == 'test-full'",
+        "notebook; extra == 'test-full'",
+        "numpy; extra == 'test-full'",
+        "ocifs; extra == 'test-full'",
+        "pandas<3.0.0; extra == 'test-full'",
+        "panel; extra == 'test-full'",
+        "paramiko; extra == 'test-full'",
+        "pyarrow; extra == 'test-full'",
+        "pyarrow>=1; extra == 'test-full'",
+        "pyftpdlib; extra == 'test-full'",
+        "pygit2; extra == 'test-full'",
+        "pytest; extra == 'test-full'",
+        "pytest-asyncio!=0.22.0; extra == 'test-full'",
+        "pytest-benchmark; extra == 'test-full'",
+        "pytest-cov; extra == 'test-full'",
+        "pytest-mock; extra == 'test-full'",
+        "pytest-recording; extra == 'test-full'",
+        "pytest-rerunfailures; extra == 'test-full'",
+        "python-snappy; extra == 'test-full'",
+        "requests; extra == 'test-full'",
+        "smbprotocol; extra == 'test-full'",
+        "tqdm; extra == 'test-full'",
+        "urllib3; extra == 'test-full'",
+        "zarr<3.2.0; extra == 'test-full'",
+        "zstandard; (python_version < '3.14') and extra == 'test-full'",
+        "tqdm; extra == 'tqdm'"
+      ]
+    },
+    "h11": {
+      "version": "0.16.0",
+      "requires_dist": []
+    },
+    "httptools": {
+      "version": "0.8.0",
+      "requires_dist": []
+    },
+    "idna": {
+      "version": "3.18",
+      "requires_dist": [
+        "ruff >= 0.6.2 ; extra == \"all\"",
+        "mypy >= 1.11.2 ; extra == \"all\"",
+        "pytest >= 8.3.2 ; extra == \"all\""
+      ]
+    },
+    "iniconfig": {
+      "version": "2.3.0",
+      "requires_dist": []
+    },
+    "jaraco-classes": {
+      "version": "3.4.0",
+      "requires_dist": [
+        "more-itertools",
+        "sphinx >=3.5 ; extra == 'docs'",
+        "jaraco.packaging >=9.3 ; extra == 'docs'",
+        "rst.linker >=1.9 ; extra == 'docs'",
+        "furo ; extra == 'docs'",
+        "sphinx-lint ; extra == 'docs'",
+        "jaraco.tidelift >=1.4 ; extra == 'docs'",
+        "pytest >=6 ; extra == 'testing'",
+        "pytest-checkdocs >=2.4 ; extra == 'testing'",
+        "pytest-cov ; extra == 'testing'",
+        "pytest-mypy ; extra == 'testing'",
+        "pytest-enabler >=2.2 ; extra == 'testing'",
+        "pytest-ruff >=0.2.1 ; extra == 'testing'"
+      ]
+    },
+    "jaraco-context": {
+      "version": "6.1.2",
+      "requires_dist": [
+        "backports.tarfile; python_version < \"3.12\"",
+        "pytest!=8.1.*,>=6; extra == \"test\"",
+        "jaraco.test>=5.6.0; extra == \"test\"",
+        "portend; extra == \"test\"",
+        "sphinx>=3.5; extra == \"doc\"",
+        "jaraco.packaging>=9.3; extra == \"doc\"",
+        "rst.linker>=1.9; extra == \"doc\"",
+        "furo; extra == \"doc\"",
+        "sphinx-lint; extra == \"doc\"",
+        "jaraco.tidelift>=1.4; extra == \"doc\"",
+        "pytest-checkdocs>=2.14; extra == \"check\"",
+        "pytest-ruff>=0.2.1; sys_platform != \"cygwin\" and extra == \"check\"",
+        "pytest-cov; extra == \"cover\"",
+        "pytest-enabler>=3.4; extra == \"enabler\"",
+        "pytest-mypy>=1.0.1; platform_python_implementation != \"PyPy\" and extra == \"type\""
+      ]
+    },
+    "jaraco-functools": {
+      "version": "4.6.0",
+      "requires_dist": [
+        "more_itertools",
+        "pytest!=8.1.*,>=6; extra == \"test\"",
+        "jaraco.classes; extra == \"test\"",
+        "sphinx>=3.5; extra == \"doc\"",
+        "jaraco.packaging>=9.3; extra == \"doc\"",
+        "rst.linker>=1.9; extra == \"doc\"",
+        "furo; extra == \"doc\"",
+        "sphinx-lint; extra == \"doc\"",
+        "jaraco.tidelift>=1.4; extra == \"doc\"",
+        "pytest-checkdocs>=2.14; extra == \"check\"",
+        "pytest-ruff>=0.2.1; sys_platform != \"cygwin\" and extra == \"check\"",
+        "pytest-cov; extra == \"cover\"",
+        "pytest-enabler>=3.4; extra == \"enabler\"",
+        "pytest-mypy>=1.0.1; platform_python_implementation != \"PyPy\" and extra == \"type\""
+      ]
+    },
+    "joblib": {
+      "version": "1.5.3",
+      "requires_dist": []
+    },
+    "keyring": {
+      "version": "25.7.0",
+      "requires_dist": [
+        "pywin32-ctypes>=0.2.0; sys_platform == \"win32\"",
+        "SecretStorage>=3.2; sys_platform == \"linux\"",
+        "jeepney>=0.4.2; sys_platform == \"linux\"",
+        "importlib_metadata>=4.11.4; python_version < \"3.12\"",
+        "jaraco.classes",
+        "jaraco.functools",
+        "jaraco.context",
+        "pytest!=8.1.*,>=6; extra == \"test\"",
+        "pyfakefs; extra == \"test\"",
+        "sphinx>=3.5; extra == \"doc\"",
+        "jaraco.packaging>=9.3; extra == \"doc\"",
+        "rst.linker>=1.9; extra == \"doc\"",
+        "furo; extra == \"doc\"",
+        "sphinx-lint; extra == \"doc\"",
+        "jaraco.tidelift>=1.4; extra == \"doc\"",
+        "pytest-checkdocs>=2.4; extra == \"check\"",
+        "pytest-ruff>=0.2.1; sys_platform != \"cygwin\" and extra == \"check\"",
+        "pytest-cov; extra == \"cover\"",
+        "pytest-enabler>=3.4; extra == \"enabler\"",
+        "pytest-mypy>=1.0.1; extra == \"type\"",
+        "pygobject-stubs; extra == \"type\"",
+        "shtab; extra == \"type\"",
+        "types-pywin32; extra == \"type\"",
+        "shtab>=1.1.0; extra == \"completion\""
+      ]
+    },
+    "lightgbm": {
+      "version": "4.7.0",
+      "requires_dist": [
+        "narwhals>=1.15",
+        "numpy>=1.21.3",
+        "scipy",
+        "narwhals[pyarrow]; extra == \"arrow\"",
+        "pyarrow>=16.0.0; extra == \"arrow\"",
+        "dask[array,dataframe,distributed]>=2.0.0; extra == \"dask\"",
+        "narwhals[pandas]; extra == \"dask\"",
+        "pandas>=1.3.4; extra == \"dask\"",
+        "narwhals[pandas]; extra == \"pandas\"",
+        "pandas>=1.3.4; extra == \"pandas\"",
+        "graphviz; extra == \"plotting\"",
+        "matplotlib; extra == \"plotting\"",
+        "narwhals[polars]; extra == \"polars\"",
+        "polars>=1.0.0; extra == \"polars\"",
+        "scikit-learn>=1.0.2; extra == \"scikit-learn\""
+      ]
+    },
+    "ml-dtypes": {
+      "version": "0.6.0",
+      "requires_dist": [
+        "numpy>=2.0.0",
+        "numpy>=2.1.0; python_version >= \"3.13\"",
+        "numpy>=2.3.0; python_version >= \"3.14\"",
+        "absl-py; extra == \"dev\"",
+        "pytest; extra == \"dev\"",
+        "pytest-xdist; extra == \"dev\"",
+        "pylint>=2.6.0; extra == \"dev\"",
+        "pyink; extra == \"dev\""
+      ]
+    },
+    "moomoo-api": {
+      "version": "10.10.7008",
+      "requires_dist": [
+        "pandas",
+        "simplejson",
+        "protobuf>=3.20.0",
+        "PyCryptodome"
+      ]
+    },
+    "more-itertools": {
+      "version": "11.1.0",
+      "requires_dist": []
+    },
+    "narwhals": {
+      "version": "2.23.0",
+      "requires_dist": [
+        "cudf-cu12>=24.10.0 ; sys_platform == 'linux' and extra == 'cudf'",
+        "dask[dataframe]>=2024.8 ; extra == 'dask'",
+        "duckdb>=1.1 ; extra == 'duckdb'",
+        "ibis-framework>=6.0.0 ; extra == 'ibis'",
+        "rich>=12.4.4 ; extra == 'ibis'",
+        "packaging>=21.3 ; extra == 'ibis'",
+        "pyarrow-hotfix>=0.7 ; extra == 'ibis'",
+        "modin>=0.22.0 ; extra == 'modin'",
+        "pandas>=1.3.4 ; extra == 'pandas'",
+        "polars>=0.20.4 ; extra == 'polars'",
+        "pyarrow>=13.0.0 ; extra == 'pyarrow'",
+        "pyspark>=3.5.0 ; extra == 'pyspark'",
+        "pyspark[connect]>=3.5.0 ; extra == 'pyspark-connect'",
+        "narwhals[duckdb] ; extra == 'sql'",
+        "sqlparse>=0.5.5 ; extra == 'sql'",
+        "sqlframe>=3.22.0,!=3.39.3 ; extra == 'sqlframe'"
+      ]
+    },
+    "numpy": {
+      "version": "2.5.0",
+      "requires_dist": []
+    },
+    "onnx": {
+      "version": "1.23.1",
+      "requires_dist": [
+        "numpy>=1.23.2",
+        "protobuf>=6.31.1",
+        "typing_extensions>=4.7.1",
+        "ml_dtypes>=0.5.4",
+        "Pillow>=12.2.0; extra == \"reference\""
+      ]
+    },
+    "onnxmltools": {
+      "version": "1.16.0",
+      "requires_dist": [
+        "numpy",
+        "onnx>=1.8.1",
+        "protobuf",
+        "skl2onnx>=1.4.9"
+      ]
+    },
+    "onnxruntime": {
+      "version": "1.30.0",
+      "requires_dist": [
+        "flatbuffers",
+        "numpy>=1.21.6",
+        "packaging",
+        "protobuf>=4.25.8",
+        "sympy; extra == \"symbolic\"",
+        "ml_dtypes; extra == \"quantization\""
+      ]
+    },
+    "packaging": {
+      "version": "26.2",
+      "requires_dist": []
+    },
+    "pandas": {
+      "version": "3.0.3",
+      "requires_dist": [
+        "numpy>=1.26.0; python_version < \"3.14\"",
+        "numpy>=2.3.3; python_version >= \"3.14\"",
+        "python-dateutil>=2.8.2",
+        "tzdata; sys_platform == \"win32\"",
+        "tzdata; sys_platform == \"emscripten\"",
+        "hypothesis>=6.116.0; extra == \"test\"",
+        "pytest>=8.3.4; extra == \"test\"",
+        "pytest-xdist>=3.6.1; extra == \"test\"",
+        "pyarrow>=13.0.0; extra == \"pyarrow\"",
+        "bottleneck>=1.4.2; extra == \"performance\"",
+        "numba>=0.60.0; extra == \"performance\"",
+        "numexpr>=2.10.2; extra == \"performance\"",
+        "scipy>=1.14.1; extra == \"computation\"",
+        "xarray>=2024.10.0; extra == \"computation\"",
+        "fsspec>=2024.10.0; extra == \"fss\"",
+        "s3fs>=2024.10.0; extra == \"aws\"",
+        "gcsfs>=2024.10.0; extra == \"gcp\"",
+        "odfpy>=1.4.1; extra == \"excel\"",
+        "openpyxl>=3.1.5; extra == \"excel\"",
+        "python-calamine>=0.3.0; extra == \"excel\"",
+        "pyxlsb>=1.0.10; extra == \"excel\"",
+        "xlrd>=2.0.1; extra == \"excel\"",
+        "xlsxwriter>=3.2.0; extra == \"excel\"",
+        "pyarrow>=13.0.0; extra == \"parquet\"",
+        "pyarrow>=13.0.0; extra == \"feather\"",
+        "pyiceberg>=0.8.1; extra == \"iceberg\"",
+        "tables>=3.10.1; extra == \"hdf5\"",
+        "pyreadstat>=1.2.8; extra == \"spss\"",
+        "SQLAlchemy>=2.0.36; extra == \"postgresql\"",
+        "psycopg2>=2.9.10; extra == \"postgresql\"",
+        "adbc-driver-postgresql>=1.2.0; extra == \"postgresql\"",
+        "SQLAlchemy>=2.0.36; extra == \"mysql\"",
+        "pymysql>=1.1.1; extra == \"mysql\"",
+        "SQLAlchemy>=2.0.36; extra == \"sql-other\"",
+        "adbc-driver-postgresql>=1.2.0; extra == \"sql-other\"",
+        "adbc-driver-sqlite>=1.2.0; extra == \"sql-other\"",
+        "beautifulsoup4>=4.12.3; extra == \"html\"",
+        "html5lib>=1.1; extra == \"html\"",
+        "lxml>=5.3.0; extra == \"html\"",
+        "lxml>=5.3.0; extra == \"xml\"",
+        "matplotlib>=3.9.3; extra == \"plot\"",
+        "jinja2>=3.1.5; extra == \"output-formatting\"",
+        "tabulate>=0.9.0; extra == \"output-formatting\"",
+        "PyQt5>=5.15.9; extra == \"clipboard\"",
+        "qtpy>=2.4.2; extra == \"clipboard\"",
+        "zstandard>=0.23.0; extra == \"compression\"",
+        "pytz>=2020.1; extra == \"timezone\"",
+        "adbc-driver-postgresql>=1.2.0; extra == \"all\"",
+        "adbc-driver-sqlite>=1.2.0; extra == \"all\"",
+        "beautifulsoup4>=4.12.3; extra == \"all\"",
+        "bottleneck>=1.4.2; extra == \"all\"",
+        "fastparquet>=2024.11.0; extra == \"all\"",
+        "fsspec>=2024.10.0; extra == \"all\"",
+        "gcsfs>=2024.10.0; extra == \"all\"",
+        "html5lib>=1.1; extra == \"all\"",
+        "hypothesis>=6.116.0; extra == \"all\"",
+        "jinja2>=3.1.5; extra == \"all\"",
+        "lxml>=5.3.0; extra == \"all\"",
+        "matplotlib>=3.9.3; extra == \"all\"",
+        "numba>=0.60.0; extra == \"all\"",
+        "numexpr>=2.10.2; extra == \"all\"",
+        "odfpy>=1.4.1; extra == \"all\"",
+        "openpyxl>=3.1.5; extra == \"all\"",
+        "psycopg2>=2.9.10; extra == \"all\"",
+        "pyarrow>=13.0.0; extra == \"all\"",
+        "pyiceberg>=0.8.1; extra == \"all\"",
+        "pymysql>=1.1.1; extra == \"all\"",
+        "PyQt5>=5.15.9; extra == \"all\"",
+        "pyreadstat>=1.2.8; extra == \"all\"",
+        "pytest>=8.3.4; extra == \"all\"",
+        "pytest-xdist>=3.6.1; extra == \"all\"",
+        "python-calamine>=0.3.0; extra == \"all\"",
+        "pytz>=2020.1; extra == \"all\"",
+        "pyxlsb>=1.0.10; extra == \"all\"",
+        "qtpy>=2.4.2; extra == \"all\"",
+        "scipy>=1.14.1; extra == \"all\"",
+        "s3fs>=2024.10.0; extra == \"all\"",
+        "SQLAlchemy>=2.0.36; extra == \"all\"",
+        "tables>=3.10.1; extra == \"all\"",
+        "tabulate>=0.9.0; extra == \"all\"",
+        "xarray>=2024.10.0; extra == \"all\"",
+        "xlrd>=2.0.1; extra == \"all\"",
+        "xlsxwriter>=3.2.0; extra == \"all\"",
+        "zstandard>=0.23.0; extra == \"all\""
+      ]
+    },
+    "pluggy": {
+      "version": "1.6.0",
+      "requires_dist": [
+        "pre-commit; extra == \"dev\"",
+        "tox; extra == \"dev\"",
+        "pytest; extra == \"testing\"",
+        "pytest-benchmark; extra == \"testing\"",
+        "coverage; extra == \"testing\""
+      ]
+    },
+    "protobuf": {
+      "version": "7.36.0",
+      "requires_dist": []
+    },
+    "pyarrow": {
+      "version": "24.0.0",
+      "requires_dist": []
+    },
+    "pycryptodome": {
+      "version": "3.23.0",
+      "requires_dist": []
+    },
+    "pydantic": {
+      "version": "2.13.4",
+      "requires_dist": [
+        "annotated-types>=0.6.0",
+        "pydantic-core==2.46.4",
+        "typing-extensions>=4.14.1",
+        "typing-inspection>=0.4.2",
+        "email-validator>=2.0.0; extra == 'email'",
+        "tzdata; (python_version >= '3.9' and platform_system == 'Windows') and extra == 'timezone'"
+      ]
+    },
+    "pydantic-core": {
+      "version": "2.46.4",
+      "requires_dist": [
+        "typing-extensions>=4.14.1"
+      ]
+    },
+    "pygments": {
+      "version": "2.21.0",
+      "requires_dist": [
+        "colorama>=0.4.6; extra == 'windows-terminal'"
+      ]
+    },
+    "pytest": {
+      "version": "9.1.1",
+      "requires_dist": [
+        "colorama>=0.4; sys_platform == \"win32\"",
+        "exceptiongroup>=1; python_version < \"3.11\"",
+        "iniconfig>=1.0.1",
+        "packaging>=22",
+        "pluggy<2,>=1.5",
+        "pygments>=2.7.2",
+        "tomli>=1; python_version < \"3.11\"",
+        "argcomplete; extra == \"dev\"",
+        "attrs>=19.2; extra == \"dev\"",
+        "hypothesis>=3.56; extra == \"dev\"",
+        "mock; extra == \"dev\"",
+        "requests; extra == \"dev\"",
+        "setuptools; extra == \"dev\"",
+        "xmlschema; extra == \"dev\""
+      ]
+    },
+    "python-dateutil": {
+      "version": "2.9.0.post0",
+      "requires_dist": [
+        "six >=1.5"
+      ]
+    },
+    "python-dotenv": {
+      "version": "1.2.2",
+      "requires_dist": [
+        "click>=5.0; extra == \"cli\""
+      ]
+    },
+    "pywin32-ctypes": {
+      "version": "0.2.3",
+      "requires_dist": []
+    },
+    "pyyaml": {
+      "version": "6.0.3",
+      "requires_dist": []
+    },
+    "requests": {
+      "version": "2.34.2",
+      "requires_dist": [
+        "charset_normalizer<4,>=2",
+        "idna<4,>=2.5",
+        "urllib3<3,>=1.26",
+        "certifi>=2023.5.7",
+        "PySocks!=1.5.7,>=1.5.6; extra == \"socks\"",
+        "chardet<8,>=3.0.2; extra == \"use-chardet-on-py3\""
+      ]
+    },
+    "scikit-learn": {
+      "version": "1.9.0",
+      "requires_dist": [
+        "numpy>=1.24.1",
+        "scipy>=1.10.0",
+        "joblib>=1.4.0",
+        "narwhals>=2.0.1",
+        "threadpoolctl>=3.5.0",
+        "numpy>=1.24.1; extra == \"build\"",
+        "scipy>=1.10.0; extra == \"build\"",
+        "cython>=3.1.2; extra == \"build\"",
+        "meson-python>=0.17.1; extra == \"build\"",
+        "numpy>=1.24.1; extra == \"install\"",
+        "scipy>=1.10.0; extra == \"install\"",
+        "joblib>=1.4.0; extra == \"install\"",
+        "narwhals>=2.0.1; extra == \"install\"",
+        "threadpoolctl>=3.5.0; extra == \"install\"",
+        "matplotlib>=3.6.1; extra == \"benchmark\"",
+        "pandas>=1.5.0; extra == \"benchmark\"",
+        "memory_profiler>=0.57.0; extra == \"benchmark\"",
+        "matplotlib>=3.6.1; extra == \"docs\"",
+        "scikit-image>=0.22.0; extra == \"docs\"",
+        "pandas>=1.5.0; extra == \"docs\"",
+        "rich>=14.1.0; extra == \"docs\"",
+        "seaborn>=0.13.0; extra == \"docs\"",
+        "memory_profiler>=0.57.0; extra == \"docs\"",
+        "sphinx>=7.3.7; extra == \"docs\"",
+        "sphinx-copybutton>=0.5.2; extra == \"docs\"",
+        "sphinx-gallery>=0.17.1; extra == \"docs\"",
+        "numpydoc>=1.2.0; extra == \"docs\"",
+        "Pillow>=12.1.1; extra == \"docs\"",
+        "pooch>=1.8.0; extra == \"docs\"",
+        "sphinx-prompt>=1.4.0; extra == \"docs\"",
+        "sphinxext-opengraph>=0.9.1; extra == \"docs\"",
+        "plotly>=5.22.0; extra == \"docs\"",
+        "polars>=0.20.30; extra == \"docs\"",
+        "sphinx-design>=0.6.0; extra == \"docs\"",
+        "sphinxcontrib-sass>=0.3.4; extra == \"docs\"",
+        "pydata-sphinx-theme>=0.15.3; extra == \"docs\"",
+        "sphinx-remove-toctrees>=1.0.0.post1; extra == \"docs\"",
+        "towncrier>=24.8.0; extra == \"docs\"",
+        "matplotlib>=3.6.1; extra == \"examples\"",
+        "scikit-image>=0.22.0; extra == \"examples\"",
+        "pandas>=1.5.0; extra == \"examples\"",
+        "rich>=14.1.0; extra == \"examples\"",
+        "seaborn>=0.13.0; extra == \"examples\"",
+        "pooch>=1.8.0; extra == \"examples\"",
+        "plotly>=5.22.0; extra == \"examples\"",
+        "matplotlib>=3.6.1; extra == \"tests\"",
+        "pandas>=1.5.0; extra == \"tests\"",
+        "rich>=14.1.0; extra == \"tests\"",
+        "pytest>=7.1.2; extra == \"tests\"",
+        "pytest-cov>=2.9.0; extra == \"tests\"",
+        "ruff>=0.12.2; extra == \"tests\"",
+        "mypy>=1.15; extra == \"tests\"",
+        "pyamg>=5.0.0; extra == \"tests\"",
+        "polars>=0.20.30; extra == \"tests\"",
+        "pyarrow>=13.0.0; extra == \"tests\"",
+        "numpydoc>=1.2.0; extra == \"tests\"",
+        "pooch>=1.8.0; extra == \"tests\"",
+        "conda-lock==3.0.1; extra == \"maintenance\""
+      ]
+    },
+    "scipy": {
+      "version": "1.18.0",
+      "requires_dist": [
+        "numpy<2.8,>=2.0.0",
+        "pytest>=8.0.0; extra == \"test\"",
+        "pytest-cov; extra == \"test\"",
+        "pytest-timeout; extra == \"test\"",
+        "pytest-xdist; extra == \"test\"",
+        "asv; extra == \"test\"",
+        "mpmath; extra == \"test\"",
+        "gmpy2; extra == \"test\"",
+        "threadpoolctl; extra == \"test\"",
+        "scikit-umfpack; extra == \"test\"",
+        "pooch; extra == \"test\"",
+        "hypothesis>=6.30; extra == \"test\"",
+        "array-api-strict>=2.3.1; extra == \"test\"",
+        "Cython; extra == \"test\"",
+        "meson; extra == \"test\"",
+        "ninja; sys_platform != \"emscripten\" and extra == \"test\"",
+        "scipy-doctest>=2.0.0; extra == \"test\"",
+        "sphinx<8.2.0,>=5.0.0; extra == \"doc\"",
+        "intersphinx_registry; extra == \"doc\"",
+        "pydata-sphinx-theme>=0.15.2; extra == \"doc\"",
+        "sphinx-copybutton; extra == \"doc\"",
+        "sphinx-design>=0.4.0; extra == \"doc\"",
+        "matplotlib>=3.5; extra == \"doc\"",
+        "numpydoc; extra == \"doc\"",
+        "jupytext; extra == \"doc\"",
+        "myst-nb>=1.2.0; extra == \"doc\"",
+        "pooch; extra == \"doc\"",
+        "jupyterlite-sphinx>=0.19.1; extra == \"doc\"",
+        "jupyterlite-pyodide-kernel; extra == \"doc\"",
+        "linkify-it-py; extra == \"doc\"",
+        "tabulate; extra == \"doc\"",
+        "click<8.3.0; extra == \"dev\"",
+        "spin; extra == \"dev\"",
+        "mypy==1.19.1; extra == \"dev\"",
+        "pyrefly==0.63.0; extra == \"dev\"",
+        "typing_extensions; extra == \"dev\"",
+        "types-psutil; extra == \"dev\"",
+        "pycodestyle; extra == \"dev\"",
+        "ruff>=0.12.0; extra == \"dev\"",
+        "cython-lint>=0.12.2; extra == \"dev\""
+      ]
+    },
+    "shioaji": {
+      "version": "1.7.2",
+      "requires_dist": [
+        "uvloop>=0.18.0 ; sys_platform != 'win32' and extra == 'speed'",
+        "pytest>=7.0.0 ; extra == 'test'",
+        "pytest-cov>=4.0.0 ; extra == 'test'"
+      ]
+    },
+    "simplejson": {
+      "version": "4.1.1",
+      "requires_dist": []
+    },
+    "six": {
+      "version": "1.17.0",
+      "requires_dist": []
+    },
+    "skl2onnx": {
+      "version": "1.20.0",
+      "requires_dist": [
+        "onnx>=1.2.1",
+        "scikit-learn>=1.1"
+      ]
+    },
+    "starlette": {
+      "version": "1.3.1",
+      "requires_dist": [
+        "anyio<5,>=3.6.2",
+        "typing-extensions>=4.10.0; python_version < '3.13'",
+        "httpx2>=2.0.0; extra == 'full'",
+        "httpx<0.29.0,>=0.27.0; extra == 'full'",
+        "itsdangerous; extra == 'full'",
+        "jinja2; extra == 'full'",
+        "python-multipart>=0.0.18; extra == 'full'",
+        "pyyaml; extra == 'full'"
+      ]
+    },
+    "threadpoolctl": {
+      "version": "3.6.0",
+      "requires_dist": []
+    },
+    "typing-extensions": {
+      "version": "4.16.0",
+      "requires_dist": []
+    },
+    "typing-inspection": {
+      "version": "0.4.2",
+      "requires_dist": [
+        "typing-extensions>=4.12.0"
+      ]
+    },
+    "tzdata": {
+      "version": "2026.2",
+      "requires_dist": []
+    },
+    "urllib3": {
+      "version": "2.7.0",
+      "requires_dist": [
+        "brotli>=1.2.0; (platform_python_implementation == 'CPython') and extra == 'brotli'",
+        "brotlicffi>=1.2.0.0; (platform_python_implementation != 'CPython') and extra == 'brotli'",
+        "h2<5,>=4; extra == 'h2'",
+        "pysocks!=1.5.7,<2.0,>=1.5.6; extra == 'socks'",
+        "backports-zstd>=1.0.0; (python_version < '3.14') and extra == 'zstd'"
+      ]
+    },
+    "uvicorn": {
+      "version": "0.52.1",
+      "requires_dist": [
+        "click>=7.0",
+        "h11>=0.8",
+        "typing-extensions>=4.0; python_version < '3.11'",
+        "httptools>=0.8.0; extra == 'standard'",
+        "python-dotenv>=0.13; extra == 'standard'",
+        "pyyaml>=5.1; extra == 'standard'",
+        "uvloop>=0.15.1; (sys_platform != 'win32' and (sys_platform != 'cygwin' and platform_python_implementation != 'PyPy')) and extra == 'standard'",
+        "watchfiles>=0.20; extra == 'standard'",
+        "websockets>=13.0; extra == 'standard'"
+      ]
+    },
+    "watchfiles": {
+      "version": "1.2.0",
+      "requires_dist": [
+        "anyio>=3.0.0"
+      ]
+    },
+    "websockets": {
+      "version": "15.0.1",
+      "requires_dist": []
+    }
+  }
+}

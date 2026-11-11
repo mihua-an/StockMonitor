@@ -1,0 +1,44 @@
+<section class="data-center-page">
+  <div class="panel data-center-panel">
+    <!-- The title row stays at the top; only the area under it scrolls. -->
+    <div class="settings-page-head">
+      <h1 class="settings-page-title is-inline">資料中心</h1>
+      <span id="dataCenterDailyCacheState" class="dc-cache-state"></span>
+      <div class="settings-page-head-actions">
+        <div id="dataCenterMarket" class="settings-seg" role="tablist" aria-label="市場">
+          <button class="settings-seg-btn is-active" type="button" data-market="">全部</button>
+          <button class="settings-seg-btn" type="button" data-market="STK">股票</button>
+          <button class="settings-seg-btn" type="button" data-market="FUT">期貨</button>
+        </div>
+        <button id="dataCenterRefreshBtn" class="btn secondary" type="button">重新整理</button>
+      </div>
+    </div>
+
+    <div class="dc-scroll-area">
+      <div class="dc-wrap">
+        <!-- 收盤整理: the next close to be materialized, from its close to the history written; 下次物化 one figure per row,
+             執行紀錄 under its own row, opened while a close is being materialized and closed when it is done
+             (features/data_center/closing_progress_view.js). -->
+        <div class="settings-group-title"><span>收盤整理</span></div>
+        <section class="settings-group dc-closing" aria-label="收盤整理">
+          <div id="dataCenterClosingSteps" class="job-steps"></div>
+          <div id="dataCenterClosingBar" class="job-progress" hidden></div>
+          <div id="dataCenterClosingNext" class="job-stats"></div>
+          <button id="dataCenterClosingLogToggle" class="job-log-toggle" type="button" aria-expanded="false"><span class="record-expand-chevron" aria-hidden="true">›</span><b>執行紀錄</b><span id="dataCenterClosingLogNote" class="job-log-toggle-note"></span></button>
+          <div id="dataCenterClosingLogPane" class="job-log-pane" hidden><div id="dataCenterClosingLog" class="job-log"></div></div>
+        </section>
+
+        <div class="settings-group-title"><span>上次物化</span></div>
+        <div id="dataCenterClosingHistory" class="dc-closing-history" data-grid-variant="page"></div>
+
+        <div class="settings-group-title"><span>每日資料</span><span class="settings-group-title-side">點一天看各類別；期貨指數可再展開到合約<span id="dataCenterLoading" class="data-center-loading" hidden>讀取資料目錄中...</span></span></div>
+        <section class="dc-daily-overview" data-grid-variant="page" aria-label="全部日期資料狀況">
+          <table class="data-table dc-daily-overview-table">
+            <thead><tr><th><span class="record-expand-label">日期</span></th><th>完整</th><th>商品數</th><th>成交筆數</th><th>五檔筆數</th><th>報價筆數</th><th>產業筆數</th><th>資料大小</th></tr></thead>
+            <tbody id="dataCenterDailyRows"><tr><td colspan="8" class="empty">載入中...</td></tr></tbody>
+          </table>
+        </section>
+      </div>
+    </div>
+  </div>
+</section>

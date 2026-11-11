@@ -1,0 +1,204 @@
+/* 帳務 交易編輯 (features/account/trade_editor_form.js): the add / edit trade modal -- its fields, the fill rows and
+ * the actions. The standalone trade window's variant is windows/trade.css. */
+
+.account-trade-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.account-trade-modal[hidden] {
+  display: none;
+}
+
+.account-trade-modal {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.account-trade-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--slate-950-a76);
+  backdrop-filter: blur(3px);
+}
+
+.account-trade-modal-close {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--slate-700);
+  border-radius: 8px;
+  background: var(--blue-900x-16);
+  color: var(--slate-300);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.account-trade-modal-close:hover {
+  background: var(--slate-800);
+  color: var(--white);
+}
+
+.account-trade-modal-body {
+  padding: 16px 18px;
+}
+
+.account-trade-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 18px 16px;
+  border-top: 1px solid var(--slate-700-a72);
+}
+
+.account-trade-modal-footer-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 760px) {
+
+  .account-trade-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 交易 Modal 不讓使用者碰 @ / _；以「股數 + 價格」多列輸入。 */
+.account-trade-modal-dialog {
+  position: relative;
+  z-index: 1;
+  max-height: min(720px, calc(100vh - 70px));
+  overflow: auto;
+  border: 1px solid var(--slate-700);
+  border-radius: 14px;
+  background: var(--slate-900);
+  box-shadow: 0 24px 70px var(--black-a46);
+  width: min(660px, calc(100vw - 48px));
+}
+
+.account-trade-modal-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--slate-700-a72);
+  align-items: center;
+}
+
+.account-trade-modal-header h3 {
+  margin: 0;
+  font-size: 19px;
+}
+
+.account-trade-fills-section {
+  margin-top: 14px;
+}
+
+.account-trade-fills-heading,
+.account-trade-fill-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 38px;
+  align-items: center;
+  gap: 10px;
+}
+
+.account-trade-fills-heading {
+  margin-bottom: 6px;
+  padding: 0 2px;
+  color: var(--blue-300x-9);
+  font-size: 12px;
+}
+
+.account-trade-fill-rows {
+  display: grid;
+  gap: 8px;
+}
+
+.account-trade-fill-row .search {
+  width: 100%;
+}
+
+.account-trade-add-fill-btn,
+.account-trade-remove-fill-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--slate-700);
+  border-radius: 8px;
+  background: var(--blue-900x-16);
+  color: var(--blue-100);
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.account-trade-add-fill-btn:hover {
+  border-color: var(--blue-500);
+  background: var(--blue-600-a20);
+  color: var(--white);
+}
+
+.account-trade-remove-fill-btn {
+  color: var(--status-error);
+}
+
+.account-trade-remove-fill-btn:hover {
+  border-color: var(--status-error);
+  background: color-mix(in srgb, var(--status-error) 28%, transparent);
+  color: var(--white);
+}
+
+.account-trade-fill-row-spacer {
+  width: 34px;
+  height: 1px;
+}
+
+.account-trade-time-field {
+  margin-top: 14px;
+  max-width: calc(50% - 5px);
+}
+
+.account-trade-time-field input:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+  background: var(--gray-900);
+  color: var(--slate-500);
+}
+
+.account-trade-submit-btn {
+  min-width: 86px;
+  background: var(--blue-600);
+  border-color: var(--blue-600);
+  color: var(--white);
+  font-weight: 800;
+}
+
+.account-trade-submit-btn:hover {
+  background: var(--blue-700);
+  border-color: var(--blue-700);
+}
+
+@media (max-width: 760px) {
+
+  .account-trade-time-field {
+    max-width: none;
+  }
+
+  .account-trade-fills-heading,
+  .account-trade-fill-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 36px;
+  }
+}
+
+/* The dialog's last column keeps clear of the scrollbar. */
+.account-trade-modal-dialog {
+  padding-right: max(10px, env(safe-area-inset-right));
+}

@@ -1,0 +1,874 @@
+/* The five-level order book: prices, quantities, bars, totals, in/out ratio. */
+
+.orderbook-header {
+  min-height: 36px;
+}
+
+.orderbook-summary-price {
+  justify-self: center;
+  text-align: center;
+}
+
+.orderbook-summary-change {
+  justify-self: center;
+  text-align: center;
+  min-width: 0;
+}
+
+.orderbook-table-wrap {
+  padding: 0;
+}
+
+.orderbook-table {
+  font-size: 16px;
+  margin-top:0;
+}
+
+/* 只讓內容區留左右距離，不影響表頭背景 */
+.orderbook-table tbody td:first-child {
+  padding-left: 10px;
+}
+
+/* The levels are not parted by lines: each quantity is its own pill. */
+.orderbook-table td {
+  vertical-align: middle;
+  border-bottom: 0;
+  white-space: nowrap;
+  padding: 0;
+  font-size: 20px;
+}
+
+/* The empty-state message is a sentence, not a figure: it wraps inside a narrow pane instead of being cut off. */
+.orderbook-table td.empty {
+  padding: 12px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+
+.orderbook-qty-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.orderbook-qty-wrap.bid {
+  justify-content: flex-end;
+}
+
+.orderbook-qty-wrap.ask {
+  justify-content: flex-start;
+}
+
+/* A level's quantity sits on a soft pill as long as its share: bid red, ask green (the market colours, translucent). */
+.orderbook-qty-bar {
+  position: absolute;
+  min-width: 2px;
+  border-radius: 6px;
+}
+
+.orderbook-qty-bar.bid {
+  background: var(--orderbook-bid-bar);
+}
+
+.orderbook-qty-bar.ask {
+  background: var(--orderbook-ask-bar);
+}
+
+.orderbook-qty-text {
+  display: block;
+  color: var(--slate-300);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.orderbook-qty-wrap.bid .orderbook-qty-text {
+  text-align: right;
+}
+
+.orderbook-qty-wrap.ask .orderbook-qty-text {
+  text-align: left;
+}
+
+/* Price cells */
+.orderbook-price-cell {
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* 五檔漲跌停：紅/綠底白字；目前成交價另外框起來（不論是否同時為漲跌停）。 */
+/* The orderbook's price is bold whatever its 漲 / 跌 / 平 colour (base.css's .price-* weight is regular). */
+.orderbook-price-value {
+  display: inline-block;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 6px;
+  line-height: 1.05;
+}
+
+.orderbook-price-value.orderbook-current-price {
+  box-shadow: inset 0 0 0 1px var(--slate-400);
+}
+
+.orderbook-total-bar-wrap {
+  display: flex;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Each side is a full-width bar scaled to its share (--bar-share, 0..1, the one thing JS writes): a transform is
+   composited, where animating `width` would re-lay the panel out on every update. */
+.orderbook-total-bar {
+  position: absolute;
+  inset: 0;
+  transform: scaleX(var(--bar-share, 0));
+  transition: transform 0.2s ease;
+  will-change: transform;
+}
+
+.orderbook-total-bar.bid {
+  transform-origin: left center;
+}
+
+.orderbook-total-bar.ask {
+  transform-origin: right center;
+}
+
+.orderbook-total-labels {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.orderbook-total-label {
+  color: var(--white);
+}
+
+.orderbook-total-label.bid {
+  text-align: left;
+}
+
+/* ===== H/L emphasis + compact watchlist drag layout ===== */
+.orderbook-table .orderbook-extreme-cell {
+  padding: 0;
+  font-family: Consolas, "Microsoft JhengHei", monospace;
+  font-weight: 900;
+  font-size: 17px;
+}
+
+/* ===== Orderbook content order + buy/sell bar colors ===== */
+/* 五檔由上而下：股票資訊 → 內外盤比 → 逐價內外盤 → 五檔價格 → 買賣條。 */
+.orderbook .orderbook-header {
+  order: 1;
+}
+
+/* The shared 內外盤比 bar (components/io-ratio.css), placed second and 30px tall. */
+.orderbook .orderbook-io-ratio {
+  order: 2;
+  flex: 0 0 30px;
+  min-height: 30px;
+  height: 30px;
+  background: var(--surface-panel);
+}
+
+.orderbook .orderbook-total-label {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.orderbook.orderbook-hide-price-volume .orderbook-table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.orderbook .orderbook-qty-cell {
+  min-width: 0;
+  max-width: none;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+}
+
+/* ===== Fixed orderbook footer + scroll-safe content ===== */
+/* 五檔中段可收合 / 捲動，但最底下買賣掛單總量永遠留在卡片內可見。 */
+.orderbook {
+  position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface-panel);
+}
+
+/* 中段高度不足時先讓內容區自己捲；footer 不參與捲動也不會被裁掉。 */
+.orderbook.orderbook-hide-price-volume .orderbook-scroll-body {
+  overflow-y: auto;
+}
+
+/* 只有真正的 depth market-order sentinel 才保留市價語意；header last trade 永遠不用它。 */
+.orderbook-table .orderbook-price-value.orderbook-price-market {
+  color: var(--amber-300x-4);
+  font-weight: 900;
+}
+
+/* The price cell and its text stay in the table's normal flow (no position / z-index / isolation): a positioned
+ * price painted after a level's ±diff badge, and every badge start (a transform animation) pulled the prices of the
+ * rows below into composited layers for a frame or two, redrawing their text with another anti-aliasing: the prices
+ * flickered on each quantity change (tests/renderer_orderbook_change_badge_layers_ui.cjs). */
+.orderbook .orderbook-price-cell {
+  background: var(--surface-panel);
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* The bid and ask prices face each other across 2 px a side (plus the price box's own 4 px): a tight book. */
+.orderbook .orderbook-table .orderbook-price-cell.bid {
+  padding: 0 2px;
+  text-align: right;
+}
+
+.orderbook .orderbook-table .orderbook-price-cell.ask {
+  padding: 0 2px;
+  text-align: left;
+}
+
+.orderbook .orderbook-qty-cell,
+.orderbook .orderbook-qty-wrap {
+  contain: paint;
+}
+
+/* Conservative high-confidence non-trade book changes temporarily reuse H/L space. */
+.orderbook-book-change {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--white);
+  font-weight: 900;
+  white-space: nowrap;
+  animation: orderbook-change-pop 120ms ease-out backwards;
+}
+
+/* Its fade, once its time is up (BookChangeBadges in orderbook_depth_table.js shows it 0.5 s from when it appears). */
+.orderbook-book-change.leaving {
+  animation: orderbook-change-out 160ms ease-in forwards;
+}
+
+.orderbook-book-change.add {
+  background: var(--price-up-color);
+}
+
+.orderbook-book-change.cancel {
+  background: var(--price-down-color);
+}
+
+/* Canonical compact orderbook title: primary/secondary identity owns a
+ * shrinkable left slot; last price owns its own non-overlapping numeric slot. */
+.orderbook .orderbook-summary-price {
+  min-width: 70px;
+  overflow: visible;
+  white-space: nowrap;
+}
+
+.orderbook .orderbook-scroll-body {
+  order: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface-panel);
+  width: 100%;
+  min-width: 0;
+  align-self: stretch;
+}
+
+/* Delta badges share one mirrored geometry model.  Both sides stay inside the
+ * same 9% visible edge cell through enter/hold/exit; sign affects semantics only. */
+
+.orderbook .orderbook-book-change {
+  border-radius: 3px;
+  box-sizing: border-box;
+  font-size: 9.5px;
+  text-overflow: clip;
+  transform: translateX(0);
+}
+
+.orderbook .orderbook-extreme-cell.bid .orderbook-book-change {
+  animation: orderbook-change-bid 120ms ease-out backwards;
+}
+
+.orderbook .orderbook-extreme-cell.ask .orderbook-book-change {
+  animation: orderbook-change-ask 120ms ease-out backwards;
+}
+
+.orderbook .orderbook-extreme-cell.bid .orderbook-book-change.leaving {
+  animation: orderbook-change-bid-out 160ms ease-in forwards;
+}
+
+.orderbook .orderbook-extreme-cell.ask .orderbook-book-change.leaving {
+  animation: orderbook-change-ask-out 160ms ease-in forwards;
+}
+
+.orderbook.orderbook-simple-depth .orderbook-table-wrap {
+  flex:1 1 auto;
+  min-height:0;
+}
+
+.orderbook.orderbook-simple-depth .orderbook-table col.orderbook-col-bid-vol,
+.orderbook.orderbook-simple-depth .orderbook-table col.orderbook-col-ask-vol {
+  width:30%;
+}
+
+.orderbook.orderbook-simple-depth .orderbook-table col.orderbook-col-bid-price,
+.orderbook.orderbook-simple-depth .orderbook-table col.orderbook-col-ask-price {
+  width:20%;
+}
+
+/* ===== Shioaji callback field projection =====
+ * Tick cumulative aggressor volume and BidAsk per-level diffs are broker facts.
+ * Keep them compact so the existing five-level geometry is unchanged. */
+
+.orderbook .orderbook-suspend-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 4px;
+  padding: 0 3px;
+  min-width: 24px;
+  height: 14px;
+  border: 1px solid var(--orange-400x);
+  border-radius: 2px;
+  color: var(--amber-300x-3);
+  font-size: 9px;
+  line-height: 12px;
+  vertical-align: middle;
+}
+
+.orderbook .orderbook-qty-wrap .orderbook-qty-text {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+/*
+ * 五檔本身沒有垂直捲動需求。全域的 scrollbar-gutter:stable
+ * 會在監控報價 / 歷史五檔右側留下黑色直條，這兩個容器明確取消 gutter。
+ */
+/* ===== Shared orderbook: equal-depth vertical fit =====
+ * Five-level Taiwan books and ten-level Moomoo books use the same layout.
+ * The table owns all remaining vertical space; every depth row receives the
+ * same height.  OrderBookComponent publishes fit variables from the actual
+ * table viewport so typography contracts only when the panel is too short. */
+.orderbook .orderbook-table-wrap {
+  scrollbar-gutter: auto;
+  padding-right: 0;
+  overflow-x: hidden;
+  overflow-y: hidden;
+  order: 4;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/*
+ * 五檔量條只能存在自己的 volume cell 內。
+ * 舊樣式同時有 colgroup 24% 與 td width:30%，再加上量條 absolute 定位，
+ * 在較窄卡片時瀏覽器可能重新分配欄寬，視覺上造成 ask bar 疊到賣價。
+ */
+.orderbook .orderbook-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  height: 100%;
+  min-height: 100%;
+}
+
+.orderbook .orderbook-table tbody {
+  height: 100%;
+}
+
+.orderbook .orderbook-table tbody tr[data-orderbook-level] {
+  height: var(--orderbook-fit-row-height, 42px);
+}
+
+.orderbook .orderbook-table tbody tr[data-orderbook-level] > td {
+  height: var(--orderbook-fit-row-height, 42px);
+  box-sizing: border-box;
+  font-size: var(--orderbook-fit-font-size, 20px);
+}
+
+.orderbook .orderbook-price-cell,
+.orderbook .orderbook-price-value {
+  font-size: var(--orderbook-fit-font-size, 20px);
+}
+
+.orderbook .orderbook-qty-bar {
+  box-sizing: border-box;
+  z-index: 0;
+  pointer-events: none;
+  top: var(--orderbook-fit-bar-inset, 7px);
+  bottom: var(--orderbook-fit-bar-inset, 7px);
+}
+
+/* Simple ten-level books should fit all ten levels in-place rather than
+ * introducing a second scrollbar when the dashboard slot is shortened. */
+.orderbook.orderbook-simple-depth .orderbook-scroll-body,
+.orderbook.orderbook-simple-depth .orderbook-table-wrap {
+  overflow-y: hidden;
+}
+
+/* ===== Shared bid/ask quote responsive width fit =====
+ * OrderBookComponent derives typography from both remaining height and
+ * actual cell width. This prevents long futures/crypto prices from losing the
+ * final digit when a dashboard slot is narrowed horizontally. */
+.orderbook .orderbook-qty-wrap,
+.orderbook .orderbook-table .orderbook-qty-wrap.bid,
+.orderbook .orderbook-table .orderbook-qty-wrap.ask {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-left: 0;
+  margin-right: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  isolation: isolate;
+  height: var(--orderbook-fit-row-height, 42px);
+  min-height: 0;
+}
+
+/* The quantity is centred by its flex container (the qty wrap, align-items: center), not by a line-height equal to
+ * the row height: an older card rule fixes the text box at 40px, so a tall row (dragged-up panel) pushed the glyphs
+ * below that box and overflow: hidden made the quantities vanish. The text box now sizes to its own line. */
+.orderbook .orderbook-qty-text {
+  position: relative;
+  z-index: 1;
+  font-size: var(--orderbook-fit-font-size, 20px);
+  height: auto;
+  max-height: 100%;
+  line-height: 1.2;
+  align-self: center;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+.orderbook .orderbook-price-value {
+  max-width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: visible;
+  white-space: nowrap;
+}
+
+/* Shared Shioaji/Futu depth totals: bid | cumulative ratio | ask on one row. */
+.orderbook .orderbook-total-section {
+  padding-bottom:2px;
+  order: 2;
+  flex: 0 0 auto;
+  margin-top: 0;
+  box-sizing: border-box;
+  position: relative;
+  bottom: auto;
+  z-index: 10;
+  background: var(--surface-panel);
+  display: grid;
+  grid-template-columns: minmax(42px, auto) minmax(60px, 1fr) minmax(42px, auto);
+  align-items: center;
+  gap: 7px;
+  min-height: 26px;
+  padding: 4px 7px;
+}
+
+/* 參考圖的買賣條：左側買方使用綠色，右側賣方使用紅色；
+   track 本身不使用黑底，避免資料不足時看起來像一整條黑色。 */
+.orderbook .orderbook-total-bar-wrap {
+  height: 6px;
+  background: var(--blue-800x-16);
+  border-radius: 999px;
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.orderbook .orderbook-total-labels {
+  margin-top: 4px;
+  display: contents;
+  margin: 0;
+}
+
+.orderbook .orderbook-total-label.bid {
+  grid-column: 1;
+  grid-row: 1;
+  color: var(--price-up-color);
+}
+
+.orderbook .orderbook-total-label.ask {
+  grid-column: 3;
+  grid-row: 1;
+  text-align: right;
+  color: var(--price-down-color);
+}
+
+/* Taiwan convention shared by all providers: bid red, ask green. */
+.orderbook .orderbook-total-bar.bid {
+  background: var(--price-up-color);
+}
+
+.orderbook .orderbook-total-bar.ask {
+  background: var(--price-down-color);
+}
+
+.orderbook .orderbook-table .orderbook-price-cell {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* 買賣報價: the edge columns keep room for the diff badge even with the H/L mark stacked above it (at 7% the
+ * badge was squeezed out). 10 + 19 + 21 + 21 + 19 + 10 = 100. */
+.orderbook .orderbook-table col.orderbook-col-bid-extreme,
+.orderbook .orderbook-table col.orderbook-col-ask-extreme {
+  width: 10%;
+}
+
+.orderbook .orderbook-table col.orderbook-col-bid-vol,
+.orderbook .orderbook-table col.orderbook-col-ask-vol {
+  width: 19%;
+}
+
+.orderbook .orderbook-table col.orderbook-col-bid-price,
+.orderbook .orderbook-table col.orderbook-col-ask-price {
+  width: 21%;
+}
+
+/* Price columns only as wide as a 7-character price needs; the rest goes to the quantity bars, so the gap between
+ * a price and its quantity stays small on wide panels (not the whole unused price-column width). */
+.orderbook .orderbook-extreme-cell {
+  position: relative;
+  min-width: 0;
+  box-sizing: border-box;
+  text-align: center;
+  font-size: var(--orderbook-fit-extreme-font-size, 17px);
+  overflow: visible;
+  padding: 0 1px;
+}
+
+.orderbook .orderbook-extreme-cell .orderbook-book-change {
+  display: inline-block;
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* ===== 買賣報價 layout from the text it shows =====
+ * orderbook_component.js (solveOrderBookLayout) sizes the columns from the text and solves the font; padding here is
+ * only a small, fixed margin: ~20px on the quantity and ~10px on the price would cost a
+ * 305px panel several px of font size. */
+.orderbook .orderbook-table .orderbook-qty-wrap,
+.orderbook .orderbook-table .orderbook-qty-wrap.bid,
+.orderbook .orderbook-table .orderbook-qty-wrap.ask {
+  padding-left: 2px;
+  padding-right: 2px;
+}
+
+.orderbook .orderbook-table .orderbook-qty-wrap .orderbook-qty-text {
+  padding-left: 1px;
+  padding-right: 1px;
+}
+
+.orderbook .orderbook-table .orderbook-price-cell.bid,
+.orderbook .orderbook-table .orderbook-price-cell.ask {
+  padding-left: 2px;
+  padding-right: 2px;
+}
+
+.orderbook .orderbook-table .orderbook-qty-bar.bid {
+  right: 2px;
+}
+
+.orderbook .orderbook-table .orderbook-qty-bar.ask {
+  left: 2px;
+}
+
+.orderbook .orderbook-table .orderbook-qty-bar {
+  max-width: calc(100% - 4px);
+}
+
+.orderbook .orderbook-table .orderbook-extreme-cell,
+.orderbook .orderbook-table .orderbook-extreme-cell.bid,
+.orderbook .orderbook-table .orderbook-extreme-cell.ask {
+  padding-left: 2px;
+  padding-right: 2px;
+}
+
+/* ===== 買賣報價 edge columns: the column holds only H/L; the diff badge floats =====
+ * The badge is anchored to the panel's outer side of its cell and grows inward over the H/L marker and the end of the
+ * quantity cell while it shows (about two seconds). It takes no width, so the prices and quantities keep their size
+ * and nothing in the row moves. */
+.orderbook .orderbook-table .orderbook-extreme-cell {
+  position: relative;
+  overflow: visible;
+}
+
+.orderbook .orderbook-table .orderbook-extreme-cell.orderbook-with-change .orderbook-book-change {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  margin: auto 0;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  height: 16px;
+  line-height: 16px;
+  padding: 0 3px;
+  white-space: nowrap;
+  overflow: visible;
+  z-index: 2;
+}
+
+.orderbook .orderbook-table .orderbook-extreme-cell.bid.orderbook-with-change .orderbook-book-change {
+  left: 1px;
+  right: auto;
+}
+
+.orderbook .orderbook-table .orderbook-extreme-cell.ask.orderbook-with-change .orderbook-book-change {
+  right: 1px;
+  left: auto;
+}
+
+/* 歷史回放's trade review in the header: 實際收益 (預估收益); the estimate is always grey. */
+.orderbook-review-actual-pnl,
+.orderbook-review-live-pnl {
+  font-weight: 900;
+}
+
+.orderbook-review-estimated-pnl {
+  color: var(--slate-400);
+  font-weight: 800;
+}
+
+.pv-level {
+  color:var(--slate-400);
+  font-size:9px;
+}
+
+.pv-stack i {
+  display:block;
+  width:100%;
+}
+
+.orderbook.orderbook-hide-price-volume .pv-imbalance {
+  display: none;
+}
+
+.orderbook:not(.orderbook-hide-price-volume) .pv-imbalance {
+  display: block;
+}
+
+.pv-imbalance .pv-chart {
+  contain: layout paint;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  overflow: hidden;
+  grid-template-rows: minmax(0, 1fr) 15px;
+}
+
+.pv-imbalance .pv-level {
+  /* Sized by the chart, never by its stack: a stack's height change is laid out inside this level only.
+     No paint containment: the H / L markers sit above the level (top: -9px) and must not be clipped. */
+  contain: size layout style;
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: none;
+  height: 100%;
+  padding: 0;
+  border: 1px solid transparent;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-direction: column;
+}
+
+/* Bars fill most of their price's column (narrow gaps between prices), up to 26px each. */
+.pv-imbalance .pv-stack {
+  width: min(90%, 26px);
+  min-width: 1px;
+  max-width: 26px;
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-start;
+  overflow: hidden;
+}
+
+.pv-imbalance .pv-stack i {
+  width: 100%;
+  min-height: 0;
+}
+
+.pv-imbalance .pv-out {
+  background: var(--price-up-color);
+}
+
+.pv-imbalance .pv-in {
+  background: var(--price-down-color);
+}
+
+.pv-imbalance .pv-current {
+  border-color: var(--cyan-300);
+  box-shadow: inset 0 0 0 1px var(--cyan-300-a62), 0 0 4px var(--cyan-300-a26);
+  border-radius: 2px;
+}
+
+.pv-imbalance .pv-extreme-marker.high {
+  color: var(--price-up-color);
+}
+
+.pv-imbalance .pv-extreme-marker.low {
+  color: var(--price-down-color);
+}
+
+.pv-imbalance .pv-axis-tick {
+  position: absolute;
+  transform: translateX(-50%);
+  color: var(--slate-400);
+  font-size: 8.5px;
+  white-space: nowrap;
+  top: 1px;
+  line-height: 11px;
+}
+
+.pv-imbalance .pv-axis-l {
+  transform: translateX(0);
+}
+
+.pv-imbalance .pv-axis-h {
+  transform: translateX(-100%);
+}
+
+.pv-imbalance {
+  border-color: var(--pane-border);
+  min-width: 0;
+  padding: 3px 5px 2px;
+  overflow: hidden;
+  padding-top: 2px;
+  padding-bottom: 1px;
+}
+
+.pv-imbalance .pv-bars {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  gap: min(1px, .08vw);
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 10px 2px 0;
+}
+
+.pv-imbalance .pv-axis {
+  position: relative;
+  margin: 0 2px;
+  overflow: visible;
+  height: 15px;
+  border-top: 0;
+}
+
+.pv-imbalance .pv-extreme-marker {
+  position: absolute;
+  z-index: 3;
+  font-size: 9px;
+  font-weight: 900;
+  pointer-events: none;
+  top: -9px;
+  height: 9px;
+  line-height: 9px;
+}
+
+.pv-imbalance .pv-level.pv-current {
+  border-color: transparent;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+/* 今日價量分布: a rounded inset under the 內外盤比 bar. */
+.orderbook .pv-imbalance {
+  order: 3;
+  margin: 0 10px 4px;
+  border-radius: 6px;
+  background: var(--surface-inset);
+  flex: 0 1 78px;
+  flex-basis: 62px;
+  min-height: 48px;
+  max-height: 77px;
+}
+
+.pv-imbalance .pv-level.pv-current .pv-stack {
+  outline: 1px solid var(--white);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
+.pv-imbalance .pv-current-marker {
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  width: 0;
+  height: 0;
+  transform: translateX(-50%);
+  border-left: 3px solid transparent;
+  border-right: 3px solid transparent;
+  border-bottom: 4px solid var(--cyan-300);
+  z-index: 4;
+  pointer-events: none;
+  display: none;
+}
+
+/* The title strip stays above the scroll body and the totals (which are ordered 1 and 2). */
+.orderbook > :first-child {
+  order: 0;
+}
+
+/* An order book without its product header (data-product-header="hidden": a workspace column, whose trend
+ * titlebar names the product). */
+.orderbook[data-product-header="hidden"] .orderbook-header {
+  display: none;
+}
+
+@keyframes orderbook-change-pop {
+  from { opacity: 0; transform: scale(.82); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes orderbook-change-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(.96); }
+}
+
+@keyframes orderbook-change-bid {
+  from { opacity: 0; transform: translateX(-2px) scale(.88); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes orderbook-change-bid-out {
+  from { opacity: 1; transform: translateX(0) scale(1); }
+  to { opacity: 0; transform: translateX(-2px) scale(.96); }
+}
+
+@keyframes orderbook-change-ask {
+  from { opacity: 0; transform: translateX(2px) scale(.88); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes orderbook-change-ask-out {
+  from { opacity: 1; transform: translateX(0) scale(1); }
+  to { opacity: 0; transform: translateX(2px) scale(.96); }
+}

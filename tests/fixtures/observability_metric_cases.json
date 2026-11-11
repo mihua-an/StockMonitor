@@ -1,0 +1,28 @@
+{
+ "note": "config/observability_contract.py metric() and config/js/observability_contract.js metric() on the same arguments (snake_case here; the Node test maps them to its camelCase names): the complete serialized metric, or an error containing the given text.",
+ "cases": [
+  {"name": "a value with a capacity",
+   "args": {"name": "queue", "service_id": "market_runtime", "sampled_at": "2026-10-21T01:02:03.004Z", "value": 5, "unit": "events", "capacity": 20, "window_ms": 1000},
+   "metric": {"schema": "stock-monitor-metric-snapshot-v1", "name": "queue", "service_id": "market_runtime", "instance_id": null, "stream": null,
+              "sampled_at": "2026-10-21T01:02:03.004Z", "window_ms": 1000, "value": 5, "unit": "events", "availability": "OK", "reason": null,
+              "kind": "gauge", "capacity": 20, "utilization": 0.25}},
+  {"name": "no value is NO_SAMPLE, never zero",
+   "args": {"name": "lag", "service_id": "s", "sampled_at": "2026-10-21T01:02:03.004Z", "unit": "events"},
+   "metric": {"schema": "stock-monitor-metric-snapshot-v1", "name": "lag", "service_id": "s", "instance_id": null, "stream": null,
+              "sampled_at": "2026-10-21T01:02:03.004Z", "window_ms": null, "value": null, "unit": "events", "availability": "NO_SAMPLE", "reason": null,
+              "kind": "gauge"}},
+  {"name": "a zero capacity has no utilization",
+   "args": {"name": "q", "service_id": "s", "sampled_at": "2026-10-21T01:02:03.004Z", "value": 0, "unit": "events", "capacity": 0, "kind": "counter"},
+   "metric": {"schema": "stock-monitor-metric-snapshot-v1", "name": "q", "service_id": "s", "instance_id": null, "stream": null,
+              "sampled_at": "2026-10-21T01:02:03.004Z", "window_ms": null, "value": 0, "unit": "events", "availability": "OK", "reason": null,
+              "kind": "counter", "capacity": 0, "utilization": null}},
+  {"name": "an unknown kind", "args": {"name": "q", "service_id": "s", "unit": "u", "value": 1, "kind": "speed"}, "error": "unknown kind"},
+  {"name": "a fractional window", "args": {"name": "q", "service_id": "s", "unit": "u", "value": 1, "window_ms": 1.5}, "error": "window_ms"},
+  {"name": "a negative window", "args": {"name": "q", "service_id": "s", "unit": "u", "value": 1, "window_ms": -1}, "error": "window_ms"},
+  {"name": "a capacity given as text", "args": {"name": "q", "service_id": "s", "unit": "u", "value": 1, "capacity": "10"}, "error": "capacity"},
+  {"name": "a negative capacity", "args": {"name": "q", "service_id": "s", "unit": "u", "value": 1, "capacity": -1}, "error": "capacity"},
+  {"name": "no unit", "args": {"name": "q", "service_id": "s", "unit": "", "value": 1}, "error": "unit"},
+  {"name": "OK without a value", "args": {"name": "q", "service_id": "s", "unit": "u", "availability": "OK"}, "error": "OK requires a finite value"},
+  {"name": "a sample time that is not text", "args": {"name": "q", "service_id": "s", "unit": "u", "value": 1, "sampled_at": 5}, "error": "sampled_at"}
+ ]
+}

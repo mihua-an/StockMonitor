@@ -1,0 +1,78 @@
+/* The expand picker (core/components/expand_picker.js): one pill group that shows only its current option; hovering
+ * opens the others beside it, to the right. 商品列表's 現／月份, 技術分析's K period and the dock's 畫面模式 use it. */
+.expand-picker {
+  display: inline-flex;
+  flex: none;
+  vertical-align: middle;
+  gap: 0;
+  padding: 2px;
+  border-radius: 12px;
+  background: var(--slate-800);
+  /* Opened, it lies over what is beside it (a table cell's neighbours). */
+  position: relative;
+  z-index: 1;
+}
+
+/* After a text (商品列表's 股名 or 股號): a gap from it. */
+.expand-picker:not(:first-child) {
+  margin-left: 6px;
+}
+
+/* At its owner's top right (a stock card). Opened it grows to the left over the owner and wraps, so every option shows
+   however narrow the owner is. It reads from the right: the near month opens where the 「期」 was, so the click that was
+   aimed at 「期」 cannot land on the farthest month. */
+.expand-picker-corner {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+  flex-direction: row-reverse;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  max-width: calc(100% - 8px);
+  margin-left: 0;
+}
+
+.expand-picker button {
+  max-width: 0;
+  height: 20px;
+  padding: 0;
+  overflow: hidden;
+  opacity: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--slate-400);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: max-width .3s cubic-bezier(.2, .8, .2, 1), padding .3s cubic-bezier(.2, .8, .2, 1), opacity .2s ease;
+}
+
+.expand-picker button.is-active,
+.expand-picker:hover button {
+  /* Wide enough for a screen name the user typed; the transition animates towards it. */
+  max-width: 120px;
+  padding: 0 7px;
+  opacity: 1;
+}
+
+.expand-picker button.is-active {
+  background: var(--slate-600);
+  color: var(--white);
+}
+
+/* The hint (商品列表's 「期」 beside 「現」): shown while closed, gone once the picker opens on its options. */
+.expand-picker button.is-hint {
+  max-width: 64px;
+  padding: 0 7px;
+  opacity: 1;
+}
+
+.expand-picker:hover button.is-hint {
+  max-width: 0;
+  padding: 0;
+  opacity: 0;
+}

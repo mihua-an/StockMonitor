@@ -1,0 +1,9 @@
+{
+  "schema": "stock-monitor-twse-price-policy-v1",
+  "note": "台股 升降單位 (regular board), the one copy: service/market/semantics/twse_price_policy.py reads it for the paper desk's price check and serves it to the renderer with the paper funds (order tickets step prices on it). Each table is [[below, tick], ...] in price order, the last row's `below` null (every price from there up). `tick_table_of_kind` maps each instrument kind of the security master (service/market/reference/security_master_service.py instrument_kind) to its table: ETF, ETN and REIT (受益證券) use the ETF table. 漲停／跌停 are never derived from 昨收: only the official limits the provider publishes are used.",
+  "tick_tables": {
+    "stock": [["10", "0.01"], ["50", "0.05"], ["100", "0.1"], ["500", "0.5"], ["1000", "1"], [null, "5"]],
+    "etf": [["50", "0.01"], [null, "0.05"]]
+  },
+  "tick_table_of_kind": {"stock": "stock", "etf": "etf", "etn": "etf", "reit": "etf"}
+}

@@ -1,0 +1,83 @@
+/* 內外盤比 (core/components/io_ratio.js): 外盤 % | bar | 內盤 %, optionally a label first. The host places it and
+   gives it its height; the bar keeps its own look everywhere (order book, 價量). */
+
+.io-ratio {
+  display: grid;
+  grid-template-columns: minmax(44px, auto) minmax(48px, 1fr) minmax(44px, auto);
+  align-items: center;
+  gap: 5px;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+
+.io-ratio.io-ratio-labeled {
+  grid-template-columns: auto minmax(44px, auto) minmax(48px, 1fr) minmax(44px, auto);
+}
+
+.io-ratio-label {
+  color: var(--blue-300x-3);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.io-ratio-side {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  line-height: 1.02;
+}
+
+/* 外盤 (buyer-initiated) in the rising colour, 內盤 (seller-initiated) in the falling one: with 漲紅跌綠 a buy is red
+ * and a sell green, and a reversed palette reverses them -- as the order book's 逐價內外盤 bars (使用者 10-30). */
+.io-ratio-outside {
+  color: var(--price-up-color);
+}
+
+.io-ratio-inside {
+  align-items: flex-end;
+  color: var(--price-down-color);
+  text-align: right;
+}
+
+.io-ratio-side b {
+  font-size: 10px;
+  line-height: 11px;
+}
+
+.io-ratio-center {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+}
+
+.io-ratio-track {
+  width: 100%;
+  height: 10px;
+  display: flex;
+  background: var(--blue-800x-16);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.io-ratio-out {
+  background: var(--price-up-color);
+  height: 100%;
+}
+
+.io-ratio-in {
+  background: var(--price-down-color);
+  height: 100%;
+}
+
+.io-ratio-neutral-bar {
+  background: var(--slate-500);
+  height: 100%;
+}
+
+.io-ratio-unknown-bar {
+  background: var(--control-selected-fg);
+  height: 100%;
+}

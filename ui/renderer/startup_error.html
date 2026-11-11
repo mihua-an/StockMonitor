@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none';" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stock Monitor｜介面載入失敗</title>
+  <!-- The app's one stylesheet (tokens and the startup component's .startup-error-*), no styles of its own. -->
+  <link rel="stylesheet" href="./styles/index.css" />
+</head>
+<body class="startup-error-body">
+  <main class="startup-error-card">
+    <h1 class="startup-error-title">介面載入失敗</h1>
+    <p class="startup-error-text">Stock Monitor 的背景程序仍在，但下方這個畫面沒有成功載入，錯誤已保留在診斷紀錄中。主介面請完整關閉後重新啟動；其他視窗（交易、商品頁設定、Workspace、獨立視窗）已關閉，可再開一次，仍失敗再完整關閉後重新啟動。</p>
+    <code id="detail" class="startup-error-detail">renderer load failure</code>
+  </main>
+  <script src="./startup_error.js"></script>
+</body>
+</html>

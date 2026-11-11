@@ -1,0 +1,171 @@
+/* 帳務 on a narrow window (features/account/mobile_cards_view.js): the ledger as cards and their compact tables. */
+
+.mobile-cards-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.mobile-card-group {
+  margin-bottom: 6px;
+}
+
+/* A group's name over its cards, as 設定's group titles. */
+.mobile-card-group > h3 {
+  margin: 26px 14px 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--slate-400);
+}
+
+.mobile-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.mobile-card {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--slate-900);
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.mobile-card-wide {
+  grid-column: 1 / -1;
+}
+
+.mobile-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.mobile-card-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--slate-100);
+}
+
+.mobile-card-select {
+  width: auto;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.mobile-card-list {
+  margin: 0;
+}
+
+.mobile-card-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+  box-shadow: inset 0 -1px 0 var(--pane-border);
+  font-size: 13px;
+}
+
+.mobile-card-list > div:last-child {
+  box-shadow: none;
+}
+
+.mobile-card-list dt {
+  color: var(--slate-200);
+}
+
+.mobile-card-list dd {
+  margin: 0;
+}
+
+.mobile-card-table {
+  font-size: 12.5px;
+}
+
+.mobile-card-table th {
+  height: 30px;
+  padding: 0 8px;
+  background: var(--slate-900);
+  color: var(--slate-400);
+  font-size: 12px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--pane-border);
+}
+
+.mobile-card-table th:where(:not([data-column-align])) {
+  text-align: right;
+}
+
+.mobile-card-table td {
+  height: 30px;
+  padding: 0 8px;
+  font-size: 12px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.mobile-card-table th:first-child:where(:not([data-column-align])),
+.mobile-card-table td:first-child {
+  text-align: left;
+}
+
+.mobile-card-table td small {
+  margin-left: 6px;
+  color: var(--slate-500);
+  font-size: 11px;
+}
+
+.mobile-card-table td.mobile-card-empty, div.mobile-card-empty {
+  padding: 12px 6px;
+  text-align: center;
+  color: var(--slate-500);
+}
+
+.mobile-card-subtitle {
+  display: flex;
+  justify-content: space-between;
+  margin: 12px 0 4px;
+  font-size: 13px;
+  color: var(--slate-300);
+  font-weight: 700;
+}
+
+.mobile-card-total {
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--slate-300);
+}
+
+.mobile-card-note {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--slate-500);
+}
+
+.mobile-card-grid-roomy {
+  grid-template-columns: repeat(auto-fill, minmax(560px, 1fr));
+}
+
+.mobile-card-table-rank th:nth-child(2):where(:not([data-column-align])),
+.mobile-card-table-rank td:nth-child(2) {
+  text-align: left;
+}
+
+.mobile-card-table-rank th:first-child, .mobile-card-table-rank td:first-child {
+  width: 28px;
+  color: var(--slate-500);
+}
+
+/* A card table: its column titles stay in view while the rows scroll. */
+:where(.mobile-card-table) > thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}

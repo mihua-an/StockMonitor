@@ -1,0 +1,137 @@
+/* 帳務 模擬委託紀錄 (features/account/paper_order_history_view.js): the paper orders list and its details. */
+
+/* 委託紀錄 (模擬帳務, features/account/paper_order_history_view.js): the filter row, the day groups, a row opened on its
+ * fills and 經過. The side colours are the text's own (price-up / price-down spans). */
+.account-orders-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 12px 12px 0 0;
+  background: var(--slate-900);
+  font-size: 13px;
+}
+
+/* The states line: the second row of the filter card, parted by a line. */
+.account-orders-states {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  border-radius: 0 0 12px 12px;
+  box-shadow: inset 0 1px 0 var(--pane-border);
+}
+
+.account-orders-filters:has(+ .account-orders-states[hidden]) {
+  border-radius: 12px;
+}
+
+.account-orders-states[hidden] {
+  display: none;
+}
+
+/* 歷史委託 / 歷史成交: a segmented switch at the start of the filter row (settings-seg's look). */
+.account-orders-tabs {
+  display: inline-flex;
+  gap: 2px;
+  margin-right: 6px;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--slate-800);
+}
+
+.account-orders-tab {
+  padding: 5px 14px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--slate-400);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.account-orders-tab.active {
+  background: var(--slate-600);
+  color: var(--white);
+  font-weight: 600;
+}
+
+.account-orders-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--slate-400);
+}
+
+.account-orders-date,
+.account-orders-stock {
+  width: auto;
+  height: 30px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--slate-800);
+  color: var(--slate-100);
+}
+
+.account-orders-stock {
+  width: 150px;
+}
+
+.account-orders-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.account-orders-count {
+  margin-left: auto;
+  color: var(--slate-400);
+}
+
+.account-orders-message:empty {
+  display: none;
+}
+
+.account-orders-message {
+  padding: 6px 12px;
+  color: var(--price-up-color);
+}
+
+.account-orders-day td {
+  padding: 4px 12px;
+  background: var(--surface-subrow);
+  color: var(--slate-400);
+}
+
+.account-orders-row.done td {
+  color: var(--gray-400);
+}
+
+.account-orders-detail-box {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.account-orders-detail-box > div {
+  padding: 8px 12px 10px 40px;
+}
+
+.account-orders-detail-box > div + div {
+  border-left: 1px solid var(--pane-border);
+}
+
+.account-orders-detail-title {
+  margin-bottom: 4px;
+  color: var(--slate-400);
+}
+
+.account-orders-mini td {
+  padding: 3px 10px 3px 0;
+  border: 0;
+  background: transparent;
+}
+
+/* The orders under the filter card, as a table card. */
+.account-orders-view [data-grid-variant="page"] {
+  margin-top: 12px;
+}

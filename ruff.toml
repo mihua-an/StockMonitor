@@ -1,0 +1,11 @@
+# Python lint (CI and local: `ruff check .`). Only the checks that find real defects: pyflakes (undefined
+# names, unused imports and locals, redefinitions) and syntax errors. Style is not linted.
+target-version = "py314"
+extend-exclude = ["packaging", "native", "dist", "var", "node_modules"]
+
+[lint]
+select = ["F", "E9"]
+
+[lint.per-file-ignores]
+# Its `store` fixture is imported at the top and named as each test's parameter, which is what pytest asks for.
+"tests/test_online_training.py" = ["F811"]

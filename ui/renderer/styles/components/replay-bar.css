@@ -1,0 +1,90 @@
+/* The replay play bar, one row on a card: the transport (step back / 播放 / step forward / reset) as one pill group,
+ * the time at the cursor, the timeline between its first and last time, and the speeds as another pill group.
+ * 帳務 配對回放 (features/account/pair_replay_view.js) and 歷史回放 (pages/history.html) build it the same way;
+ * 歷史回放's timeline is its own track (history.css) inside .replay-bar-track. */
+.replay-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.replay-bar-transport,
+.replay-bar-speed {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 15px;
+  background: var(--slate-800);
+}
+
+.replay-bar-transport button,
+.replay-bar-speed button {
+  display: inline-grid;
+  height: 26px;
+  min-width: 30px;
+  place-items: center;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 13px;
+  background: transparent;
+  color: var(--slate-200);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.replay-bar-transport button svg {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+}
+
+.replay-bar-transport button:hover,
+.replay-bar-speed button:hover {
+  background: var(--slate-700);
+}
+
+.replay-bar-transport button:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.replay-bar-transport button.is-play {
+  min-width: 64px;
+  background: var(--blue-400);
+  color: var(--slate-900);
+}
+
+.replay-bar-speed button.is-active {
+  background: var(--slate-600);
+  color: var(--white);
+}
+
+.replay-bar-now {
+  min-width: 40px;
+  flex: none;
+  color: var(--slate-100);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.replay-bar-track {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  color: var(--slate-500);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.replay-bar-track > input[type="range"] {
+  min-width: 0;
+  flex: 1;
+  accent-color: var(--blue-400);
+}

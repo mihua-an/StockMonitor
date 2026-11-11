@@ -1,0 +1,51 @@
+# --- Runtime / user / generated data: everything writable lives under var/ ---
+# config/var_layout.json is the layout contract (var/data, var/output, var/state, var/logs, var/temp);
+# service/platform/project_root.py and config/js/var_paths.js resolve it. Self-bootstrapping: created on first write.
+# It holds market data, accounts, auth tokens, logs and test-session data, never source.
+/var/
+
+# --- Test-mock leakage safety net ---
+# unittest.mock.MagicMock's default __fspath__ fallback
+# (f"{type(self).__name__}/{self._extract_mock_name()}/{id(self)}") writes a
+# real "MagicMock/..." directory tree to CWD if an unconfigured mock ever
+# reaches a Path()/mkdir() call in production code. The root cause is fixed
+# in tests/test_source_runtimes.py (ShioajiHistoricalRepository mock now gets
+# a real tmp_path-backed runtime_metadata.path), but this stays as a
+# defensive net in case a future mock reintroduces the pattern.
+/MagicMock/
+
+# --- Python ---
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# --- Logs ---
+*.log
+
+# --- Node / Electron build workspace (root package.json) ---
+node_modules/
+/dist/
+/out/
+
+# --- Rust native build (native/market_runtime/) ---
+native/market_runtime/target/
+native/analysis_runtime/target/
+
+
+# --- Packaged runtime staging (scripts/tooling/stage_python_runtime.py) ---
+# A vendored redistributable CPython + locked dependency install, ~300MB;
+# regenerated on demand, never committed, same as /dist/ above.
+packaging/python/
+packaging/vc_runtime/
+
+# --- Env / secrets ---
+.env
+.env.*
+
+# --- Editor / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Local/user artifacts (never commit) ---

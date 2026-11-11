@@ -1,0 +1,38 @@
+{
+  "schema": "stock-monitor-api-routes-v1",
+  "spec": "docs/system-architecture/00_services_and_ports.md section 2 (two business API processes: realtime_api, app_api)",
+  "note": "Which business API serves a path: the longest matching prefix wins. Read by Electron main and the renderer to address the right service_id (whose address comes from the resolver), and verified against the routes each service actually serves (tests/test_api_routes_contract.py). Management paths (/api/service/*) exist on every service and are never routed through this table.",
+  "routes": [
+    {"prefix": "/api/config/", "service_id": "app_api"},
+    {"prefix": "/api/settings/", "service_id": "app_api"},
+    {"prefix": "/api/product-catalog/", "service_id": "app_api"},
+    {"prefix": "/api/watch-pages", "service_id": "app_api"},
+    {"prefix": "/api/subscriptions", "service_id": "app_api"},
+
+    {"prefix": "/api/history/", "service_id": "app_api"},
+    {"prefix": "/api/replay/", "service_id": "app_api"},
+
+    {"prefix": "/api/model/", "service_id": "realtime_api"},
+    {"prefix": "/api/training/", "service_id": "realtime_api"},
+    {"prefix": "/api/system/inference", "service_id": "realtime_api"},
+
+    {"prefix": "/api/data-center/", "service_id": "app_api"},
+
+    {"prefix": "/api/actual-account/", "service_id": "app_api"},
+    {"prefix": "/api/diagnostics/account-sqlite", "service_id": "app_api"},
+
+    {"prefix": "/api/paper-wallet/", "service_id": "app_api"},
+
+    {"prefix": "/api/market-daemon/", "service_id": "realtime_api"},
+    {"prefix": "/api/futu/", "service_id": "realtime_api"},
+    {"prefix": "/api/futu-daemon/", "service_id": "realtime_api"},
+    {"prefix": "/api/monitor/", "service_id": "realtime_api"},
+    {"prefix": "/api/security-master/", "service_id": "realtime_api"},
+    {"prefix": "/api/shioaji/", "service_id": "realtime_api"},
+    {"prefix": "/api/trade-detail/", "service_id": "realtime_api"},
+    {"prefix": "/api/profiling", "service_id": "realtime_api"},
+    {"prefix": "/api/sources", "service_id": "realtime_api"},
+    {"prefix": "/api/status", "service_id": "realtime_api"},
+    {"prefix": "/api/diagnostics/", "service_id": "realtime_api"}
+  ]
+}

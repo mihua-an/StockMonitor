@@ -1,0 +1,88 @@
+{
+  "schema": "var-layout-v2",
+  "description": "Single authority for the physical layout of every writable runtime location. service/platform/project_root.py (Python) and config/js/var_paths.js (Node) both resolve paths from THIS file; native/Rust never guesses a path, it receives explicit --data-dir arguments from the launcher. Two independent roots: VAR_ROOT (runtime data/state/logs; <repo>/var or <userData>/var) and AUTH_ROOT (secret material: local IPC tokens only; per-user %LOCALAPPDATA%, never inside the repository or an installer). A source checkout and an installed app are two flavors with their own per-user directories (flavors below), so one can run, be installed or be uninstalled without touching the other's window layout, data or tokens.",
+  "data_layout_version": 1,
+  "flavor_env": "STOCK_MONITOR_INSTALL_FLAVOR",
+  "flavors": {
+    "source": {
+      "user_data_dir": "stock-monitor-shioaji-desktop",
+      "auth_dir": ["StockMonitorTwse", "auth"]
+    },
+    "installed": {
+      "user_data_dir": "StockMonitor",
+      "auth_dir": ["StockMonitor", "auth"]
+    }
+  },
+  "root_env": "STOCK_MONITOR_VAR_ROOT",
+  "retired_env": {
+    "description": "Names no launcher sets any more. A process that still receives one refuses to resolve its paths instead of ignoring it, so an old script can never put its data somewhere else than it expects.",
+    "names": {
+      "STOCKMONITOR_DATA_ROOT": "STOCK_MONITOR_DATA_ROOT",
+      "SHIOAJI_DATA_ROOT": "STOCK_MONITOR_DATA_ROOT"
+    }
+  },
+  "default_root": "var",
+  "children": {
+    "data": {
+      "dir": "data",
+      "env": [
+        "STOCK_MONITOR_DATA_ROOT"
+      ]
+    },
+    "output": {
+      "dir": "output",
+      "env": [
+        "STOCK_MONITOR_OUTPUT_ROOT"
+      ]
+    },
+    "state": {
+      "dir": "state",
+      "env": [
+        "STOCK_MONITOR_STATE_ROOT"
+      ]
+    },
+    "logs": {
+      "dir": "logs",
+      "env": [
+        "STOCK_MONITOR_LOG_ROOT"
+      ]
+    },
+    "temp": {
+      "dir": "temp",
+      "env": [
+        "STOCK_MONITOR_TEMP_ROOT"
+      ]
+    },
+    "config": {
+      "dir": "config",
+      "env": [
+        "STOCK_MONITOR_CONFIG_ROOT"
+      ],
+      "note": "Versioned config revisions (<domain>/revisions, pointer.json), Health apply operations (operations/) and bootstrap run records (bootstrap/). Separate from business data (06 section 3)."
+    }
+  },
+  "storage": {
+    "description": "Everything that grows without bound lives under the storage location the user picks in 設定 → 資料儲存 (config domain storage_location, field historical_root; null = <data root>/<default_dir>). VAR_ROOT keeps only data of steady size: the WAL, the session cache, state, config and logs. The raw-history partitions (names starting with a root_prefixes entry) sit at the location itself; every child below is a path under it. Health moves every owned entry together when the location changes (config/js/storage_settings.js); config/storage_settings.py and config/js/storage_settings.js read the active location, service/platform/project_root.py and config/js/var_paths.js resolve the children from it.",
+    "default_dir": "historical",
+    "root_prefixes": ["source="],
+    "children": {
+      "analysis_events": "analysis-events",
+      "model_datasets": "model/online_datasets",
+    "daily_summary": "model/daily_summary",
+      "kbars": "kbars",
+      "query_cache": "query-cache",
+      "model_registry": "model/online_registry"
+    }
+  },
+  "auth_root": {
+    "env": [
+      "STOCK_MONITOR_AUTH_ROOT"
+    ],
+    "base_env": "LOCALAPPDATA",
+    "base_fallback": [
+      "AppData",
+      "Local"
+    ],
+    "dir_from_flavor": "auth_dir"
+  }
+}
