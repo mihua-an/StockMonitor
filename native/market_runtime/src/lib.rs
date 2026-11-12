@@ -11,6 +11,7 @@ pub mod demand;
 pub mod event;
 pub mod evidence;
 pub mod fsutil;
+pub mod heap;
 pub mod historical_store;
 pub mod historical_totals;
 pub mod late_join;

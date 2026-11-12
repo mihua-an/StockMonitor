@@ -202,13 +202,110 @@ impl BlockMeta {
     }
 }
 
+/// A block of Rust B's as Market Runtime holds it: its compact JSON text (None: null). A serves B's results and never
+/// computes on them, and a serde_json tree costs 5 to 12 times its text in memory (11-12: the minute, flow and day
+/// blocks of 111 states held 405 MB as trees). The text is decoded where a block is served or merged.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Held(Option<Box<str>>);
+
+impl Held {
+    pub fn of(value: &Value) -> Self {
+        Self((!value.is_null()).then(|| value.to_string().into_boxed_str()))
+    }
+
+    pub fn value(&self) -> Value {
+        self.0.as_deref().map(decode).unwrap_or(Value::Null)
+    }
+
+    pub fn is_null(&self) -> bool {
+        self.0.is_none()
+    }
+
+    /// A JSON object (what a day / flow increment merges into).
+    pub fn is_object(&self) -> bool {
+        self.0.as_deref().is_some_and(|text| text.starts_with('{'))
+    }
+}
+
+/// Text this module wrote with serde_json, back to the value it was written from.
+fn decode(text: &str) -> Value {
+    serde_json::from_str(text).expect("held JSON is serde_json's own output")
+}
+
+/// One minute record as held: its text, and the two things its merge compares (`Minutes::newer`).
+#[derive(Debug, Clone)]
+struct HeldMinute {
+    revision: u64,
+    forming: bool,
+    text: Box<str>,
+}
+
+/// Rust B's minute records of one state, by minute, each as its compact text (see `Held`). The newest minute is
+/// also held decoded: every quote and trade of the state reads it (wire::current_point).
+#[derive(Debug, Clone, Default)]
+pub struct Minutes {
+    records: BTreeMap<i32, HeldMinute>,
+    newest: Option<(i32, Value)>,
+}
+
+impl Minutes {
+    pub fn len(&self) -> usize {
+        self.records.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.records.is_empty()
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = i32> + '_ {
+        self.records.keys().copied()
+    }
+
+    pub fn clear(&mut self) {
+        self.records.clear();
+        self.newest = None;
+    }
+
+    /// The record of `minute`.
+    pub fn get(&self, minute: i32) -> Option<std::borrow::Cow<'_, Value>> {
+        match &self.newest {
+            Some((m, record)) if *m == minute => Some(std::borrow::Cow::Borrowed(record)),
+            _ => self.records.get(&minute).map(|held| std::borrow::Cow::Owned(decode(&held.text))),
+        }
+    }
+
+    /// Every record, oldest minute first.
+    pub fn values(&self) -> impl Iterator<Item = Value> + '_ {
+        self.records.values().map(|held| decode(&held.text))
+    }
+
+    /// Whether `record` (of revision `revision`) replaces what is held for `minute`: a higher revision, or a forming
+    /// minute published again with other figures at the same revision.
+    fn newer(&self, minute: i32, revision: u64, text: &str) -> bool {
+        self.records.get(&minute).is_none_or(|old| revision > old.revision || (revision == old.revision && old.forming && *old.text != *text))
+    }
+
+    pub fn insert(&mut self, minute: i32, record: Value) {
+        let text = record.to_string().into_boxed_str();
+        self.insert_text(minute, record, text);
+    }
+
+    fn insert_text(&mut self, minute: i32, record: Value, text: Box<str>) {
+        let held = HeldMinute { revision: record_revision(&record), forming: record.get("state") == Some(&json!("FORMING")), text };
+        self.records.insert(minute, held);
+        if self.newest.as_ref().is_none_or(|(m, _)| minute >= *m) {
+            self.newest = Some((minute, record));
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ProjectionEntry {
     pub epoch: u64,
-    pub minutes: BTreeMap<i32, Value>,
+    pub minutes: Minutes,
     pub windows: Value,
-    pub day: Value,
-    pub flow: Value,
+    pub day: Held,
+    pub flow: Held,
     pub events: VecDeque<Value>,
     pub signals: Option<Map<String, Value>>,
     pub signals_updated_ns: u64,
@@ -470,11 +567,10 @@ impl ProjectionCache {
                 }
                 let mut taken = Vec::new();
                 for (minute, record_rev, record) in records {
-                    let newer = entry.minutes.get(&minute).is_none_or(|old| record_rev > record_revision(old)
-                        || (record_rev == record_revision(old) && &record != old && old.get("state") == Some(&json!("FORMING"))));
-                    if newer {
+                    let text = record.to_string().into_boxed_str();
+                    if entry.minutes.newer(minute, record_rev, &text) {
                         taken.push(record.clone());
-                        entry.minutes.insert(minute, record);
+                        entry.minutes.insert_text(minute, record, text);
                         changed = true;
                     }
                 }
@@ -508,13 +604,12 @@ impl ProjectionCache {
                 json!({"events": taken, "replace": replace})
             }
             BlockData::Whole(value) => {
-                let slot = match block {
-                    BlockKind::Windows => &mut entry.windows,
-                    BlockKind::Day => &mut entry.day,
-                    BlockKind::Flow => &mut entry.flow,
+                match block {
+                    BlockKind::Windows => entry.windows = value.clone(),
+                    BlockKind::Day => entry.day = Held::of(&value),
+                    BlockKind::Flow => entry.flow = Held::of(&value),
                     BlockKind::Minutes | BlockKind::Events => unreachable!("record blocks parse as BlockData::Minutes/Events"),
-                };
-                *slot = value.clone();
+                }
                 changed = true;
                 value
             }
@@ -523,7 +618,9 @@ impl ProjectionCache {
                     BlockKind::Day => &mut entry.day,
                     _ => &mut entry.flow,
                 };
-                merge_increment(block, slot, &value);
+                let mut held = slot.value();
+                merge_increment(block, &mut held, &value);
+                *slot = Held::of(&held);
                 changed = true;
                 // Delivered as it came: the screens merge the same increment into the block they hold.
                 value
@@ -585,8 +682,12 @@ impl ProjectionCache {
         let data = &body["data"];
         match block {
             "minutes" => {
-                entry.minutes = data["minutes"].as_object().into_iter().flatten()
-                    .filter_map(|(_, r)| r["minute"].as_i64().and_then(|m| i32::try_from(m).ok()).map(|m| (m, r.clone()))).collect();
+                entry.minutes.clear();
+                for record in data["minutes"].as_object().into_iter().flatten().map(|(_, r)| r) {
+                    if let Some(minute) = record["minute"].as_i64().and_then(|m| i32::try_from(m).ok()) {
+                        entry.minutes.insert(minute, record.clone());
+                    }
+                }
             }
             "events" => {
                 let records = data["events"].as_object();
@@ -596,8 +697,8 @@ impl ProjectionCache {
                 }
             }
             "windows" => entry.windows = data.clone(),
-            "day" => entry.day = data.clone(),
-            "flow" => entry.flow = crate::timeline::flow_unkeyed(data),
+            "day" => entry.day = Held::of(data),
+            "flow" => entry.flow = Held::of(&crate::timeline::flow_unkeyed(data)),
             "signals" => {
                 entry.signals = data.as_object().cloned();
                 entry.signals_updated_ns = now_ns;
@@ -621,7 +722,7 @@ impl ProjectionCache {
     }
 
     pub fn minutes_wire(entry: &ProjectionEntry) -> Vec<Value> {
-        entry.minutes.values().cloned().collect()
+        entry.minutes.values().collect()
     }
 
     pub fn meta_wire(entry: Option<&ProjectionEntry>) -> Value {
@@ -659,6 +760,27 @@ mod tests {
     fn m(minute: i32, close: i64, revision: u64, state: &str) -> Value {
         json!({"minute": minute, "close": close, "revision": revision, "state": state})
     }
+
+    /// Held as text, a minute record and a block read back as what was published, the newest minute included
+    /// whatever order the minutes came in.
+    #[test]
+    fn held_minutes_and_blocks_read_back_as_published() {
+        let mut minutes = Minutes::default();
+        minutes.insert(571, m(571, 101, 1, "FORMING"));
+        minutes.insert(570, m(570, 100, 2, "FINALIZED"));
+        assert_eq!(minutes.get(571).as_deref(), Some(&m(571, 101, 1, "FORMING")), "the newest, held decoded");
+        assert_eq!(minutes.get(570).as_deref(), Some(&m(570, 100, 2, "FINALIZED")), "an older one, decoded from its text");
+        assert_eq!(minutes.values().collect::<Vec<_>>(), vec![m(570, 100, 2, "FINALIZED"), m(571, 101, 1, "FORMING")]);
+        assert!(minutes.newer(571, 1, &m(571, 102, 1, "FORMING").to_string()), "a forming minute published again with other figures");
+        assert!(!minutes.newer(571, 1, &m(571, 101, 1, "FORMING").to_string()), "the same record again");
+        assert!(!minutes.newer(570, 2, &m(570, 99, 2, "FINALIZED").to_string()), "a finalized minute at its own revision stays");
+        minutes.clear();
+        assert!(minutes.get(571).is_none() && minutes.is_empty());
+
+        let block = json!({"price_volume": {"buckets": [{"price": 100.5, "volume": 0.25}]}, "close": 1e-7, "list": [1, null, "x"]});
+        assert_eq!(Held::of(&block).value(), block);
+        assert!(Held::of(&block).is_object() && Held::of(&Value::Null).is_null() && !Held::of(&json!([1])).is_object());
+    }
     /// One publish as `projection.publish` carries it.
     #[allow(clippy::too_many_arguments)]
     fn publish(cache: &mut ProjectionCache, key: StateKey, block: &str, epoch: u64, watermark: u64, revision: u64, committed: u64,
@@ -685,7 +807,7 @@ mod tests {
             Verdict::Accepted(delivered) => assert_eq!(delivered, inc, "the screens get the increment as it came"),
             other => panic!("{other:?}"),
         }
-        let flow = &cache.entry(&key()).unwrap().flow;
+        let flow = &cache.entry(&key()).unwrap().flow.value();
         assert_eq!(flow["header_total"], json!(9));
         assert_eq!(flow["minuteSeries"], json!([{"minute": 600, "cumulative": 1}, {"minute": 601, "cumulative": 6}, {"minute": 602, "cumulative": 9}]));
         assert_eq!(flow["largeOrders"], json!([{"durable_sequence": 3}]), "a list left out is unchanged");
@@ -697,7 +819,7 @@ mod tests {
         let day_inc = json!({"replace": false, "volume": 8, "fixed_k": {"k5": [{"start_minute": 600, "close": 2}, {"start_minute": 605, "close": 3}]},
                              "price_volume": {"out_volume": 8, "buckets": [{"price": 101.0, "volume": 3}]}});
         assert!(matches!(publish(&mut cache, key(), "day", 1, 11, 2, 11, &day_inc), Verdict::Accepted(_)));
-        let day = &cache.entry(&key()).unwrap().day;
+        let day = &cache.entry(&key()).unwrap().day.value();
         assert_eq!(day["fixed_k"]["k5"], json!([{"start_minute": 600, "close": 2}, {"start_minute": 605, "close": 3}]));
         assert_eq!(day["price_volume"]["buckets"].as_array().unwrap().iter().map(|b| b["price"].as_f64().unwrap()).collect::<Vec<_>>(),
                    vec![100.0, 101.0, 102.0], "rows by price, in price order");
@@ -731,7 +853,7 @@ mod tests {
         let data = json!({"minutes": [m(570, 999, 2, "FINALIZED"), m(571, 101, 1, "FINALIZED")]});
         let Verdict::Accepted(delivered) = publish(&mut cache, key(), "minutes", 1, 11, 1, 100, &data) else { panic!("accepted") };
         assert_eq!(delivered["minutes"].as_array().unwrap().iter().map(|r| r["minute"].as_i64().unwrap()).collect::<Vec<_>>(), vec![571]);
-        assert_eq!(cache.entry(&key()).unwrap().minutes[&570]["close"], 100);
+        assert_eq!(cache.entry(&key()).unwrap().minutes.get(570).unwrap()["close"], 100);
     }
 
     #[test]
@@ -832,8 +954,8 @@ mod tests {
         publish(&mut cache, key(), "minutes", 1, 20, 2, 100, &json!({"minutes": [m(570, 99, 2, "FINALIZED")]}));
         publish(&mut cache, key(), "minutes", 1, 21, 3, 100, &json!({"minutes": [m(570, 50, 1, "FINALIZED")]}));
         let entry = cache.entry(&key()).unwrap();
-        assert_eq!(entry.minutes[&570]["close"], 99);
-        assert_eq!(entry.minutes[&571]["close"], 101);
+        assert_eq!(entry.minutes.get(570).unwrap()["close"], 99);
+        assert_eq!(entry.minutes.get(571).unwrap()["close"], 101);
     }
 
     #[test]
@@ -917,7 +1039,7 @@ mod tests {
             assert!(refusal.reason.contains(why), "{} names {why}", refusal.reason);
         }
         let entry = cache.entry(&key()).unwrap();
-        assert_eq!(entry.minutes.keys().copied().collect::<Vec<_>>(), vec![570], "the valid minute of a refused item was not merged either");
+        assert_eq!(entry.minutes.keys().collect::<Vec<_>>(), vec![570], "the valid minute of a refused item was not merged either");
         assert_eq!(entry.meta[&BlockKind::Minutes].input_watermark, 10, "a refused item never moves the block meta");
         assert_eq!(cache.rejected, 6);
         assert!(cache.last_reject.as_deref().unwrap().contains("event_id"));

@@ -19,7 +19,7 @@ const renderDiagnostics = (model, pick) => renderAllDetails(model, pick)
 const NOW = Date.parse("2026-10-02T14:47:00Z");
 const iso = (msAgo) => new Date(NOW - msAgo).toISOString();
 const running = (service_id, extra = {}) => ({ service_id, state: "RUNNING", pid: 1, addresses: { effective: { host: "127.0.0.1", port: 1 } },
-  resources: { availability: "OK", cpu_percent: 0.4, working_set_bytes: 64 << 20 }, metrics: { availability: "NO_SAMPLE" }, ...extra });
+  resources: { availability: "OK", cpu_percent: 0.4, memory_bytes: 64 << 20 }, metrics: { availability: "NO_SAMPLE" }, ...extra });
 const runtimeDoc = (accepted, committed) => ({ availability: "OK", document: {
   health: { clients: { provider: 2, analysis: 1 } },
   ingest: { accepted, rejected_validation: 0 },
@@ -351,7 +351,7 @@ test("Each link moves on its own evidence, missing halves never print, and a ser
 
   const holes = input();
   holes.monitoring.services = holes.monitoring.services.map((svc) => svc.service_id === "market_runtime"
-    ? { ...svc, resources: { availability: "OK", cpu_percent: null, working_set_bytes: 1 << 20 },
+    ? { ...svc, resources: { availability: "OK", cpu_percent: null, memory_bytes: 1 << 20 },
         metrics: { availability: "OK", document: { health: {}, ingest: {}, wal: { committed: 1, queue_depth: null, queue_capacity: 65536 } } } }
     : svc);
   const holeHtml = renderDiagnostics(buildDiagnosticsModel(holes), "market") + renderDiagnostics(buildDiagnosticsModel(holes), "wal");
@@ -474,11 +474,11 @@ test("延遲 per source (Rust A latency.by_source) is the top card, not part of 
 // 系統 CPU, 記憶體 and 儲存空間, the other top cards (user 10-20, 10-22).
 test("系統 CPU, 記憶體 and 儲存空間, the other top cards (user 10-20, 10-22)", () => {
   const GB = 1024 ** 3, MB = 1024 ** 2;
-  // Health's one list of processes (snapshot.system.parts): each with its CPU and working set.
+  // Health's one list of processes (snapshot.system.parts): each with its CPU and memory (private working set).
   const procParts = [["provider_futu", 1.0, 167], ["app", 5.0, 1229], ["market_runtime", 1.5, 120], ["provider_shioaji", 0.5, 160], ["service_controller", 0.3, 70],
     ["realtime_api", 0.4, 60], ["analysis_runtime", 0.6, 40], ["ungrouped_tool", 2.0, 500]]
     .map(([id, cpu, mb]) => ({ id, service_ids: id === "app" ? [] : id === "realtime_api" ? ["realtime_api", "app_api"] : [id], cpu_percent: cpu, bytes: mb * MB }));
-  const system = { availability: "OK", cpu_percent: 11.3, working_set_bytes: 2346 * MB, cores: 12, parts: procParts };
+  const system = { availability: "OK", cpu_percent: 11.3, memory_bytes: 2346 * MB, cores: 12, parts: procParts };
   const monitoring = { sampled_at: new Date(NOW).toISOString(), services: [], system,
     storage: { availability: "OK", total_bytes: 20.8 * GB, disk: { root: "D:\\", total_bytes: 931 * GB, free_bytes: 800 * GB },
       parts: [{ id: "historical", label: "歷史資料", bytes: 13 * GB }, { id: "wal", label: "WAL", bytes: 3.9 * GB },
@@ -544,8 +544,16 @@ test("系統 CPU, 記憶體 and 儲存空間, the other top cards (user 10-20, 1
   assert.ok(Math.abs(arcs[0][1] - (13 / 20.8 * 100 - 0.6)) < 0.01, "歷史資料's arc is its share (less the gap between arcs)");
   assert.equal(arcs[0][2], 25, "the first arc starts at the top");
   assert.ok(Math.abs(arcs[1][2] - (25 - 13 / 20.8 * 100)) < 0.01, "each arc starts where the one before ended");
-  assert.match(storage, /歷史資料<\/span><b>13\.0 GB<\/b>.*WAL<\/span><b>3\.9 GB<\/b>.*分析<\/span><b>2\.8 GB<\/b>.*行情<\/span><b>0\.6 GB<\/b>.*其他<\/span><b>0\.5 GB<\/b>/s,
-    "the parts listed beside the ring, one per line");
+  assert.match(storage, /歷史資料<\/span><b>13\.0 GB<\/b>.*WAL<\/span><b>3\.9 GB<\/b>.*分析<\/span><b>2\.8 GB<\/b>.*行情<\/span><b>614\.4 MB<\/b>.*其他<\/span><b>512\.0 MB<\/b>/s,
+    "the parts listed beside the ring, one per line, each in the unit that fits it");
+  // A new install holds a few MB: the figures say so, as the arcs drawn from them do -- never a full ring over 0.0 GB.
+  const fresh = renderDiagnostics(buildDiagnosticsModel({ now: NOW, external: { healthy: true }, monitoring: { ...monitoring,
+    storage: { availability: "OK", total_bytes: 3 * MB, disk: { root: "C:\\", total_bytes: 455 * GB, free_bytes: 169 * GB },
+      parts: [{ id: "market", label: "行情", bytes: 2 * MB }, { id: "other", label: "其他", bytes: 1 * MB }] } } }), "sources");
+  const freshStorage = fresh.slice(fresh.indexOf('data-morph-key="kpi:storage"'));
+  assert.match(freshStorage, /<text class="dg-donut-total"[^>]*>3\.0<\/text><text class="dg-donut-unit"[^>]*>MB<\/text>/);
+  assert.match(freshStorage, /行情<\/span><b>2\.0 MB<\/b>.*其他<\/span><b>1\.0 MB<\/b>/s);
+  assert.doesNotMatch(freshStorage, /0\.0 GB/);
   assert.doesNotMatch(storage, /dg-kpi-bar/, "no bar any more");
   // Nothing reported yet: the cards are drawn, waiting -- never 0.
   const empty = renderDiagnostics(buildDiagnosticsModel({ now: NOW, external: { healthy: true } }), "sources");

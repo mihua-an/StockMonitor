@@ -62,6 +62,9 @@ async function settle(predicate) {
 
   await store.bootstrap();
   assert.equal(store.snapshot().status.revision, "r1");
+  // A source the catalog lists nothing for (Futu before OpenD first connected) answers listed 0, so the search can say
+  // its list was never fetched instead of "no match"; a source with products answers how many.
+  assert.deepEqual([store.search({ source: "futu", query: "AAPL" }).listed, store.search({ source: "shioaji", query: "zzz" }).listed], [0, 1]);
   await settle(() => store.search({ source: "shioaji", query: "2454" }).count === 1);
   await settle(() => calls.filter((path) => path === "/api/product-catalog/events").length === 2);
   await new Promise((resolve) => setImmediate(resolve));

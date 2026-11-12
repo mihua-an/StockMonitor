@@ -49,7 +49,9 @@ function fakeBackend() {
     sourceSettings: { enabled_sources: ["shioaji", "futu"], sources: {} },
     colorPreferences: {},
     onColorPreferencesChanged: () => () => {},
-    searchProductCatalogLocal: async (source, q) => ({ ok: true, items: q ? [{ code: "2454", name: "聯發科", industry_name: "半導體" }] : [] }),
+    // The 永豐 list holds products; the Futu one was never fetched (listed 0: OpenD has not connected yet).
+    searchProductCatalogLocal: async (source, q) => (source === "futu" ? { ok: true, items: [], listed: 0 }
+      : { ok: true, items: q ? [{ code: "2454", name: "聯發科", industry_name: "半導體" }] : [], listed: 2 }),
     notifyWatchPagesChanged: async (payload) => { calls.push({ method: "IPC", path: "notify", body: payload }); return true; },
     onWatchPagesChanged: (callback) => { window.__listeners.push(callback); return () => {}; },
   };
@@ -164,6 +166,13 @@ async function checks() {
   // ---- 富途
   document.querySelector('[data-watch-source="futu"]').click();
   if ($("futuMarketRow").hidden || items().length !== 1 || items()[0].querySelector('[data-futures="on"]')) fail("富途: its pages, its market filter, no 期貨");
+  // A new install before OpenD first connected: the catalog lists no Futu product, and a search says why (user 11-12).
+  $("watchPageSearchInput").value = "AAPL";
+  $("watchPageSearchInput").dispatchEvent(new Event("input"));
+  await wait(400);
+  if (!$("watchPageSearchResults").textContent.includes("還沒有 Futu 商品清單：請開啟並登入 moomoo OpenD")) {
+    fail(`a search over no Futu list says why: ${$("watchPageSearchResults").textContent}`);
+  }
   return { ok: true };
 }
 

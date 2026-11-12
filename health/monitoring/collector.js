@@ -213,13 +213,13 @@ class MonitoringCollector {
     }
     const seenPids = new Set();
     let totalCpu = 0;
-    let totalWs = 0;
+    let totalMemory = 0;
     const services = described.map((d) => {
       const res = detail && d.pid ? resources.get(d.pid) : null;
       if (d.pid && res?.availability === "OK" && !seenPids.has(d.pid)) {
         seenPids.add(d.pid);
         totalCpu += res.cpu_percent || 0;
-        totalWs += res.working_set_bytes || 0;
+        totalMemory += res.memory_bytes || 0;
       }
       return { ...d, resources: res || (detail ? { availability: d.pid ? "NO_SAMPLE" : "NOT_APPLICABLE" } : HIDDEN_DETAIL),
         metrics: metrics[d.service_id] || (detail ? { availability: d.state === "RUNNING" ? "NO_SAMPLE" : "NOT_APPLICABLE" } : HIDDEN_DETAIL) };
@@ -235,7 +235,7 @@ class MonitoringCollector {
       trend_retention_ms: TREND_MS, detail_collected: detail,
       services,
       reserved_ports: this.effective.reserved_ports.map((port) => ({ port, state: "RESERVED", note: "unassigned: no listener" })),
-      totals: { cpu_percent_unique_pids: detail ? totalCpu : null, working_set_bytes_unique_pids: detail ? totalWs : null, unique_pids: seenPids.size,
+      totals: { cpu_percent_unique_pids: detail ? totalCpu : null, memory_bytes_unique_pids: detail ? totalMemory : null, unique_pids: seenPids.size,
         note: "summed over the unique PID set; a shared PID is counted once" },
       // 系統 CPU and 記憶體: every StockMonitor process (services, Health, Electron, Health's jobs), one part each.
       system: detail ? system : HIDDEN_DETAIL,
@@ -248,9 +248,9 @@ class MonitoringCollector {
     };
     // A point per pass that sampled resources: a pass between two background samples measured nothing, so it adds no
     // point rather than an empty one that would read as a missing sample.
-    if (sampledResources) this.trend.push({ t: this.now(), system: { cpu: system.cpu_percent, mem: system.working_set_bytes }, services: Object.fromEntries(services.map((s) => {
+    if (sampledResources) this.trend.push({ t: this.now(), system: { cpu: system.cpu_percent, mem: system.memory_bytes }, services: Object.fromEntries(services.map((s) => {
       const sampled = s.pid ? resources.get(s.pid) : null;
-      return [s.service_id, { state: s.state, cpu: sampled?.cpu_percent ?? null, ws: sampled?.working_set_bytes ?? null }];
+      return [s.service_id, { state: s.state, cpu: sampled?.cpu_percent ?? null, mem: sampled?.memory_bytes ?? null }];
     })) });
     const floor = this.now() - TREND_MS;
     while (this.trend.length && this.trend[0].t < floor) this.trend.shift();
@@ -269,7 +269,7 @@ class MonitoringCollector {
 // 系統 CPU and 記憶體 (user 10-20, 10-22): every StockMonitor process, counted once per PID, as one list of parts --
 // each service PID (services sharing a PID are one part), Health's own, Electron's processes together as "app", and the
 // jobs Health is running (training, materializer) one part per job name, its processes together -- each with its CPU
-// (a share of the whole computer, 100% = every core busy) and working set; the totals are the parts' sums. Grouping
+// (a share of the whole computer, 100% = every core busy) and memory (the private working set, what Task Manager shows: shared code is not counted once per process); the totals are the parts' sums. Grouping
 // them is the screen's. Without Electron's main process sampled (no window has asked yet, the first pass, a CIM failure)
 // the parts would read as the App's whole: none are given then.
 function appProcesses(resources, described, appPids, jobs, cores) {
@@ -277,7 +277,7 @@ function appProcesses(resources, described, appPids, jobs, cores) {
   const base = { cores, app_processes: appPids.length };
   if (!appPids.length || resources.get(appPids[0])?.availability !== "OK") {
     return { ...base, availability: "NO_SAMPLE", reason: appPids.length ? "no sample for this pass yet" : "Electron has not reported its processes",
-      cpu_percent: null, working_set_bytes: null };
+      cpu_percent: null, memory_bytes: null };
   }
   const servicesOf = new Map();
   for (const d of described) if (d.pid) servicesOf.set(d.pid, [...(servicesOf.get(d.pid) || []), d.service_id]);
@@ -285,14 +285,14 @@ function appProcesses(resources, described, appPids, jobs, cores) {
   const part = (id, service_ids, pids) => {
     const sampled = [...new Set(pids)].map((pid) => resources.get(pid)).filter((res) => res?.availability === "OK");
     return sampled.length ? { id, service_ids, cpu_percent: sampled.reduce((sum, res) => sum + (res.cpu_percent || 0), 0),
-      bytes: sampled.reduce((sum, res) => sum + (res.working_set_bytes || 0), 0) } : null;
+      bytes: sampled.reduce((sum, res) => sum + (res.memory_bytes || 0), 0) } : null;
   };
   const parts = [...servicesOf].filter(([pid]) => !appPids.includes(pid)).map(([pid, ids]) => part(ids[0], ids, [pid]));
   parts.push(part("app", [], appPids));
   for (const [name, pids] of jobs) parts.push(part(name, [], pids.filter((pid) => !servicesOf.has(pid) && !appPids.includes(pid))));
   const sampled = parts.filter(Boolean);
   return { ...base, availability: "OK", cpu_percent: Math.min(100, sampled.reduce((sum, p) => sum + p.cpu_percent, 0)),
-    working_set_bytes: sampled.reduce((sum, p) => sum + p.bytes, 0), parts: sampled };
+    memory_bytes: sampled.reduce((sum, p) => sum + p.bytes, 0), parts: sampled };
 }
 
 module.exports = { MonitoringCollector, PUBLISH_MS, TREND_MS };

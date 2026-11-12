@@ -131,6 +131,11 @@ impl Tape {
                 volume
             }
         };
+        if self.at.len() == self.at.capacity() {
+            // An open partition's tape grows by an eighth, not double: a Futu day is millions of records, and a
+            // doubled Vec holds as much unused as used (11-12: 60 MB over the scan's exact size within an hour).
+            self.at.reserve_exact((self.at.len() / 8).max(1024));
+        }
         self.at.push(At { sequence, exchange_ts_ns, segment, offset, derived });
     }
 }
@@ -180,6 +185,19 @@ impl TradeIndex {
                 tape.push(mark, sequence, exchange_ts_ns, segment, offset);
             }
         }
+    }
+
+    /// Drop the room the scan's segment-by-segment growth left (a third more than the records, 11-12: 46 MB): only
+    /// the open partitions grow after the scan, a closed one never does.
+    pub fn shrink_to_fit(&mut self) {
+        for tape in self.tapes.values_mut() {
+            tape.at.shrink_to_fit();
+        }
+    }
+
+    /// The memory the index holds (metrics `trade_index_bytes`).
+    pub fn bytes(&self) -> usize {
+        self.tapes.values().map(|t| t.at.capacity() * std::mem::size_of::<At>()).sum()
     }
 
     /// Void records left out of the tape (crate::voided).
@@ -431,8 +449,12 @@ pub fn tick_type(side: i8) -> u8 {
 
 /// A stored tape record as a page row: a non-試撮 print, or a FUT quote that traded `derived` (> 0).
 fn stored_row(event: &MarketEvent, derived: f64, ctx: &RowContext) -> Option<Value> {
-    let trade = if derived > 0.0 { quote_trade(event, derived)? } else { trade_of(event, event.sequence).filter(|t| !t.simtrade)? };
-    Some(row(&trade, ctx))
+    Some(row(&stored_trade(event, derived)?, ctx))
+}
+
+/// A stored tape record as the print it is on the tape (see `stored_row`).
+fn stored_trade(event: &MarketEvent, derived: f64) -> Option<Trade> {
+    if derived > 0.0 { quote_trade(event, derived) } else { trade_of(event, event.sequence).filter(|t| !t.simtrade) }
 }
 
 /// The comparison price a partition's own Reference events give (applied in durable order, as LatestState does).
@@ -444,30 +466,55 @@ fn partition_comparison(events: &[&MarketEvent]) -> Option<i64> {
     reference.comparison_price()
 }
 
-/// The tape of a materialized partition: its rows oldest first by exchange time (a FUT quote's traded volume is
-/// decided in durable order first), each with its exchange time and durable sequence, measured against the
-/// partition's own comparison price.
-pub fn tape_rows(events: &[MarketEvent], req: &PageRequest) -> Vec<(i64, u64, Value)> {
+/// The tape of a materialized partition: its prints oldest first by exchange time (then durable sequence), and the
+/// partition's own comparison price every row is measured against. The prints are held as `Trade`s and a page's rows
+/// are made when it is asked for (`StoredTape::row`): a Futu day is hundreds of thousands of prints, and a print as a JSON
+/// row costs some 3 KB of memory against ~100 bytes as a `Trade` (11-12: one US day held 680 MB in A).
+#[derive(Debug)]
+pub struct StoredTape {
+    pub trades: Vec<Trade>,
+    pub comparison: Option<i64>,
+}
+
+impl StoredTape {
+    /// The tape's exchange time and durable sequence per print, in its order (what `paginate` reads).
+    pub fn order(&self) -> Vec<(i64, u64)> {
+        self.trades.iter().map(|t| (t.exchange_ts_ns, t.durable_sequence)).collect()
+    }
+
+    /// The `i`th print as a page row of `req`'s partition.
+    pub fn row(&self, i: usize, req: &PageRequest) -> Value {
+        row(&self.trades[i], &RowContext::of_request(req, self.comparison))
+    }
+
+    /// What the tape holds in memory.
+    pub fn bytes(&self) -> usize {
+        std::mem::size_of::<Self>() + self.trades.capacity() * std::mem::size_of::<Trade>()
+            + self.trades.iter().map(|t| t.trade_id.capacity()).sum::<usize>()
+    }
+}
+
+/// The tape of a materialized partition's tape records (a FUT quote's traded volume is decided in durable order first).
+pub fn tape_of(events: &[MarketEvent]) -> StoredTape {
     let mut ordered: Vec<&MarketEvent> = events.iter().collect();
     ordered.sort_by_key(|e| e.durable_sequence);
-    let ctx = RowContext::of_request(req, partition_comparison(&ordered));
+    let comparison = partition_comparison(&ordered);
     let mut quotes = QuoteTrades::default();
-    let mut rows = Vec::new();
+    let mut trades = Vec::new();
     for event in ordered {
-        let row = match mark_event(event) {
-            Some(Mark::Trade) => stored_row(event, 0.0, &ctx),
+        let trade = match mark_event(event) {
+            Some(Mark::Trade) => stored_trade(event, 0.0),
             Some(Mark::Quote { total, own, simulated }) => {
                 let traded = quotes.volume(total, own, simulated);
-                if vol::positive(traded).is_some() { stored_row(event, traded, &ctx) } else { None }
+                if vol::positive(traded).is_some() { stored_trade(event, traded) } else { None }
             }
             None => None,
         };
-        if let Some(row) = row {
-            rows.push((event.exchange_ts_ns, event.durable_sequence, row));
-        }
+        trades.extend(trade);
     }
-    rows.sort_by_key(|(ts, sequence, _)| (*ts, *sequence));
-    rows
+    trades.sort_by_key(|t| (t.exchange_ts_ns, t.durable_sequence));
+    trades.shrink_to_fit();
+    StoredTape { trades, comparison }
 }
 
 /// The page's records read back from the WAL in `dir` (`wanted`: their positions), as rows by sequence, the segments
@@ -537,19 +584,16 @@ pub enum Stored {
     Failed(String),
 }
 
-type TapeRows = Vec<(i64, u64, Value)>;
-
-/// Materialized sessions' rows, parsed once per content: a pager opening a window asks for several pages of the same
-/// day at once. The newest are kept up to a total size; a Futu day can be millions of rows, so a count of partitions
-/// says nothing about memory. The newest stays even alone over the limit: its pager's next page would read it again.
+/// Materialized sessions' tapes, parsed once per content: a pager opening a window asks for several pages of the same
+/// day at once. The newest are kept up to a total size (`StoredTape::bytes`); a Futu day can be millions of prints, so a
+/// count of partitions says nothing about memory. The newest stays even alone over the limit: its pager's next page
+/// would read it again.
 pub struct MaterializedCache {
-    kept: Mutex<VecDeque<(PathBuf, String, Arc<TapeRows>)>>,
+    kept: Mutex<VecDeque<(PathBuf, String, Arc<StoredTape>)>>,
     limit_bytes: usize,
 }
 
-pub const MATERIALIZED_KEPT_BYTES: usize = 1 << 30;
-/// What one row costs in memory: every row has the same ~20 short fields, in a JSON map.
-const ROW_BYTES: usize = 3 * 1024;
+pub const MATERIALIZED_KEPT_BYTES: usize = 128 << 20;
 
 impl Default for MaterializedCache {
     fn default() -> Self {
@@ -583,8 +627,8 @@ impl LineHead {
 }
 
 impl MaterializedCache {
-    /// The partition's rows from the historical store under `root`, or why there are none.
-    pub fn rows(&self, root: &Path, req: &PageRequest) -> Result<Arc<TapeRows>, Stored> {
+    /// The partition's tape from the historical store under `root`, or why there is none.
+    pub fn tape(&self, root: &Path, req: &PageRequest) -> Result<Arc<StoredTape>, Stored> {
         let partition = Partition::new(&req.source, &req.market, &req.code, &req.trading_date, &req.session).map_err(Stored::Failed)?;
         let path = partition.events_path(root);
         let hash = match crate::replay::committed_hash(&path) {
@@ -593,8 +637,8 @@ impl MaterializedCache {
             Err(reason) if reason.starts_with("NOT_AVAILABLE") || reason.starts_with("NOT_COMMITTED") => return Err(Stored::NotMaterialized),
             Err(reason) => return Err(Stored::Failed(reason)),
         };
-        if let Some(rows) = self.kept.lock().unwrap().iter().find(|(p, h, _)| *p == path && *h == hash).map(|(_, _, rows)| rows.clone()) {
-            return Ok(rows);
+        if let Some(tape) = self.kept.lock().unwrap().iter().find(|(p, h, _)| *p == path && *h == hash).map(|(_, _, tape)| tape.clone()) {
+            return Ok(tape);
         }
         // Line by line: the partition's hash and count are measured on the way, and only its tape is decoded and held.
         let failed = |e: String| Stored::Failed(format!("{}: {e}", path.display()));
@@ -618,18 +662,18 @@ impl MaterializedCache {
             }
         }
         let committed = check_committed(&path, lines, hash.hex()).map_err(Stored::Failed)?;
-        let rows = Arc::new(tape_rows(&events, req));
+        let tape = Arc::new(tape_of(&events));
         drop(events);
         let mut kept = self.kept.lock().unwrap();
         kept.retain(|(p, _, _)| *p != path);
-        kept.push_back((path, committed.content_hash, rows.clone()));
-        let mut total: usize = kept.iter().map(|(_, _, rows)| rows.len() * ROW_BYTES).sum();
+        kept.push_back((path, committed.content_hash, tape.clone()));
+        let mut total: usize = kept.iter().map(|(_, _, tape)| tape.bytes()).sum();
         while total > self.limit_bytes && kept.len() > 1 {
             if let Some((_, _, gone)) = kept.pop_front() {
-                total -= gone.len() * ROW_BYTES;
+                total -= gone.bytes();
             }
         }
-        Ok(rows)
+        Ok(tape)
     }
 }
 
@@ -725,9 +769,11 @@ mod tests {
         assert_eq!(fields(&live), fields(&page));
 
         // A materialized partition is measured against its own Reference events.
-        let rows = tape_rows(&[reference.clone(), trade.clone()], &stk);
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].2["change"], json!(50.0));
+        let tape = tape_of(&[reference.clone(), trade.clone()]);
+        assert_eq!(tape.trades.len(), 1);
+        assert_eq!(tape.row(0, &stk)["change"], json!(50.0));
+        assert_eq!(tape.row(0, &stk), stored_row(&trade, 0.0, &RowContext::of_request(&stk, Some(9_500_000))).unwrap(),
+                   "a cached print's row is the row a page read from the WAL sends");
     }
 
     fn materialized(root: &Path, code: &str, lines: &[String]) -> PageRequest {
@@ -756,8 +802,8 @@ mod tests {
         let trade = |s: u64| serde_json::to_string(&event(s, "STK", print(s, json!({})))).unwrap();
         let book = r#"{"payload":{"kind":"order_book"}}"#.to_string();
         let request = materialized(&root, "X", &[trade(1), book, trade(2)]);
-        let rows = MaterializedCache::default().rows(&root, &request).ok().expect("committed");
-        assert_eq!(rows.iter().map(|(_, s, _)| *s).collect::<Vec<_>>(), vec![1, 2]);
+        let tape = MaterializedCache::default().tape(&root, &request).ok().expect("committed");
+        assert_eq!(tape.trades.iter().map(|t| t.durable_sequence).collect::<Vec<_>>(), vec![1, 2]);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -768,7 +814,7 @@ mod tests {
         let request = materialized(&root, "X", &[line.clone()]);
         let partition = Partition::new(&request.source, &request.market, &request.code, &request.trading_date, &request.session).unwrap();
         std::fs::write(partition.events_path(&root), format!("{line}\n{line}\n")).unwrap();
-        match MaterializedCache::default().rows(&root, &request) {
+        match MaterializedCache::default().tape(&root, &request) {
             Err(Stored::Failed(reason)) => assert!(reason.contains("CORRUPT"), "{reason}"),
             _ => panic!("a partition that differs from its manifest is refused"),
         }
@@ -780,14 +826,15 @@ mod tests {
         let root = temp_root("bound");
         let lines = |n: u64| (1..=n).map(|s| serde_json::to_string(&event(s, "STK", print(s, json!({})))).unwrap()).collect::<Vec<_>>();
         let (first, second) = (materialized(&root, "X", &lines(2)), materialized(&root, "Y", &lines(3)));
-        let cache = MaterializedCache { limit_bytes: 3 * ROW_BYTES, ..Default::default() };
-        let held = |c: &MaterializedCache| c.kept.lock().unwrap().iter().map(|(_, _, rows)| rows.len()).collect::<Vec<_>>();
-        assert!(cache.rows(&root, &first).is_ok());
+        let two = MaterializedCache::default().tape(&root, &first).ok().expect("committed").bytes();
+        let cache = MaterializedCache { limit_bytes: two + 1, ..Default::default() };
+        let held = |c: &MaterializedCache| c.kept.lock().unwrap().iter().map(|(_, _, tape)| tape.trades.len()).collect::<Vec<_>>();
+        assert!(cache.tape(&root, &first).is_ok());
         assert_eq!(held(&cache), vec![2]);
-        assert!(cache.rows(&root, &second).is_ok());
+        assert!(cache.tape(&root, &second).is_ok());
         assert_eq!(held(&cache), vec![3], "2 + 3 rows are over the limit: the older goes");
         let tiny = MaterializedCache { limit_bytes: 1, ..Default::default() };
-        assert!(tiny.rows(&root, &first).is_ok());
+        assert!(tiny.tape(&root, &first).is_ok());
         assert_eq!(held(&tiny), vec![2], "the newest stays: its pager's next page reads it");
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -798,9 +845,10 @@ mod tests {
             "low": 0, "total_volume": total, "total_amount": 0.0, "status": "live", "minute": 540, "average": 0, "volume": 0.0, "amount": 0.0}));
         let fut = PageRequest::parse(&json!({"market": "FUT", "code": "TXFR1", "trading_date": "2026-10-06", "session": "DAY"})).unwrap();
         // Out of file order on purpose: the rule runs in durable order.
-        let rows = tape_rows(&[quote(3, 1.5), quote(1, 1.0), quote(2, 1.0 + 1e-12)], &fut);
-        assert_eq!(rows.iter().map(|(_, s, r)| (*s, r["volume"].as_f64().unwrap())).collect::<Vec<_>>(), vec![(1, 1.0), (3, 0.5)]);
-        assert_eq!((rows[1].2["volume_unit"].clone(), rows[1].2["trade_id"].clone(), rows[1].2["total_volume"].clone()),
+        let tape = tape_of(&[quote(3, 1.5), quote(1, 1.0), quote(2, 1.0 + 1e-12)]);
+        let rows: Vec<Value> = (0..tape.trades.len()).map(|i| tape.row(i, &fut)).collect();
+        assert_eq!(rows.iter().map(|r| (r["durable_sequence"].as_u64().unwrap(), r["volume"].as_f64().unwrap())).collect::<Vec<_>>(), vec![(1, 1.0), (3, 0.5)]);
+        assert_eq!((rows[1]["volume_unit"].clone(), rows[1]["trade_id"].clone(), rows[1]["total_volume"].clone()),
                    (json!("contract"), json!("q3"), json!(1.5)), "a quote's total is the cumulative volume through it");
     }
 

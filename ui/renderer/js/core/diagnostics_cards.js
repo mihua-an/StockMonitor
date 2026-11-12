@@ -1,7 +1,7 @@
 // The four cards on top (延遲, 系統 CPU, 記憶體, 儲存空間) as markup, from the model's card figures.
 
 import { escapeHtml } from "./utility.js";
-import { GB, PENDING_TEXT, bytesText, durationText, durationUs, gbText, percentText } from "./diagnostics_format.js";
+import { GB, PENDING_TEXT, bytesText, durationText, durationUs, percentText } from "./diagnostics_format.js";
 import { LATENCY_WARN_US } from "./diagnostics_model.js";
 
 // The title row: the card's name on the left, and on the right a short text or its last-2-minutes line.
@@ -107,4 +107,4 @@ export const memoryCardHtml = (m) => ringCardHtml("kpi:memory", kpiHead("記憶�
 // What is left on the storage location's disk (user 10-28) stays in 儲存空間's title row: it is not part of the ring,
 // or StockMonitor's own parts would shrink to a sliver of it.
 export const storageCardHtml = (m) => ringCardHtml("kpi:storage",
-  kpiHead("儲存空間", headText(m && m.free !== null && m.disk !== null ? `${m.drive} 剩 ${Math.round(m.free / GB)} / ${Math.round(m.disk / GB)} GB` : null)), m, gbText, undefined, storageMoveHtml(m?.move));
+  kpiHead("儲存空間", headText(m && m.free !== null && m.disk !== null ? `${m.drive} 剩 ${Math.round(m.free / GB)} / ${Math.round(m.disk / GB)} GB` : null)), m, bytesText, undefined, storageMoveHtml(m?.move));

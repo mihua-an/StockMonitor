@@ -27,11 +27,13 @@ const SCRIPT = [
   "  $request = [int64]$parts[0]",
   "  $ids = @($parts[1].Split(',') | Where-Object { $_ -match '^\\d+$' })",
   "  if ($ids.Count -eq 0) { [Console]::Out.WriteLine((ConvertTo-Json -Compress -Depth 4 -InputObject @{ id = $request; rows = @() })); [Console]::Out.Flush(); continue }",
-  "  $filter = ($ids | ForEach-Object { \"ProcessId=$_\" }) -join ' OR '",
-  "  $rows = Get-CimInstance Win32_Process -Filter $filter | ForEach-Object {",
-  "    [pscustomobject]@{ pid = $_.ProcessId; kernel = $_.KernelModeTime; user = $_.UserModeTime; ws = $_.WorkingSetSize;",
-  "      private = $_.PrivatePageCount; read = $_.ReadTransferCount; write = $_.WriteTransferCount;",
-  "      created = $(if ($_.CreationDate) { $_.CreationDate.ToUniversalTime().ToString('o') } else { '' }) }",
+  "  $filter = ($ids | ForEach-Object { \"IDProcess=$_\" }) -join ' OR '",
+  // The raw process performance counters, in one query: CPU time (100 ns), the private working set (what Task
+  // Manager's 記憶體 column shows), private bytes (commit), cumulative I/O bytes, and the start time (ElapsedTime's
+  // raw value), which tells a reused PID from the process sampled before.
+  "  $rows = Get-CimInstance Win32_PerfRawData_PerfProc_Process -Filter $filter | ForEach-Object {",
+  "    [pscustomobject]@{ pid = $_.IDProcess; cpu = $_.PercentProcessorTime; memory = $_.WorkingSetPrivate;",
+  "      private = $_.PrivateBytes; read = $_.IOReadBytesPerSec; write = $_.IOWriteBytesPerSec; created = [string]$_.ElapsedTime }",
   "  }",
   "  [Console]::Out.WriteLine((ConvertTo-Json -Compress -Depth 4 -InputObject @{ id = $request; rows = @($rows) }))",
   "  [Console]::Out.Flush()",
@@ -175,7 +177,10 @@ class ProcessResources {
     });
   }
 
-  // -> Map pid -> {cpu_percent, working_set_bytes, private_bytes, io_read_bps, io_write_bps, window_ms, availability}
+  // -> Map pid -> {cpu_percent, memory_bytes, private_bytes, io_read_bps, io_write_bps, window_ms, availability}.
+  // memory_bytes is the private working set: the pages only this process holds. The plain working set also counts
+  // the code it shares with other processes (Electron's and Python's DLLs), once per process -- summed over the
+  // App's processes that read about twice the memory really in use.
   async sample(pids) {
     const unique = [...new Set(pids.filter((p) => Number.isInteger(p) && p > 0))];
     const out = new Map();
@@ -198,10 +203,10 @@ class ProcessResources {
     for (const row of Array.isArray(rows) ? rows : []) {
       const pid = Number(row.pid);
       seen.add(pid);
-      const cpuTicks = BigInt(row.kernel || 0) + BigInt(row.user || 0); // 100 ns units
+      const cpuTicks = BigInt(row.cpu || 0); // 100 ns units
       const base = this.baselines.get(pid);
-      const entry = { working_set_bytes: Number(row.ws), private_bytes: Number(row.private), created: row.created,
-        io_source: "Win32_Process transfer counters (all I/O, not only disk)" };
+      const entry = { memory_bytes: Number(row.memory), private_bytes: Number(row.private), created: row.created,
+        io_source: "process performance counters (all I/O, not only disk)" };
       if (base && base.created === row.created) {
         const elapsedNs = Number(now - base.at);
         const cpu = Number(cpuTicks - base.cpu) * 100 / (elapsedNs * this.cpus) * 100;

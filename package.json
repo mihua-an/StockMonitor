@@ -1,6 +1,6 @@
 {
   "name": "stock-monitor-shioaji-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Shioaji Taiwan Stock Monitor Desktop App",
   "license": "Apache-2.0",
   "repository": {
@@ -35,6 +35,7 @@
   },
   "build": {
     "beforePack": "scripts/tooling/audit_packaging.cjs",
+    "afterPack": "scripts/tooling/compile_bytecode.cjs",
     "asarUnpack": [
       "config/js/**/*",
       "health/**/*",

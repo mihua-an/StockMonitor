@@ -33,7 +33,8 @@ export function createWatchPageSearch({ fetchItems, debounceMs = 220, setTimer =
       try {
         const data = await fetchItems(query);
         if (!isCurrent()) return null;
-        return { items: Array.isArray(data?.items) ? data.items : [] };
+        // listed: how many products the asked source has in the catalog at all (0: its list was never fetched).
+        return { items: Array.isArray(data?.items) ? data.items : [], listed: Number.isFinite(data?.listed) ? data.listed : null };
       } catch (error) {
         if (!isCurrent()) {
           console.warn(`[watch pages: search "${query}" (superseded)] failed`, error);

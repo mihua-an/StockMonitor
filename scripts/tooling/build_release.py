@@ -87,6 +87,9 @@ def check_toolchain() -> dict[str, str]:
 
 def npm_ci() -> None:
     _run([_tool("npm"), "ci", "--no-audit", "--no-fund"])
+    # The electron package has no install script: as in CI, fetch electron.exe, or this checkout's UI tests (and
+    # `npm run ci` after a release build) find no node_modules/electron/dist.
+    _run([_tool("node"), "node_modules/electron/install.js"])
 
 
 def cargo_build() -> None:

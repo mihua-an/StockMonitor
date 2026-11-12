@@ -1009,13 +1009,13 @@ mod tests {
         let request = crate::projection::PublishRequest::from_item(key.clone(), 1, &item).unwrap();
         assert!(matches!(s.core.projection.publish(request, u64::MAX, 1), crate::projection::Verdict::Accepted(_)));
         s.seek(500_000_000);
-        assert_eq!(s.core.projection.entry(&key).map(|e| e.day["price_volume"]["buckets"][0]["price"].clone()), Some(serde_json::json!(100)),
+        assert_eq!(s.core.projection.entry(&key).map(|e| e.day.value()["price_volume"]["buckets"][0]["price"].clone()), Some(serde_json::json!(100)),
                    "the last 價量 B published is still served after the seek");
         let item = serde_json::json!({"block": "day", "input_watermark": 1, "revision": 1, "data": {"price_volume": {"buckets": [{"price": 101}]}}});
         let request = crate::projection::PublishRequest::from_item(key.clone(), 2, &item).unwrap();
         assert!(matches!(s.core.projection.publish(request, u64::MAX, 2), crate::projection::Verdict::Accepted(_)),
                 "B's analysis of the new time (its next feed's epoch) replaces it");
-        assert_eq!(s.core.projection.entry(&key).map(|e| e.day["price_volume"]["buckets"][0]["price"].clone()), Some(serde_json::json!(101)));
+        assert_eq!(s.core.projection.entry(&key).map(|e| e.day.value()["price_volume"]["buckets"][0]["price"].clone()), Some(serde_json::json!(101)));
     }
 
     fn cached(code: &str, hash: &str) -> Arc<Recording> {

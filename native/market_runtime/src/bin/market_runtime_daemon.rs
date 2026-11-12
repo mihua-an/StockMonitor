@@ -21,6 +21,10 @@ const FLAGS: &[&str] = &[
 /// Smallest per-client send queue: a view's first frames (snapshot, projection, breadth) must fit.
 const MIN_CLIENT_QUEUE: usize = 16;
 
+// Counts what the heap holds (metrics `heap`).
+#[global_allocator]
+static HEAP: market_runtime::heap::Counting = market_runtime::heap::Counting;
+
 fn run() -> Result<(), String> {
     let args: Vec<String> = env::args().skip(1).collect();
     let flags = Flags::parse(&args, FLAGS, &[], false)?;

@@ -128,7 +128,7 @@ function serviceRowHtml({ sid, svc, spec }, cpuTrend) {
     + `<span class="settings-num is-state">${fittedStatusHtml(STATE_LABEL[state] || state, STATE_KIND[state] || "")}</span>`
     + `<span class="settings-num">${escapeHtml(cpu)}</span>`
     + `<span class="settings-num">${sparkline(cpuTrend)}</span>`
-    + `<span class="settings-num">${(unavailable ? null : bytesText(res.working_set_bytes)) ?? "--"}</span>`
+    + `<span class="settings-num">${(unavailable ? null : bytesText(res.memory_bytes)) ?? "--"}</span>`
     + `<span class="settings-num">${escapeHtml(portText(spec, addresses))}</span>`
     + `${input}</div>`;
   const steps = lastOperation?.services?.[sid]?.steps || [];
@@ -170,7 +170,7 @@ function renderTotals() {
   const cpu = $("systemTotalsCpu"), memory = $("systemTotalsMemory");
   const collected = Boolean(snapshot.detail_collected);
   if (cpu) cpu.textContent = collected ? fmtPct(totals.cpu_percent_unique_pids) : "—";
-  if (memory) memory.textContent = (collected ? bytesText(totals.working_set_bytes_unique_pids) : null) ?? "--";
+  if (memory) memory.textContent = (collected ? bytesText(totals.memory_bytes_unique_pids) : null) ?? "--";
 }
 
 function updateActionState() {

@@ -31,9 +31,11 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import TYPE_CHECKING, Any, Callable, Iterable
 
-import pandas as pd
+if TYPE_CHECKING:
+    # Types only: pandas itself is imported where a dataset is read (load_dataset).
+    import pandas as pd
 
 from service.analysis.inference.contract import ContractError, load_horizon_authority
 from service.analysis.online_training.cleanup import remove_tree
@@ -670,6 +672,10 @@ def read_manifest(directory: Path) -> Any:
 
 
 def load_dataset(directory: Path) -> tuple[pd.DataFrame, dict[str, Any]]:
+    # pandas (with numpy and pyarrow, ~80 MB) only when a dataset is read: realtime_api imports this module at start
+    # for the training routes, and must not hold pandas for a training that may never run.
+    import pandas as pd
+
     directory = Path(directory)
     manifest = read_manifest(directory)
     if manifest.get("schema") != DATASET_SCHEMA:

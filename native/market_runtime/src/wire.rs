@@ -95,14 +95,14 @@ pub fn book(b: &Book) -> Value {
 pub fn current_point(state: &SymbolState, entry: Option<&ProjectionEntry>) -> Value {
     let (Some(price), Some(minute)) = (state.quote.current, state.quote.price_minute) else { return Value::Null };
     let key = &state.key;
-    let b_minute = entry.and_then(|e| e.minutes.get(&minute));
-    if let Some(record) = b_minute {
+    let b_minute = entry.and_then(|e| e.minutes.get(minute));
+    if let Some(record) = &b_minute {
         if record.get("state").and_then(Value::as_str) == Some("FINALIZED") {
             // B already fixed this minute: its close is authoritative; do not overwrite it with a quote.
             return trend_point(record, &key.instrument, &key.session.trading_date);
         }
     }
-    let mut point = b_minute.map(|r| trend_point(r, &key.instrument, &key.session.trading_date)).unwrap_or_else(|| {
+    let mut point = b_minute.map(|r| trend_point(&r, &key.instrument, &key.session.trading_date)).unwrap_or_else(|| {
         let ts = minute_timestamp(&key.instrument.market, &key.session.trading_date, minute);
         json!({"minute": minute, "time": clock_label(minute), "timestamp": ts, "minute_timestamp": ts,
                "volume": Value::Null, "minute_volume": Value::Null})
@@ -161,7 +161,7 @@ pub fn trend_point(record: &Value, instrument: &InstrumentKey, trading_date: &st
 
 pub fn trend(state: Option<&SymbolState>, entry: Option<&ProjectionEntry>, instrument: &InstrumentKey, trading_date: &str) -> Vec<Value> {
     let mut points: Vec<Value> = entry
-        .map(|e| e.minutes.values().map(|r| trend_point(r, instrument, trading_date)).collect())
+        .map(|e| e.minutes.values().map(|r| trend_point(&r, instrument, trading_date)).collect())
         .unwrap_or_default();
     if let Some(state) = state {
         let point = current_point(state, entry);
@@ -185,6 +185,7 @@ pub fn snapshot(id: &Identity, instrument: &InstrumentKey, trading_date: &str, s
                 committed: u64, demand_state: Value, subscription_id: Value) -> Value {
     let e = entry;
     let signals = e.and_then(|e| e.signals.clone()).map(Value::Object).unwrap_or(Value::Null);
+    let day = e.map(|e| e.day.value()).unwrap_or(Value::Null);
     json!({
         "subscription_id": subscription_id,
         "symbol": instrument.wire(), "source": instrument.source, "market": instrument.market, "code": instrument.code,
@@ -202,12 +203,12 @@ pub fn snapshot(id: &Identity, instrument: &InstrumentKey, trading_date: &str, s
         "trend": trend(state, e, instrument, trading_date),
         "minutes": e.map(ProjectionCache::minutes_wire).unwrap_or_default(),
         "windows": e.map(|e| e.windows.clone()).unwrap_or(Value::Null),
-        "day": e.map(|e| e.day.clone()).unwrap_or(Value::Null),
-        "tradeflow": e.map(|e| e.flow.clone()).filter(|v| !v.is_null()).unwrap_or_else(|| json!({})),
-        "price_volume": e.and_then(|e| e.day.get("price_volume").cloned()).unwrap_or_else(|| json!({})),
+        "price_volume": day.get("price_volume").cloned().unwrap_or_else(|| json!({})),
+        "coverage": coverage(state, e, &day),
+        "day": day,
+        "tradeflow": e.map(|e| e.flow.value()).filter(|v| !v.is_null()).unwrap_or_else(|| json!({})),
         "signals": signals,
         "events": e.map(|e| e.events.iter().cloned().collect::<Vec<_>>()).unwrap_or_default(),
-        "coverage": coverage(state, e),
         "channel_arrival_us": state.map(arrivals).unwrap_or(Value::Null),
         "meta": {
             "state_versions": state.map(|s| json!(s.block_versions)).unwrap_or(Value::Null),
@@ -260,7 +261,8 @@ mod trim_tests {
     }
 }
 
-pub fn coverage(state: Option<&SymbolState>, entry: Option<&ProjectionEntry>) -> Value {
+/// `day`: the entry's day block, decoded once by the snapshot.
+pub fn coverage(state: Option<&SymbolState>, entry: Option<&ProjectionEntry>, day: &Value) -> Value {
     json!({
         "quote": state.is_some_and(|s| s.quote.current.is_some()),
         "recent_trades": state.is_some_and(|s| !s.recent_trades.is_empty()),
@@ -268,7 +270,7 @@ pub fn coverage(state: Option<&SymbolState>, entry: Option<&ProjectionEntry>) ->
         "trend": entry.is_some_and(|e| !e.minutes.is_empty()) || state.is_some_and(|s| s.quote.current.is_some()),
         "minutes": entry.is_some_and(|e| !e.minutes.is_empty()),
         "trade_flow": entry.is_some_and(|e| !e.flow.is_null()),
-        "price_levels": entry.is_some_and(|e| e.day.get("price_volume").is_some_and(|p| p.get("buckets").is_some())),
+        "price_levels": day.get("price_volume").is_some_and(|p| p.get("buckets").is_some()),
         "signals": entry.is_some_and(|e| e.signals.is_some()),
         "events": entry.is_some_and(|e| !e.events.is_empty()),
     })

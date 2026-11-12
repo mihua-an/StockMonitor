@@ -120,8 +120,8 @@ test("monitoring: detail only on request, missing is not zero, shared PIDs count
     lastCostMs: 5,
     sample: async (pids) => {
       samples.push(pids);
-      return new Map([[11, { availability: "OK", cpu_percent: 10, working_set_bytes: 100 }],
-        [process.pid, { availability: "OK", cpu_percent: 1, working_set_bytes: 1 }]]);
+      return new Map([[11, { availability: "OK", cpu_percent: 10, memory_bytes: 100 }],
+        [process.pid, { availability: "OK", cpu_percent: 1, memory_bytes: 1 }]]);
     },
   };
   const services = {
@@ -192,7 +192,7 @@ test("monitoring: with no page open, CPU is still sampled every 10 s for the tre
   const resources = {
     sample: async (pids) => {
       samples.push(pids);
-      return new Map([[11, { availability: "OK", cpu_percent: 3, working_set_bytes: 100 }]]);
+      return new Map([[11, { availability: "OK", cpu_percent: 3, memory_bytes: 100 }]]);
     },
   };
   const collector = collectorWith({ realtime_api: running(11) }, { resources, now: () => t });
@@ -217,8 +217,8 @@ test("monitoring: with no page open, CPU is still sampled every 10 s for the tre
 test("monitoring: with no page open, the background samples carry the 系統 CPU / 記憶體 totals", async () => {
   let t = 1_000_000;
   const resources = {
-    sample: async () => new Map([[11, { availability: "OK", cpu_percent: 3, working_set_bytes: 100 }], [process.pid, { availability: "OK", cpu_percent: 0.5, working_set_bytes: 10 }],
-      [501, { availability: "OK", cpu_percent: 2, working_set_bytes: 50 }]]),
+    sample: async () => new Map([[11, { availability: "OK", cpu_percent: 3, memory_bytes: 100 }], [process.pid, { availability: "OK", cpu_percent: 0.5, memory_bytes: 10 }],
+      [501, { availability: "OK", cpu_percent: 2, memory_bytes: 50 }]]),
   };
   const collector = collectorWith({ realtime_api: running(11) }, { resources, now: () => t });
   collector.setAppProcesses([501]);
@@ -233,7 +233,7 @@ test("monitoring: with no page open, the background samples carry the 系統 CPU
 // sampled after it -- a read between two samples gets none, so a page never has a reason to add a point of its own.
 test("monitoring: the trend is read from a cursor, and a read between two samples carries no point", async () => {
   let t = 1_000_000;
-  const resources = { sample: async () => new Map([[11, { availability: "OK", cpu_percent: 3, working_set_bytes: 100 }]]) };
+  const resources = { sample: async () => new Map([[11, { availability: "OK", cpu_percent: 3, memory_bytes: 100 }]]) };
   const collector = collectorWith({ realtime_api: running(11) }, { resources, now: () => t });
   await collector.collect();
   for (let i = 0; i < 2; i += 1) { t += 10_000; await collector.collect(); }
@@ -257,10 +257,10 @@ test("monitoring: 系統 CPU counts Electron's processes beside the services, an
     cpus: 12,
     sample: async (pids) => {
       samples.push(pids);
-      return new Map([[11, { availability: "OK", cpu_percent: 3, working_set_bytes: 100 }], [process.pid, { availability: "OK", cpu_percent: 0.5, working_set_bytes: 10 }],
-        [501, { availability: "OK", cpu_percent: 2, working_set_bytes: 50 }], [502, { availability: "OK", cpu_percent: 4, working_set_bytes: 70 }],
-        [601, { availability: "OK", cpu_percent: 1, working_set_bytes: 300 }], [701, { availability: "OK", cpu_percent: 1, working_set_bytes: 40 }],
-        [702, { availability: "OK", cpu_percent: 1, working_set_bytes: 60 }]]);
+      return new Map([[11, { availability: "OK", cpu_percent: 3, memory_bytes: 100 }], [process.pid, { availability: "OK", cpu_percent: 0.5, memory_bytes: 10 }],
+        [501, { availability: "OK", cpu_percent: 2, memory_bytes: 50 }], [502, { availability: "OK", cpu_percent: 4, memory_bytes: 70 }],
+        [601, { availability: "OK", cpu_percent: 1, memory_bytes: 300 }], [701, { availability: "OK", cpu_percent: 1, memory_bytes: 40 }],
+        [702, { availability: "OK", cpu_percent: 1, memory_bytes: 60 }]]);
     },
   };
   let training = null;
@@ -278,7 +278,7 @@ test("monitoring: 系統 CPU counts Electron's processes beside the services, an
   assert.ok(samples.at(-1).includes(501) && samples.at(-1).includes(502), "Electron's PIDs are sampled with the services");
   assert.deepEqual([snap.system.availability, snap.system.cpu_percent, snap.system.cores, snap.system.app_processes], ["OK", 9.5, 12, 2],
     "3 (PID 11, shared) + 0.5 (Health) + 2 + 4");
-  assert.equal(snap.system.working_set_bytes, 230);
+  assert.equal(snap.system.memory_bytes, 230);
   assert.deepEqual(collector.current({ trendSince: 0 }).trend.at(-1).system, { cpu: 9.5, mem: 230 }, "the trend carries both for the 2-minute lines");
   // 記憶體 (user 10-22) from the same parts: one per process -- the two APIs share PID 11, Health its own, Electron's together.
   assert.deepEqual(snap.system.parts, [
@@ -294,7 +294,7 @@ test("monitoring: 系統 CPU counts Electron's processes beside the services, an
   assert.ok([601, 701, 702].every((pid) => samples.at(-1).includes(pid)), "the jobs' PIDs are sampled with the rest");
   assert.deepEqual(snap.system.parts.slice(-2), [{ id: "training", service_ids: [], cpu_percent: 1, bytes: 300 },
     { id: "materializer", service_ids: [], cpu_percent: 2, bytes: 100 }]);
-  assert.deepEqual([snap.system.cpu_percent, snap.system.working_set_bytes], [12.5, 630], "the jobs count in both totals");
+  assert.deepEqual([snap.system.cpu_percent, snap.system.memory_bytes], [12.5, 630], "the jobs count in both totals");
   training = null;
   materializer = [];
   collector.requestDetail();

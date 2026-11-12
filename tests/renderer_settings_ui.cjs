@@ -36,10 +36,10 @@ async function setup(base, settingsHtml) {
     { service_id: "analysis_runtime", display_name: "累積計算（Rust B）", kind: "runtime", default_port: null, listener: false },
   ];
   const snapshotService = (sid, name, cpu, port) => ({ service_id: sid, display_name: name, state: "RUNNING", pid: 4100,
-    resources: { availability: "OK", cpu_percent: cpu, working_set_bytes: 146e6 },
+    resources: { availability: "OK", cpu_percent: cpu, memory_bytes: 146e6 },
     addresses: port ? { default: { port }, effective: { port, source: "default" }, observed: { port, verified: true } } : {},
     metrics: { availability: "OK", document: { metrics: [{ name: "http.requests_total", value: 3551 }] } } });
-  const snapshot = { sampled_at: new Date().toISOString(), detail_collected: true, totals: { unique_pids: 3, cpu_percent_unique_pids: 3.4, working_set_bytes_unique_pids: 1.62e9 },
+  const snapshot = { sampled_at: new Date().toISOString(), detail_collected: true, totals: { unique_pids: 3, cpu_percent_unique_pids: 3.4, memory_bytes_unique_pids: 1.62e9 },
     health: { collection_cost_ms: 18 }, config: { effective_revision: 3 },
     services: [snapshotService("app_api", "頁面 API", 0.9, 8001), snapshotService("market_runtime", "即時行情（Rust A）", 2.1, 8010),
       { ...snapshotService("analysis_runtime", "累積計算（Rust B）", 1.3, null), addresses: {} }],

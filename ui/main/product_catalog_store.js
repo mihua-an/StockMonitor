@@ -78,6 +78,9 @@ function createProductCatalogStore({
 } = {}) {
   let rows = [];
   let index = new Map();
+  // How many products each source lists in this copy: a search that finds nothing over a source that lists nothing
+  // (its master never fetched -- Futu before OpenD first connected) says so, instead of "no match".
+  let listedBySource = new Map();
   let status = { count: 0, loaded: false, last_error: null };
   let loadPromise = null;
   let stopFollowing = null;
@@ -111,6 +114,7 @@ function createProductCatalogStore({
       const previousRevision = status.revision;
       rows = nextRows;
       index = new Map(nextRows.map((row) => [keyOf(row.source, row.code), row]));
+      listedBySource = nextRows.reduce((counts, row) => counts.set(row.source, (counts.get(row.source) || 0) + 1), new Map());
       status = { ...(payload?.status || {}), count: nextRows.length, loaded: true, last_error: payload?.status?.last_error || null };
       if (status.revision !== previousRevision) {
         try { onRevision(status.revision ?? null); } catch (error) { logger.warn?.(`[PRODUCT CATALOG] telling the windows of revision ${status.revision} failed: ${error?.message || error}`); }
@@ -222,7 +226,9 @@ function createProductCatalogStore({
 
   function search({ source, query, market = "", limit = 50 } = {}) {
     const items = rankRows(rows, { source, query, market, limit });
-    return { ok: true, items, count: items.length, source: normalizeProviderSource(source), market: String(market || "").toLowerCase(), catalog: { ...status } };
+    const wanted = normalizeProviderSource(source);
+    return { ok: true, items, count: items.length, source: wanted, listed: listedBySource.get(wanted) || 0,
+      market: String(market || "").toLowerCase(), catalog: { ...status } };
   }
 
   /** A product's name, industry, market and type as this copy lists them; empty for one it does not list. */

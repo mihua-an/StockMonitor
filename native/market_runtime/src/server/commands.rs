@@ -317,11 +317,10 @@ fn trades_page(hub: &Hub, req: &PageRequest) -> Value {
     // A session that names one partition and has been materialized: the historical store's copy.
     if dated && wal_sessions(&req.source, &req.market).contains(&req.session.as_str()) {
         if let Some(root) = hub.config.historical_dir.as_deref() {
-            match hub.materialized_trades.rows(root, req) {
+            match hub.materialized_trades.tape(root, req) {
                 Ok(tape) => {
-                    let order: Vec<(i64, u64)> = tape.iter().map(|(ts, sequence, _)| (*ts, *sequence)).collect();
-                    let paged = paginate(&order, req);
-                    let rows = paged.page.iter().map(|&i| tape[i].2.clone()).collect();
+                    let paged = paginate(&tape.order(), req);
+                    let rows = paged.page.iter().map(|&i| tape.row(i, req)).collect();
                     let mut out = answer(rows, &paged, "MATERIALIZED");
                     out["parts_opened"] = json!(1);
                     return out;

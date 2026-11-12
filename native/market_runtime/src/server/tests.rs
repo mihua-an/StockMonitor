@@ -130,7 +130,7 @@ mod replay_timeline_tests {
         let mut replay = ReplaySession::new("r1".into(), recording.clone(), 7);
         let key = StateKey { instrument: InstrumentKey { source: "shioaji".into(), market: "STK".into(), code: "2330".into() },
                              session: SessionKey { trading_date: "2026-09-29".into(), session: "DAY".into() } };
-        let close = |replay: &ReplaySession| replay.core.projection.entry(&key).map(|e| e.day["close"].clone()).filter(|v| !v.is_null());
+        let close = |replay: &ReplaySession| replay.core.projection.entry(&key).map(|e| e.day.value()["close"].clone()).filter(|v| !v.is_null());
         for second in [0i64, 1, 37, (len / 2) as i64] {
             replay.seek(1_790_643_600_000_000_000 + second * 1_000_000_000);
             refresh_analysis(&mut replay);

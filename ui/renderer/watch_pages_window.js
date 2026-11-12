@@ -31,6 +31,9 @@ let activeId = "";
 let editorSource = "shioaji";
 let futuMarketFilter = "all";
 let searchItems = [];
+// How many products the searched source lists in the catalog (the last answer's `listed`); 0 means its list was never
+// fetched, which a search with no result says instead of "no match".
+let searchListed = null;
 let draggedItemIndex = null;
 let draggedPageId = "";
 let editing = null;   // { kind: "name" } or { kind: "alert", code, field }: the cell being edited in place
@@ -245,6 +248,14 @@ function renderItems() {
   focusEditor();
 }
 
+// A search with no result: no match, or the source has no product list yet (a new install before its broker connects).
+function noMatchText() {
+  if (searchListed !== 0) return "找不到符合的商品";
+  return editorSource === "futu"
+    ? "還沒有 Futu 商品清單：請開啟並登入 moomoo OpenD，連上後會自動下載（約 1 分鐘）"
+    : "還沒有永豐商品清單：請先在「設定 → 券商帳號」登入永豐，連上後會自動下載";
+}
+
 function renderSearch() {
   const page = current();
   const inPage = new Set((page?.items || []).map((item) => item.code));
@@ -256,7 +267,7 @@ function renderSearch() {
     return `<div class="watch-list-row" data-morph-key="result:${esc(item.code)}"><span class="watch-list-name">${esc(item.name || item.code)}`
       + `<span class="watch-list-detail">${esc(displayCode(item.code, page))}${item.industry_name ? `・${esc(item.industry_name)}` : ""}</span></span>`
       + `<button type="button" class="btn ${added ? "secondary" : "primary"} small-btn" data-add-code="${esc(item.code)}"${added || !page ? " disabled" : ""}>${added ? "已加入" : "加入"}</button></div>`;
-  }).join("") || `<div class="watch-empty" data-morph-key="empty">${q ? "找不到符合的商品" : editorSource === "futu" ? "搜尋 Futu 商品" : "搜尋股號或股名"}</div>`);
+  }).join("") || `<div class="watch-empty" data-morph-key="empty">${q ? esc(noMatchText()) : editorSource === "futu" ? "搜尋 Futu 商品" : "搜尋股號或股名"}</div>`);
 }
 
 function focusEditor() {
@@ -437,9 +448,10 @@ async function search({ addOnEnter = false } = {}) {
     const answer = await catalogSearch.query(q, searchContext);
     if (!answer) return false;
     searchItems = answer.items;
+    searchListed = answer.listed;
     renderSearch();
     if (addOnEnter && searchItems.length) return addFromSearch(String(searchItems[0].code || "").trim().toUpperCase());
-    setStatus(searchItems.length ? "" : "找不到符合的商品");
+    setStatus(searchItems.length ? "" : noMatchText());
     return false;
   } catch (error) {
     searchItems = [];

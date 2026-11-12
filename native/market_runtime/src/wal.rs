@@ -532,34 +532,16 @@ fn scan_inner(dir: &Path, repair_tail: bool, voided: Option<Arc<Voided>>) -> io:
     let ids = segment_ids(dir)?;
     let next = AtomicUsize::new(0);
     let workers = thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(1, 8).min(ids.len().max(1));
-    let mut scans: Vec<Option<io::Result<SegmentScan>>> = (0..ids.len()).map(|_| None).collect();
-    thread::scope(|scope| {
-        let handles: Vec<_> = (0..workers).map(|_| scope.spawn(|| {
-            let mut done = Vec::new();
-            loop {
-                let i = next.fetch_add(1, Ordering::Relaxed);
-                if i >= ids.len() {
-                    break;
-                }
-                done.push((i, scan_segment(&segment_path(dir, ids[i]), index_trades)));
-            }
-            done
-        })).collect();
-        for handle in handles {
-            for (i, result) in handle.join().unwrap_or_default() {
-                scans[i] = Some(result);
-            }
-        }
-    });
     let mut index = WalIndex::default();
     let mut integrity = Integrity { status: "COMPLETE".into(), ..Default::default() };
     let mut trades = TradeIndex::new(voided.unwrap_or_default());
     let mut previous: Option<u64> = None;
     let mut pending_corruption: Option<usize> = None;
-    for (position, (id, scanned)) in ids.iter().copied().zip(scans).enumerate() {
+    let mut merge = |position: usize, scanned: io::Result<SegmentScan>| -> io::Result<()> {
+        let id = ids[position];
         let newest = position + 1 == ids.len();
         let path = segment_path(dir, id);
-        let mut s = scanned.unwrap_or_else(|| Err(io::Error::other("segment scan did not run")))?;
+        let mut s = scanned?;
         // Merged in segment order: a FUT quote's traded volume depends on every quote before it.
         if let Some(found) = s.trades.take() {
             for (key, records) in found.keys.into_iter().zip(found.marks) {
@@ -581,7 +563,7 @@ fn scan_inner(dir: &Path, repair_tail: bool, voided: Option<Arc<Voided>>) -> io:
                 pending_corruption = Some(integrity.corruption.len() - 1);
             }
             index.segments.push(info);
-            continue;
+            return Ok(());
         }
         if let (Some(p), Some(first)) = (previous, s.first) {
             if first > p + 1 {
@@ -631,7 +613,37 @@ fn scan_inner(dir: &Path, repair_tail: bool, voided: Option<Arc<Voided>>) -> io:
         }
         info.valid_bytes = s.end;
         index.segments.push(info);
-    }
+        Ok(())
+    };
+    // Each segment is merged as soon as it and every one before it are scanned: holding every segment's scan until
+    // the last one finished made the start's peak half again the index it builds (11-12: 266 MB for 177 MB).
+    let (sender, results) = mpsc::channel::<(usize, io::Result<SegmentScan>)>();
+    thread::scope(|scope| -> io::Result<()> {
+        for _ in 0..workers {
+            let (sender, next, ids) = (sender.clone(), &next, &ids);
+            scope.spawn(move || loop {
+                let i = next.fetch_add(1, Ordering::Relaxed);
+                // A merge that failed dropped the receiver: the rest is not read.
+                if i >= ids.len() || sender.send((i, scan_segment(&segment_path(dir, ids[i]), index_trades))).is_err() {
+                    break;
+                }
+            });
+        }
+        drop(sender);
+        let mut ready = std::collections::BTreeMap::new();
+        let mut position = 0;
+        for (i, scanned) in results {
+            ready.insert(i, scanned);
+            while let Some(scanned) = ready.remove(&position) {
+                merge(position, scanned)?;
+                position += 1;
+            }
+        }
+        if position < ids.len() {
+            return Err(io::Error::other(format!("segment {} scan did not run", ids[position])));
+        }
+        Ok(())
+    })?;
     index.first_record = first_record_fingerprint(dir, &ids)?;
     index.pruned_through = index.segments.iter().find_map(|s| s.first_sequence).map_or(0, |first| first.saturating_sub(1));
     if !integrity.corruption.is_empty() {
@@ -639,6 +651,7 @@ fn scan_inner(dir: &Path, repair_tail: bool, voided: Option<Arc<Voided>>) -> io:
     } else if integrity.repaired_tail.is_some() {
         integrity.status = "TAIL_REPAIRED".into();
     }
+    trades.shrink_to_fit();
     Ok((index, integrity, trades))
 }
 
