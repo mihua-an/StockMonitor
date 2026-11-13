@@ -70,14 +70,14 @@ Each package's own license file ships in its `.dist-info` directory under `pytho
 
 ## Not bundled: broker SDKs you install yourself
 
-The installer does not contain these (their redistribution terms are not confirmed). `install_provider_sdk.ps1` installs them from PyPI into your own profile; they are covered by their publishers' terms, not by this project's license.
+The installer does not contain these (their redistribution terms are not confirmed). `install_provider_sdk.ps1` installs the latest version of each from PyPI into your own profile; they are covered by their publishers' terms, not by this project's license.
 
-| Package | Version | Needed for |
-|---|---|---|
-| moomoo-api | 10.10.7008 | futu |
-| pycryptodome | 3.23.0 | futu |
-| shioaji | 1.7.2 | shioaji |
-| simplejson | 4.1.1 | futu |
+| Package | Needed for |
+|---|---|
+| moomoo-api | futu |
+| pycryptodome | futu |
+| shioaji | shioaji |
+| simplejson | futu |
 
 ## ONNX Runtime
 

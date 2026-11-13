@@ -113,12 +113,13 @@ def rust_crates() -> list[dict]:
     return [crates[key] for key in sorted(crates)]
 
 
-def provider_sdk_rows() -> list[tuple[str, str, str]]:
+def provider_sdk_rows() -> list[tuple[str, str]]:
+    """(package, provider) of each broker SDK package. No version: they are installed unpinned, the latest on PyPI
+    (docs/decisions.md 券商 SDK 裝最新不綁版本)."""
     rows = []
     for provider, lines in _stage_module().provider_sdk_requirements().items():
         for line in lines:
-            name, _, version = line.split()[0].partition("==")
-            rows.append((name, version, provider))
+            rows.append((line.split()[0].partition("==")[0], provider))
     return sorted(set(rows))
 
 
@@ -142,10 +143,10 @@ def render(python_rows, crates, sdk_rows=(), onnxruntime=()) -> str:
     out += [f"| {name} | {version} | {license_text} |" for name, version, license_text in python_rows]
     out += ["", "## Not bundled: broker SDKs you install yourself", "",
             "The installer does not contain these (their redistribution terms are not confirmed). "
-            "`install_provider_sdk.ps1` installs them from PyPI into your own profile; they are covered by their "
-            "publishers' terms, not by this project's license.", "",
-            "| Package | Version | Needed for |", "|---|---|---|"]
-    out += [f"| {name} | {version} | {provider} |" for name, version, provider in sdk_rows]
+            "`install_provider_sdk.ps1` installs the latest version of each from PyPI into your own profile; they are "
+            "covered by their publishers' terms, not by this project's license.", "",
+            "| Package | Needed for |", "|---|---|"]
+    out += [f"| {name} | {provider} |" for name, provider in sdk_rows]
     for version, directory in onnxruntime:
         out += ["", "## ONNX Runtime", "",
                 f"ONNX Runtime {version} (MIT License, Copyright (c) Microsoft Corporation) is statically linked into "
