@@ -30,7 +30,7 @@ pub struct FirstPrint {
 impl FirstPrint {
     /// The first print `event` is, given that its partition held none before it.
     pub fn of(event: &MarketEvent) -> Option<Self> {
-        if event.flags.backfill || event.is_indicative() {
+        if event.flags.backfill || event.is_indicative() || crate::rollover::is_odd_lot(&event.provider, &event.market) {
             return None;
         }
         let total_before = match &event.payload {

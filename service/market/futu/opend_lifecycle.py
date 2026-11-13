@@ -237,6 +237,11 @@ class FutuOpenDLifecycle:
             lambda codes: _frame_rows(self.call(context, "get_market_snapshot", codes)), subscribed,
             lambda code, start, end: _frame_rows(self.call(context, "request_history_kline", code, start=start, end=end,
                                                            ktype=one_minute, max_count=20)))
+        # Today's 分時 before a late join: the earlier trend of a code that joined the plan while running, read once
+        # from OpenD when its RT_DATA is confirmed and published as backfill minute bars (trend_backfill.py). The live
+        # push only carries the minutes from here on.
+        rt_data_codes = {code for code, lane in o.subscription_manager.confirmed_snapshot() if lane == "RT_DATA"}
+        o.trend_backfill.run(lambda code: _frame_rows(self.call(context, "get_rt_data", code)), rt_data_codes)
         return outcome
 
     def run_operation(self, name: str, step: Any) -> bool:

@@ -15,13 +15,14 @@ export function genericShell({
   showPriceVolume = true,
   showDepthTotals = true,
   showExtremeMarkers = true,
+  actions = "",
 } = {}) {
   const colgroup = showExtremeMarkers
     ? '<colgroup><col class="orderbook-col-bid-extreme"><col class="orderbook-col-bid-vol"><col class="orderbook-col-bid-price"><col class="orderbook-col-ask-price"><col class="orderbook-col-ask-vol"><col class="orderbook-col-ask-extreme"></colgroup>'
     : '<colgroup><col class="orderbook-col-bid-vol"><col class="orderbook-col-bid-price"><col class="orderbook-col-ask-price"><col class="orderbook-col-ask-vol"></colgroup>';
   const colspan = showExtremeMarkers ? 6 : 4;
   return `<div class="orderbook${showExtremeMarkers ? "" : " orderbook-simple-depth"}" data-role="orderbook-root">
-    ${titleBarMarkup({ title })}
+    ${titleBarMarkup({ title, actions })}
     <div class="orderbook-scroll-body">
       ${productQuoteHeaderShell({ className: "compact orderbook-header", primaryRole: "summary-code", secondaryRole: "summary-secondary-code", centerRole: "summary-center", priceRole: "summary-price", changeRole: "summary-change" })}
       ${showInsideOutside ? ioRatioMarkup({ className: "orderbook-io-ratio" }) : ""}

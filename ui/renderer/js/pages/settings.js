@@ -10,7 +10,7 @@ import { disposeBrokerConnectionSettings, initBrokerConnectionSettings } from ".
 import { disposeShioajiCredentialSettings, initShioajiCredentialSettings, refreshShioajiCredentialSettings } from "./settings_shioaji_credentials.js";
 import { disposeActualAccountSettings, initActualAccountSettings, refreshActualAccountSettings } from "./settings_actual_account.js";
 import { disposeDisplaySettings, initDisplaySettings } from "./settings_display.js";
-import { disposeSubscriptionSettings, initSubscriptionSettings } from "./settings_subscriptions.js";
+import { disposeSubscriptionSettings, initSubscriptionSettings, subscriptionSettingsShown } from "./settings_subscriptions.js";
 
 let settingsInitialized = false;
 
@@ -33,6 +33,7 @@ function showSettingsSection(section) {
   document.querySelectorAll("[data-settings-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.settingsPanel !== target;
   });
+  if (target === "subscription") subscriptionSettingsShown();
   writePreference(SETTINGS_SECTION_KEY, target, { context: "settings section" });
 }
 

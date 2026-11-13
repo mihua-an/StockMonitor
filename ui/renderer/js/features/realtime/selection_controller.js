@@ -23,7 +23,7 @@ import { activeTrendTarget, detailSymbolContext, detailTargetCode, lastStockDeta
 import { ensureStockCanonicalView, loadTxfTrendSnapshot, reconcileCanonicalViews } from "./canonical_view_owner.js";
 import { renderTaiexAsPrimary, renderTaiexAsPrimaryNow, renderTxfAsPrimaryNow } from "./live_redraw.js";
 import { liveTickPageState, loadLiveTickPage, resetLiveTickPageState } from "./live_view_models.js";
-import { activeTxfSession, recomputeFreshnessBanner, setStockFuturesSession } from "./session_state.js";
+import { activeTxfSession, oddLotShown, recomputeFreshnessBanner, setOddLotShown, setStockFuturesSession } from "./session_state.js";
 import { instrumentOf, loadProductSides, productOfInstrument, subscribeProductSides } from "./product_sides.js";
 
 // The analysis signal row (1m/3m/5m, the K columns, 量變, the model-derived fields) and the
@@ -354,6 +354,20 @@ export function bindProductSelectionExtras() {
     // up (or a real one hidden) for up to 2s.
     recomputeFreshnessBanner();
   });
+}
+
+// 買賣報價's 零股／整張 (docs/decisions.md 零股行情的顯示): 買賣報價 and 成交明細 switch to the detail stock's 盤中零股
+// (or back). Its view is held from then on -- Market Runtime keeps it subscribed for the day -- and 成交明細's pages are
+// of the market it shows now.
+export function toggleOddLotShown() {
+  setOddLotShown(!oddLotShown);
+  reconcileCanonicalViews("ODD_LOT");
+  const target = detailTargetCode();
+  resetLiveTickPageState(target);
+  const request = detailSymbolContext();
+  realtimeContext.dataSource.invalidate("orderbook", request);
+  realtimeContext.dataSource.invalidate("tickDetails", request);
+  return target ? loadLiveTickPage({ page: 1, latest: true }) : Promise.resolve(null);
 }
 
 function syncFallbackDetailTargetAfterTrendChange() {

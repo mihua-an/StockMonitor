@@ -11,7 +11,7 @@ from typing import Any
 from service.market.shared.provider import ProviderThinCallbackAdapter
 from service.platform.failure_record import record_failure
 from service.market.shared.rust_live import RustLiveEvent
-from service.market.shioaji.subscriptions import wal_instrument
+from service.market.shioaji.subscriptions import ODD_MARKET, wal_instrument
 from service.market.shared.dataflow_health import DataFlowStage, dataflow_health_ledger
 from service.market.shared.market_trade_semantics import shioaji_tick_side
 from service.market.shared.native_values import exchange_timestamp_ns, fixed_price_5, price_to_units
@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 _EVIDENCE_STREAMS = {
     "stk.tick": ("STK", "Tick"),
     "stk.bidask": ("STK", "BidAsk"),
+    "odd.tick": ("STK", "Tick"),
+    "odd.bidask": ("STK", "BidAsk"),
     "index.quote": ("IND", "Quote"),
     "futures.quote": ("FUT", "Quote"),
     "futures.tick": ("FUT", "Tick"),
@@ -138,6 +140,15 @@ class ShioajiThinCallbackAdapter(ProviderThinCallbackAdapter):
         self._event_admission_lock = threading.Lock()
         self._event_sequences: dict[str, int] = {}
 
+    @staticmethod
+    def _stock_stream(event: Any, lane: str) -> tuple[str, str, str]:
+        """(market, dataflow lane, sequence key) of a stock callback: a 盤中零股 event (``intraday_odd``) is of the
+        market ODD -- its own book, prints and sequence -- never the stock's whole lots."""
+        code = str(getattr(event, "code", "") or "")
+        if bool(getattr(event, "intraday_odd", False) or False):
+            return ODD_MARKET, f"odd.{lane}", f"{ODD_MARKET}:{code}"
+        return "STK", f"stk.{lane}", code
+
     def _next_sequence(self, code: str) -> int:
         sequence = self._event_sequences.get(code, 0) + 1
         self._event_sequences[code] = sequence
@@ -180,7 +191,7 @@ class ShioajiThinCallbackAdapter(ProviderThinCallbackAdapter):
         if not code:
             return
         key = (
-            f"{security_type}:{code}:{quote_type}:regular"
+            f"{security_type}:{code}:{quote_type}:{'odd' if lane.startswith('odd.') else 'regular'}"
             if security_type == "STK"
             else f"{security_type}:{code}:{quote_type}"
         )
@@ -242,18 +253,20 @@ class ShioajiThinCallbackAdapter(ProviderThinCallbackAdapter):
         return month.symbol
 
     def on_stock_tick(self, exchange: Any, tick: Any) -> None:
-        self._on_tick("STK", "stk.tick", tick)
+        market, lane, sequence_key = self._stock_stream(tick, "tick")
+        self._on_tick(market, lane, tick, sequence_key)
 
     def on_futures_tick(self, exchange: Any, tick: Any) -> None:
         self._on_tick("FUT", "futures.tick", tick)
 
     def on_stock_bidask(self, exchange: Any, bidask: Any) -> None:
-        self._on_bidask("STK", "stk.bidask", bidask)
+        market, lane, sequence_key = self._stock_stream(bidask, "bidask")
+        self._on_bidask(market, lane, bidask, sequence_key)
 
     def on_futures_bidask(self, exchange: Any, bidask: Any) -> None:
         self._on_bidask("FUT", "futures.bidask", bidask)
 
-    def _on_tick(self, market: str, lane: str, tick: Any) -> None:
+    def _on_tick(self, market: str, lane: str, tick: Any, sequence_key: str = "") -> None:
         o = self.owner
         arrival_ns = time.time_ns()
         code = str(getattr(tick, "code", "") or "")
@@ -270,7 +283,7 @@ class ShioajiThinCallbackAdapter(ProviderThinCallbackAdapter):
             volume = required_volume("volume", getattr(tick, "volume", None))
             price_chg = fields.price("price_chg", getattr(tick, "price_chg", None), scale=scale)
             with self._event_admission_lock:
-                stream_seq = self._next_sequence(code)
+                stream_seq = self._next_sequence(sequence_key or code)
                 tick_type = o._int_value(getattr(tick, "tick_type", 0))
                 accepted = o.event_sink.publish(RustLiveEvent(
                     source="shioaji", market=market, code=code,
@@ -304,7 +317,7 @@ class ShioajiThinCallbackAdapter(ProviderThinCallbackAdapter):
                     }),
                 ))
             self._pulse_dataflow(lane, code, stream_seq, bool(accepted), arrival_ns)
-            if accepted and not bool(getattr(tick, "simtrade", False) or False):
+            if accepted and market != ODD_MARKET and not bool(getattr(tick, "simtrade", False) or False):
                 self._observe_live(market, code, exchange_ns, getattr(tick, "total_volume", None), volume)
         except InvalidField as exc:
             self._count_invalid_required(lane, exc, code, exchange_ns)
@@ -314,12 +327,12 @@ class ShioajiThinCallbackAdapter(ProviderThinCallbackAdapter):
             self._pulse_dataflow(lane, code, stream_seq, False, arrival_ns, error="price_scale")
         except Exception as exc:
             o._callback_errors += 1
-            handler = "on_stock_tick" if market == "STK" else "on_futures_tick"
+            handler = "on_futures_tick" if market == "FUT" else "on_stock_tick"
             o._last_callback_error = f"{handler}: {exc!r}"[:200]
             record_failure(logger, f"decoding a Shioaji {handler} callback", exc)
             self._pulse_dataflow(lane, code, stream_seq, False, arrival_ns, error=str(exc)[:200])
 
-    def _on_bidask(self, market: str, lane: str, bidask: Any) -> None:
+    def _on_bidask(self, market: str, lane: str, bidask: Any, sequence_key: str = "") -> None:
         o = self.owner
         arrival_ns = time.time_ns()
         code = str(getattr(bidask, "code", "") or "")
@@ -331,7 +344,7 @@ class ShioajiThinCallbackAdapter(ProviderThinCallbackAdapter):
             exchange_ns = int(exchange_timestamp_ns(bidask))
             scale = o.price_scale
             with self._event_admission_lock:
-                stream_seq = self._next_sequence(code)
+                stream_seq = self._next_sequence(sequence_key or code)
                 bid_prices = fixed_price_5(getattr(bidask, "bid_price", ()), scale=scale)
                 ask_prices = fixed_price_5(getattr(bidask, "ask_price", ()), scale=scale)
                 # Prices and volumes only: each level's change is Market Runtime's, against the previous book at the
@@ -356,7 +369,7 @@ class ShioajiThinCallbackAdapter(ProviderThinCallbackAdapter):
             self._pulse_dataflow(lane, code, stream_seq, False, arrival_ns, error="price_scale")
         except Exception as exc:
             o._callback_errors += 1
-            handler = "on_stock_bidask" if market == "STK" else "on_futures_bidask"
+            handler = "on_futures_bidask" if market == "FUT" else "on_stock_bidask"
             o._last_callback_error = f"{handler}: {exc!r}"[:200]
             record_failure(logger, f"decoding a Shioaji {handler} callback", exc)
             self._pulse_dataflow(lane, code, stream_seq, False, arrival_ns, error=str(exc)[:200])

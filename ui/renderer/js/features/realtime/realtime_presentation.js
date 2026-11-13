@@ -159,6 +159,14 @@ export function setRealtimeQuoteHoldings(items) {
 // The selection the table was last handed: the row that loses it on the next selection.
 let paintedSelectedCode = "";
 
+// Whether the Shioaji SDK is installed (Health's import probe), for the empty-list hint only. Read at most once a
+// minute and only while the Shioaji list is empty and the SDK is not yet known-installed; a new user who never
+// installed the broker SDK then sees why the list stays empty, instead of "尚無自選商品" that reads as "just add one"
+// (user 11-13). It is not polled on the data path: an installed SDK stops the checks for good.
+let shioajiSdkInstalled = null;   // null = not read yet, true/false from getProviderSdkStatus
+let shioajiSdkCheckedAt = 0;
+const SHIOAJI_SDK_RECHECK_MS = 60000;
+
 /** A new selection: the quote table, the only writer of the rows' selected class, patches the old and new rows. */
 export function repaintSelectedRealtimeRows(nextCode) {
   updateRealtimeQuoteRows(new Set([paintedSelectedCode, productOfInstrument(nextCode || "")].filter(Boolean)));
@@ -185,6 +193,15 @@ export function renderRealtimeQuoteTable({ changedCodes = null, topologyChanged 
   });
   // The selection is an instrument (a futures month when a row shows its futures); the row is its product.
   paintedSelectedCode = productOfInstrument(realtimeContext.symbolStore.getSelectedSymbol() || "");
+  // An empty list with no SDK is why the data never comes: read the install state (throttled, empty-only) and say so.
+  if (rows.length === 0 && shioajiSdkInstalled !== true && Date.now() - shioajiSdkCheckedAt >= SHIOAJI_SDK_RECHECK_MS) {
+    shioajiSdkCheckedAt = Date.now();
+    Promise.resolve(window.desktopAPI?.getProviderSdkStatus?.()).then((status) => {
+      const installed = typeof status?.providers?.shioaji?.installed === "boolean" ? status.providers.shioaji.installed : null;
+      if (installed !== shioajiSdkInstalled) { shioajiSdkInstalled = installed; renderRealtimeQuoteTable(); }
+    }).catch((error) => console.warn("[realtime: Shioaji SDK status] failed", error));
+  }
+  const emptyText = shioajiSdkInstalled === false ? "尚未安裝 Shioaji SDK（設定 → 券商帳號 安裝）" : "尚無自選商品";
   publishTaiwanProductListView({
     rows,
     // The callback arrival of the tick that dirtied these rows, when the caller knows it. It is
@@ -194,7 +211,7 @@ export function renderRealtimeQuoteTable({ changedCodes = null, topologyChanged 
     // could be counted in the Shioaji lane.
     trace: arrivalUs == null ? null : { arrival_us: arrivalUs },
     selectedCode: paintedSelectedCode,
-    emptyText: "尚無自選商品",
+    emptyText,
     onSelect: selectRealtimeProductRow,
     onPick: pickRealtimeProductSide,
     changedCodes,

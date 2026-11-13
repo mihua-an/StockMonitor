@@ -5,7 +5,8 @@ from threading import RLock
 from typing import Any, Iterable, Mapping
 
 from service.market.shared.provider import ProviderSubscriptionManager
-from service.market.shared.provider_contract import ProviderCapabilities, SHIOAJI_CAPABILITIES, SHIOAJI_LANE_KINDS, SubscriptionPlan
+from service.market.shared.provider_contract import (
+    ODD_LOT_SECURITY, ProviderCapabilities, SHIOAJI_CAPABILITIES, SHIOAJI_LANE_KINDS, SubscriptionPlan)
 
 
 # The one owner of every desired stream: Market Runtime's plan. The product pages, holdings,
@@ -18,10 +19,16 @@ TAIEX_CODE = "IX0001"
 _WAL_MARKETS = {"STK": "STK", "IND": "IDX", "FUT": "FUT"}
 
 
-def wal_instrument(security_type: str, code: str) -> tuple[str, str] | None:
-    """(market, code) Market Runtime stores a stream's events under -- IX0001 is named "TAIEX", every other instrument
-    by its own code -- or None for a security type it stores nothing of."""
-    market = _WAL_MARKETS.get(str(security_type).upper())
+# The market of a stock's 盤中零股 streams: its own book and prints, apart from the stock's whole lots.
+ODD_MARKET = "ODD"
+
+
+def wal_instrument(security_type: str, code: str, intraday_odd: bool = False) -> tuple[str, str] | None:
+    """(market, code) Market Runtime stores a stream's events under -- IX0001 is named "TAIEX", a stock's 盤中零股
+    stream is of the market ODD, every other instrument by its own code -- or None for a security type it stores
+    nothing of."""
+    security = str(security_type).upper()
+    market = ODD_MARKET if security == "STK" and intraday_odd else _WAL_MARKETS.get(security)
     if market is None:
         return None
     return market, ("TAIEX" if market == "IDX" and code == TAIEX_CODE else str(code).strip().upper())
@@ -101,9 +108,14 @@ class ShioajiSubscriptionManager(ProviderSubscriptionManager):
     def subscription_plan(self, security_type: str, code: str) -> SubscriptionPlan:
         return self.capabilities.plan_for(security_type, code)
 
+    @staticmethod
+    def _plan_streams(plan: SubscriptionPlan) -> tuple[StreamIdentity, ...]:
+        """A plan's broker streams. 盤中零股 is the stock's contract subscribed with ``intraday_odd``."""
+        odd = plan.security_type == ODD_LOT_SECURITY
+        return tuple(StreamIdentity("STK" if odd else plan.security_type, plan.logical_code, lane, odd) for lane in plan.lanes)
+
     def streams_for(self, security_type: str, code: str) -> tuple[StreamIdentity, ...]:
-        plan = self.subscription_plan(security_type, code)
-        return tuple(StreamIdentity(plan.security_type, plan.logical_code, lane, False) for lane in plan.lanes)
+        return self._plan_streams(self.subscription_plan(security_type, code))
 
     def is_allowed(self, identity: StreamIdentity) -> bool:
         return self.subscription_plan(identity.security_type, identity.code).allows(identity.quote_type)
@@ -119,7 +131,7 @@ class ShioajiSubscriptionManager(ProviderSubscriptionManager):
         # A dated futures month is planned only when the contract table lists it (TXFR1 has its own rule).
         if plan.security_type == "FUT" and not plan.fixed_context and plan.logical_code not in self.futures_table().by_symbol:
             return ()
-        return tuple(StreamIdentity(plan.security_type, plan.logical_code, lane, False) for lane in plan.lanes)
+        return self._plan_streams(plan)
 
     def set_subscription_limit(self, limit: int) -> None:
         """A new stream limit (設定 → 永豐行情連線). Taken under the plan's lock: a plan being laid out finishes on the

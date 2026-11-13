@@ -20,7 +20,7 @@ import { replaceSignalRows } from "./live_signals.js";
 import { signalRowFields } from "./signal_row.js";
 import { industryIndexStore } from "./industry_index_store.js";
 import { activeTrendTarget, detailTargetCode, liveMarketDataGateway, realtimePageVisible, realtimeVisibleEpoch, requestAnimationFrame, selectedStockCode, setTimeout } from "./live_page_state.js";
-import { activeTxfSession, commitTxfDisplayIdentity, currentTxfDisplayIdentity, equityTradingDate, futuresMonthTrendSpecs, industryIndexCanonicalViewSpec, stockCanonicalViewSpec, taiexCanonicalViewSpec, trendPointEpochMs, txfBenchmarkViewSpec, txfCanonicalViewSpec, txfIdentityMatches, txfViewSpecs } from "./session_state.js";
+import { activeTxfSession, commitTxfDisplayIdentity, currentTxfDisplayIdentity, detailBookViewSpec, equityTradingDate, futuresMonthTrendSpecs, industryIndexCanonicalViewSpec, stockCanonicalViewSpec, taiexCanonicalViewSpec, trendPointEpochMs, txfBenchmarkViewSpec, txfCanonicalViewSpec, txfIdentityMatches, txfViewSpecs } from "./session_state.js";
 import { activePage } from "./product_pages.js";
 import { instrumentOf, isIndexFutureMonth, productOfInstrument } from "./product_sides.js";
 import { shioajiMarketOf } from "../../market_data/futures_symbol.js";
@@ -40,14 +40,6 @@ export const txfIngestCounters = {
 // The token of the last orderbook DELTA per stock: presentation only (a snapshot never flashes a level). The book
 // itself is the view's.
 export const orderbookDeltaTokens = new Map();
-
-// The one read of a stock's market facts: its canonical view's state in the view store. The page keeps no copies
-// (trades, book, minute trend, summary, flow) with rules of its own ("an empty book does not clear", "merge the old
-// timeline", "dedupe by trade key"): those belong to Market Runtime's snapshot contract; a reader takes the view as it is.
-export function stockViewState(code) {
-  const normalized = String(code || "").trim().toUpperCase();
-  return normalized ? (liveMarketDataGateway.snapshot(stockCanonicalViewSpec(normalized)) || {}) : {};
-}
 
 // 加權指數: its canonical view's summary and minute trend, read as the view holds them. It had a copy with its
 // own ordering rule for a "direct IX0001 lane" that no longer exists, and so did the breadth counts.
@@ -107,6 +99,9 @@ function desiredCanonicalViews() {
   for (const code of pageInstrumentCodes()) add("stock", stockCanonicalViewSpec(code), code);
   const detail = detailTargetCode();
   if (detail && detail !== "TXFR1") add("stock", stockCanonicalViewSpec(detail), detail);
+  // 零股 shown: 買賣報價 and 成交明細 read the detail stock's 盤中零股 view (the stock's own stays for everything else).
+  const book = detail && detail !== "TXFR1" ? detailBookViewSpec(detail) : null;
+  if (book?.market === "ODD") add("odd-lot", book, detail);
   // 台指期／小台指 in 個股走勢: the partitions of its 日／夜／全 (the one trading now is the detail view above).
   if (isIndexFutureMonth(detail)) {
     for (const spec of futuresMonthTrendSpecs(detail)) if (!views.has(canonicalViewKey(spec))) add("futures-part", spec, detail);
@@ -123,6 +118,10 @@ function desiredCanonicalViews() {
 function onCanonicalViewEvent(key, held, event) {
   if (held.kind === "stock") {
     applyStockCanonicalEvent(held.code, event);
+    return;
+  }
+  if (held.kind === "odd-lot") {
+    applyOddLotCanonicalEvent(held.code, event);
     return;
   }
   if (held.kind === "futures-part") {
@@ -547,6 +546,33 @@ function applyStockCanonicalEvent(normalized, event = {}) {
     scheduleLiveComponentInvalidation("orderbook", request);
     invalidateLiveTrendComponents(request, ["trendChart", "stockTrend"]);
   }
+}
+
+// The book's flash token of a stock's 盤中零股 (orderbookDeltaTokens holds the stock's own under its bare code).
+export function oddLotBookTokenKey(code) {
+  return `ODD:${String(code || "").trim().toUpperCase()}`;
+}
+
+// A 盤中零股 view's events: 買賣報價 and 成交明細 redraw while they show it (only the detail stock's is held).
+function applyOddLotCanonicalEvent(code, event = {}) {
+  const deltas = event.type === "batch" ? (Array.isArray(event.deltas) ? event.deltas : []) : event.type === "delta" ? [event.delta || {}] : [];
+  if (event.type === "snapshot") orderbookDeltaTokens.delete(oddLotBookTokenKey(code));
+  const changed = new Set(event.type === "snapshot" ? ["trades", "orderbook"] : []);
+  for (const delta of deltas) {
+    const type = String(delta?.delta_type || "");
+    if (type === "orderbook.latest") {
+      orderbookDeltaTokens.set(oddLotBookTokenKey(code), orderbookDiffEventToken(delta.payload || {}));
+      changed.add("orderbook");
+    } else if (type === "trade.append" || type === "trade.frame") {
+      changed.add("trades");
+    } else if (type === "summary.updated" || type === "quote.frame") {
+      changed.add("orderbook");
+    }
+  }
+  if (!realtimePageVisible || detailTargetCode() !== code || !changed.size) return;
+  const request = { symbol: code, canonicalDelta: event.type !== "snapshot" };
+  if (changed.has("trades")) scheduleLiveComponentInvalidation("tickDetails", request);
+  if (changed.has("orderbook")) scheduleLiveComponentInvalidation("orderbook", request);
 }
 
 export function ensureStockCanonicalView(code) {

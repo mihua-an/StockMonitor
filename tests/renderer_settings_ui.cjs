@@ -48,7 +48,7 @@ async function setup(base, settingsHtml) {
     ok: true, revision: 5, background: [],
     pages: [{ id: "p1", name: "台股", source: "shioaji", items: [{ code: "2330", name: "台積電" }, { code: "2317", name: "鴻海" }] },
       { id: "p2", name: "美股", source: "futu", items: [{ code: "US.AAPL", name: "蘋果" }] }],
-    preferences: { instruments: [], taiex: true, txf: true, sector: { enabled: true, scope: "related" }, batches: [] },
+    preferences: { instruments: [], taiex: true, txf: true, sector: { enabled: true, scope: "related" }, odd_lots: false, batches: [] },
     instruments: [
       { source: "shioaji", market: "STK", code: "2317", name: "鴻海", pages: ["p1"], owners: ["watchlist"], trade: true, orderbook: true, listed: true, locked: false },
       { source: "shioaji", market: "STK", code: "2330", name: "台積電", pages: ["p1"], owners: ["watchlist", "holdings"], trade: true, orderbook: true, listed: true, locked: false,
@@ -64,8 +64,10 @@ async function setup(base, settingsHtml) {
   };
   const longRoot = "E:\\StockMonitor\\data\\history-and-models\\very-long-folder-name";
   const state = {
-    capital: { actual: { 台股: { daily_limit: 500000 }, 美股: { daily_limit: 12345 } }, paper: { 台股: { initial_principal: 1000000, daily_limit: 300000, fee_discount: 0 } } },
+    capital: { actual: { 台股: { daily_limit: 500000 }, 美股: { daily_limit: 12345 } }, paper: { 台股: { initial_principal: 1000000, daily_limit: 300000, fee_discount: 0, odd_lot_matching: "queue" } } },
   };
+  // The Shioaji broker link and SDK-install state the 訂閱管理 quota note reads (user 11-13); flipped later in the run.
+  window.__shioajiLink = { connected: true, installed: true };
   window.desktopAPI = {
     // The question main asks (dialog:confirm); the page never calls window.confirm.
     confirm: async (text) => { window.__confirms.push(text); return window.__confirmAnswer; },
@@ -74,8 +76,11 @@ async function setup(base, settingsHtml) {
     colorPreferences: {},
     setColorPreferences: async (payload) => payload,
     onColorPreferencesChanged: () => () => {},
-    getProviderSdkStatus: async () => ({ canInstall: true, providers: { shioaji: { installed: true }, futu: { installed: false } } }),
+    getProviderSdkStatus: async () => ({ canInstall: true, providers: { shioaji: { installed: window.__shioajiLink.installed }, futu: { installed: false } } }),
     onProviderSdkProgress: () => () => {},
+    // 訂閱管理 re-reads /api/subscriptions (and the broker link) when another window reports a change.
+    onWatchPagesChanged: (cb) => { window.__watchPagesChanged = cb; return () => {}; },
+    notifyWatchPagesChanged: () => {},
     installProviderSdk: async () => ({ ok: true }),
     getAutostart: async () => ({ available: true, enabled: true }),
     setAutostart: async (enabled) => ({ enabled }),
@@ -107,7 +112,7 @@ async function setup(base, settingsHtml) {
       return json({ ok: true, pointer: { latest: 4 }, latest: { values: { shioaji: { connections: 3, per_connection_limit: 200 } } },
         choices: { defaults: { shioaji: { connections: 3, per_connection_limit: 200 } }, shioaji: { connections: { min: 1, max: 4 }, per_connection_limit: { options: [100, 200, 500] } } } });
     }
-    if (p === "/api/shioaji/status") return json({ ok: true, shioaji_connected: true, subscription_connections: { open: [{ connection: 1, streams: 168, room: 200 }] }, active_subscription_count: 168 });
+    if (p === "/api/shioaji/status") return json({ ok: true, shioaji_connected: window.__shioajiLink.connected, subscription_connections: { open: [{ connection: 1, streams: 168, room: 200 }] }, active_subscription_count: 168 });
     if (p === "/api/actual-account/config") return json({ ok: true, gas_url: "https://script.google.com/macros/s/AKfy/exec", has_token: true, auto_sync_on_page_open: true });
     if (p === "/api/actual-account/status") return json({ ok: true, last_sync_success_at: "2026-11-01T09:12:00" });
     if (p === "/api/actual-account/bridge/status") return json({ ok: true, mobile_publish: { last_publish_at: "2026-11-01T09:12:00+08:00" } });
@@ -122,7 +127,7 @@ async function setup(base, settingsHtml) {
     if (p === "/api/actual-account/capital" || p === "/api/paper-wallet/capital") {
       const ledger = p.startsWith("/api/actual") ? "actual" : "paper";
       if (method === "POST") {
-        state.capital[ledger] = Object.fromEntries(Object.entries(body.markets).map(([m, f]) => [m, Object.fromEntries(Object.entries(f).map(([k, v]) => [k, Number(v)]))]));
+        state.capital[ledger] = Object.fromEntries(Object.entries(body.markets).map(([m, f]) => [m, Object.fromEntries(Object.entries(f).map(([k, v]) => [k, k === "odd_lot_matching" ? v : Number(v)]))]));
       }
       return json({ ok: true, markets: state.capital[ledger] });
     }
@@ -143,10 +148,15 @@ async function setup(base, settingsHtml) {
       if (window.__subsRefuse) return json({ ok: false, error: "QUOTA_EXCEEDED", message: "永豐超過上限" }, 409);
       // The fake server keeps what it is sent, as settings_api does.
       for (const op of body.ops) {
+        if (op.op === "odd_lots.set") {
+          subs.preferences.odd_lots = op.value;
+          subs.quota.shioaji.spare = { instruments: op.value ? 2 : 0, streams: op.value ? 4 : 0 };
+          continue;
+        }
         const row = subs.instruments.find((r) => r.code === op.code);
         if (!row) continue;
         if (op.field === "futures") row.futures.on = op.value; else row[op.field] = op.value;
-        if (op.field === "orderbook" && op.value === false) subs.quota.shioaji.used -= 1;
+        if ((op.field === "orderbook" || op.field === "trade") && op.value === false) subs.quota.shioaji.used -= 1;
       }
       return json({ ...subs, revision: 6, skipped: [] });
     }
@@ -261,6 +271,14 @@ async function checks() {
   if ($("settingsToast").hidden || !toastTexts().some((t) => t.includes("實際帳務資金設定已儲存"))) fail("a success floats");
   const toastBox = $("settingsToast").lastElementChild.getBoundingClientRect();
   if (toastBox.top > 40 || Math.abs(toastBox.left + toastBox.width / 2 - innerWidth / 2) > 2) fail(`the floating message is at the top centre (${JSON.stringify(toastBox)})`);
+  // 零股交易 (模擬帳務): a choice, shown as saved and saved as chosen.
+  const oddLot = amount("paper", "台股", "odd_lot_matching");
+  if (oddLot?.tagName !== "SELECT" || oddLot.value !== "queue") fail(`零股交易 shows the saved choice (${oddLot?.value})`);
+  oddLot.value = "direct";
+  document.querySelector('[data-capital-actions="paper"] [data-capital-save]').click();
+  await wait(100);
+  const paperPosted = window.__calls.filter((c) => c.method === "POST" && c.path === "/api/paper-wallet/capital").pop();
+  if (paperPosted?.body?.markets?.台股?.odd_lot_matching !== "direct") fail(`零股交易 is saved as chosen: ${JSON.stringify(paperPosted?.body)}`);
 
   // ---- 實際帳務: the three actions run at the same time, each with its own note left of the group's buttons; one
   // finishing or failing never clears or replaces another's that is still running.
@@ -356,9 +374,10 @@ async function checks() {
   if (subRows().map((r) => r.querySelector(".settings-item-code").textContent).join(",") !== "2317,2330,2603") fail("the stocks of the pages and holdings");
   if ($("subShioajiUsed").textContent !== "9" || $("subShioajiLimit").textContent !== "480") fail("the quota");
   if ($("subShioajiConns").querySelectorAll("span").length !== 3) fail("one line per connection");
+  if ($("subShioajiNote").textContent !== "") fail("connected with the SDK installed: the slots need no plan note");
   // 富途: OpenD's quota by type (background share of 100), 退訂中 in the bar and on the rows OpenD still holds.
   if ($("subFutuUsed").textContent !== "3" || $("subFutuLimit").textContent !== "80") fail("the Futu quota of OpenD's");
-  if (!$("subFutuNote").textContent.includes("OpenD 額度 100") || !$("subFutuNote").textContent.includes("退訂中 2")) fail(`Futu note: ${$("subFutuNote").textContent}`);
+  if ($("subFutuNote").textContent !== "退訂中 2") fail(`Futu note: only 退訂中, no OpenD total: ${$("subFutuNote").textContent}`);
   if (!$("subFutuBar").querySelector(".is-draining")) fail("退訂中 is a part of the Futu bar");
   const futuRows = [...$("subFutuRows").querySelectorAll(":scope > .settings-item")];
   if (futuRows.map((r) => r.querySelector(".settings-item-code").textContent).join(",") !== "US.AAPL,US.TSLA") fail("a removed product OpenD still holds stays listed");
@@ -366,29 +385,88 @@ async function checks() {
   if (futuRows[1].querySelector("button")) fail("the leaving row has nothing to press");
   if (!subRows()[2].querySelector("[data-remove-row]").disabled) fail("a stock only in a holding cannot be removed from a page");
   if ($("subSaveBtn") || $("subResetBtn")) fail("no 儲存 or 還原: a change takes effect at once");
-  const book = subRows()[0].querySelector('[data-lane="orderbook"]');
-  book.click();
+  // Layout (user 11-14): both quotas side by side at the top, 零股 with 大盤, one list at a time under 台股 / 美股與加密貨幣.
+  const subPanel = document.querySelector('[data-settings-panel="subscription"]');
+  const pair = subPanel.querySelector(".settings-quota-pair");
+  const [shioajiBox, futuBox] = [$("subShioajiUsed"), $("subFutuUsed")].map((n) => n.closest(".settings-quota").getBoundingClientRect());
+  if (!pair || !pair.contains($("subFutuUsed")) || Math.abs(shioajiBox.top - futuBox.top) > 1 || futuBox.left <= shioajiBox.right - 1) fail("the two quotas side by side in one card");
+  if (subPanel.querySelector(".settings-section-title")) fail("no provider section titles: Futu is not a section at the bottom");
+  if ($("subOddLots").closest(".settings-group") !== $("subTaiex").closest(".settings-group")) fail("零股 sits with 大盤");
+  const order = [$("subTaiex"), $("subSourceSeg"), $("subSector")].map((n) => n.getBoundingClientRect().top);
+  if (!(order[0] < order[1] && order[1] < order[2])) fail(`大盤, then the lists, then 產業指數: ${order}`);
+  const listShown = (source) => !document.querySelector(`[data-sub-list="${source}"]`).hidden;
+  const thumb = () => $("subSourceSeg").querySelector(".settings-seg-thumb");
+  if (!listShown("shioaji") || listShown("futu") || $("subStockAllOn").hidden) fail("台股 is shown first, with 全部開啟");
+  const shioajiTab = $("subSourceSeg").querySelector('[data-sub-source="shioaji"]');
+  // Where the sliding background goes (its CSS transition is not advanced in an offscreen test window).
+  const under = (tab) => thumb()?.style.getPropertyValue("--settings-seg-left") === `${tab.offsetLeft}px`
+    && thumb()?.style.getPropertyValue("--settings-seg-width") === `${tab.offsetWidth}px` && tab.offsetWidth > 0;
+  if (!under(shioajiTab)) fail(`the switch's background sits under 台股 once the panel is shown: ${thumb()?.getAttribute("style")}`);
+  const opsBeforeSwitch = window.__calls.filter((c) => c.path === "/api/subscriptions/ops").length;
+  $("subSourceSeg").querySelector('[data-sub-source="futu"]').click();
+  await wait(50);
+  if (listShown("shioaji") || !listShown("futu") || !$("subStockAllOn").hidden) fail("美股與加密貨幣 shows the Futu list, without 全部開啟");
+  const futuTab = $("subSourceSeg").querySelector('[data-sub-source="futu"]');
+  if (!under(futuTab)) fail(`the background slides under 美股與加密貨幣: ${thumb()?.getAttribute("style")}`);
+  if (window.__calls.filter((c) => c.path === "/api/subscriptions/ops").length !== opsBeforeSwitch) fail("switching the list changes no subscription");
+  shioajiTab.click();
+  await wait(50);
+  if (!listShown("shioaji") || listShown("futu")) fail("back to 台股");
+  // 明細 and 五檔 are one switch, 現貨 (user 11-13): no separate pills, on a row or under its 期貨.
+  if (document.querySelector('[data-settings-panel="subscription"] [data-lane]')) fail("no separate 明細／五檔 pills");
+  if (subRows().map((r) => r.querySelector("[data-spot]")?.textContent).join(",") !== "現貨,現貨,現貨") fail("one 現貨 per stock");
+  const spot = subRows()[0].querySelector("[data-spot]");
+  spot.click();
   await wait(0);
-  if (book.classList.contains("is-active")) fail("the pill changes at once");
+  if (spot.classList.contains("is-active")) fail("the pill changes at once");
   await wait(150);
   const sent = () => window.__calls.filter((c) => c.path === "/api/subscriptions/ops");
   const opsOf = (call) => call?.body?.ops?.map((o) => `${o.code}.${o.field}=${o.value}`).join(",");
   if (window.__calls.some((c) => c.path === "/api/subscriptions/preview")) fail("no preview: the change itself is sent");
-  if (sent().length !== 1 || opsOf(sent()[0]) !== "2317.orderbook=false" || !sent()[0].body.batch_id) fail(`one change, sent at once: ${opsOf(sent()[0])}`);
-  if ($("subShioajiUsed").textContent !== "8" || subRows()[0].querySelector('[data-lane="orderbook"]').classList.contains("is-active")) fail("the answer is the new state");
+  if (sent().length !== 1 || opsOf(sent()[0]) !== "2317.trade=false,2317.orderbook=false" || !sent()[0].body.batch_id) fail(`one change (明細 and 五檔 together), sent at once: ${opsOf(sent()[0])}`);
+  if ($("subShioajiUsed").textContent !== "7" || subRows()[0].querySelector("[data-spot]").classList.contains("is-active")) fail("the answer is the new state");
   subRows()[1].querySelector('[data-futures="on"]').click();
   await wait(0);
   const months = $("subStockRows").querySelector('[data-sub-key="shioaji:STK:2330"]');
   if (!months || !months.getAnimations().length) fail("期貨 opens the months with the motion");
   if (months.querySelectorAll(".is-locked").length !== 1 || months.querySelectorAll("[data-sub-month]").length !== 2) fail("the near month locked, the other months pressable");
+  if (months.querySelector("[data-spot], [data-lane]")) fail("the months have no switches of their own: 期貨 is 明細 and 五檔");
   await wait(450);
   if (sent().length !== 2 || opsOf(sent()[1]) !== "2330.futures=true") fail(`each change on its own, over the answer to the one before: ${opsOf(sent()[1])}`);
   window.__subsRefuse = true;
-  subRows()[1].querySelector('[data-lane="trade"]').click();
+  subRows()[1].querySelector("[data-spot]").click();
   await wait(150);
   window.__subsRefuse = false;
-  if (!subRows()[1].querySelector('[data-lane="trade"]').classList.contains("is-active")) fail("a refused change goes back");
+  if (!subRows()[1].querySelector("[data-spot]").classList.contains("is-active")) fail("a refused change goes back");
   if (!$("subMessage").textContent.includes("沒有生效")) fail(`a refused change says so: ${$("subMessage").textContent}`);
+  // 零股 (user 11-14): off, the note says it takes only the room left; on, the stocks it asks for, the 額度 unchanged.
+  if ($("subOddLots").checked || $("subOddLotsNote").textContent !== "額度夠才訂") fail("零股 off by default");
+  const usedBeforeOdd = $("subShioajiUsed").textContent;
+  $("subOddLots").click();
+  await wait(150);
+  if (JSON.stringify(sent().at(-1)?.body?.ops) !== JSON.stringify([{ op: "odd_lots.set", value: true }])) fail(`零股 sent at once: ${JSON.stringify(sent().at(-1)?.body?.ops)}`);
+  if (!$("subOddLots").checked || $("subOddLotsNote").textContent !== "2 檔，額度夠才訂") fail(`零股 on: ${$("subOddLotsNote").textContent}`);
+  if ($("subShioajiUsed").textContent !== usedBeforeOdd) fail("零股 is never counted against the background share");
+  $("subOddLots").click();
+  await wait(150);
+  if ($("subOddLots").checked || $("subOddLotsNote").textContent !== "額度夠才訂") fail("零股 off again");
+  // A product with only one of the two (富途 US.AAPL: 明細 only) shows 現貨 off; pressing it turns on what is missing.
+  const aapl = $("subFutuRows").querySelector("[data-spot]");
+  if (!aapl || aapl.classList.contains("is-active")) fail("明細 alone is not 現貨");
+  aapl.click();
+  await wait(150);
+  if (opsOf(sent().at(-1)) !== "US.AAPL.orderbook=true") fail(`only the missing one is sent: ${opsOf(sent().at(-1))}`);
+  if (!$("subFutuRows").querySelector("[data-spot]").classList.contains("is-active")) fail("both on: 現貨 on");
+
+  // The connection slots are a subscription plan: without the SDK, or with the broker not connected, the quota says so
+  // instead of reading as live connections (user 11-13).
+  const reloadSubs = async () => { window.__watchPagesChanged?.({ kind: "external" }); await wait(100); };
+  window.__shioajiLink.installed = false; await reloadSubs();
+  if (!$("subShioajiNote").textContent.includes("尚未安裝 SDK")) fail(`SDK not installed: the quota says so (${$("subShioajiNote").textContent})`);
+  window.__shioajiLink.installed = true; window.__shioajiLink.connected = false; await reloadSubs();
+  if (!$("subShioajiNote").textContent.includes("永豐尚未連線")) fail(`not connected: the quota says 尚未連線 (${$("subShioajiNote").textContent})`);
+  window.__shioajiLink.connected = true; await reloadSubs();
+  if ($("subShioajiNote").textContent !== "") fail("connected again with the SDK installed: the note clears");
 
   // ---- 系統: one row per service, the port, no 工作量; 編輯連接埠
   show("system");

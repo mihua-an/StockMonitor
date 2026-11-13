@@ -179,10 +179,10 @@ class Resources:
             except Exception:  # noqa: BLE001 -- the paper ledger did not open; nothing to follow
                 _log.exception("paper_orders owner: the order desk is unavailable")
                 return
-            held: list[str] | None = None
+            held: list[tuple[str, bool]] | None = None
             try:
                 while True:
-                    codes = desk.working_codes()
+                    codes = desk.working_instruments()
                     if codes != held:
                         try:
                             result = await asyncio.to_thread(background_demand.replace_owner, self.config_root(), "paper_orders",

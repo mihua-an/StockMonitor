@@ -207,6 +207,37 @@ struct Job {
     /// storage_retention revision (`--retention-config-root`: the settings store, read for that domain only -- the fold's
     /// rules come from `--config-root`) and the ledgers' traded codes (`--traded-codes-dir`).
     store: Store,
+    /// The Shioaji stocks a session read from the WAL keeps (decisions.md 哪些行情會留在本地): the background list's
+    /// stocks when the job runs and the codes an account ledger traded. Every stock of the day is in the WAL -- the ones
+    /// only looked at too -- and only these are materialized. None: the settings store is not named (a test or a
+    /// tool), nothing is sorted out.
+    kept_stocks: Option<BTreeSet<String>>,
+}
+
+/// The stocks a Shioaji session keeps (`Job::kept_stocks`). Err: the background list exists and cannot be read -- the
+/// job fails and is retried, never run on a guess.
+fn kept_stocks(config_root: &Path, traded_codes_dir: Option<&Path>) -> Result<(BTreeSet<String>, Option<String>), String> {
+    use market_runtime::config_store::{read_active_revision, RevisionRead};
+    let mut kept = BTreeSet::new();
+    match read_active_revision(config_root, "background") {
+        RevisionRead::Absent => {} // not an error: no background list saved yet keeps no stock
+        RevisionRead::Unusable(reason) => return Err(format!("the background list cannot be read: {reason}")),
+        RevisionRead::Active(doc) => {
+            let items: Vec<market_runtime::demand::BackgroundItem> = serde_json::from_value(doc["values"]["items"].clone())
+                .map_err(|e| format!("the background list's items do not parse: {e}"))?;
+            kept.extend(items.into_iter().filter(|i| i.source.eq_ignore_ascii_case("shioaji") && i.market.eq_ignore_ascii_case("STK"))
+                .map(|i| i.code.trim().to_uppercase()));
+        }
+    }
+    // The traded codes stay whatever the list says (retention keeps them forever). None published yet: reported with
+    // the job's result, the list alone decides.
+    let mut traded_error = None;
+    match traded_codes_dir.map(market_runtime::storage::kept_codes) {
+        Some(Ok(codes)) => kept.extend(codes.get(&("shioaji".to_string(), "STK".to_string())).into_iter().flatten().cloned()),
+        Some(Err(e)) => traded_error = Some(e),
+        None => {}
+    }
+    Ok((kept, traded_error))
 }
 
 impl Job {
@@ -227,7 +258,20 @@ impl Job {
         // the user decided to remove.
         let voided = Voided::load(flags.get("--voided-events").map(Path::new)).map_err(|error| json!({"ok": false,
             "status": "invalid_request", "outcome": "invalid_request", "error": format!("--voided-events: {error}")}))?;
+        // Only a Shioaji session read from the WAL is sorted: a refold from the store re-reads what was kept.
+        let sorted = !from_store && flags.get("--source").is_some_and(|s| s.eq_ignore_ascii_case("shioaji"));
+        let (kept_stocks, traded_codes_error) = match flags.get("--retention-config-root").filter(|_| sorted) {
+            None => (None, None),
+            Some(root) => match kept_stocks(Path::new(root), flags.get("--traded-codes-dir").map(Path::new)) {
+                Ok((kept, error)) => (Some(kept), error),
+                Err(error) => return Err(json!({"ok": false, "status": "retryable", "outcome": "retryable", "error": error})),
+            },
+        };
+        if let Some(error) = &traded_codes_error {
+            eprintln!("[materialize] the ledgers' traded codes cannot be read ({error}): the background list alone keeps stocks");
+        }
         let job = Job {
+            kept_stocks,
             data_dir: if from_store { PathBuf::new() } else { PathBuf::from(require("--data-dir")?) },
             from_store,
             fills_dir: flags.get("--fills-dir").map(PathBuf::from),
@@ -269,6 +313,21 @@ impl Job {
 
     fn wildcard(&self) -> bool {
         self.code == WILDCARD_CODE
+    }
+
+    /// Takes out the instruments this session does not keep (rollover::kept_at_materialization) and names them.
+    fn drop_not_kept(&self, by_symbol: &mut BTreeMap<String, Vec<MarketEvent>>) -> Vec<String> {
+        let Some(kept) = &self.kept_stocks else { return Vec::new() };
+        let mut dropped = Vec::new();
+        by_symbol.retain(|symbol, _| {
+            let code = symbol.splitn(3, ':').nth(2).unwrap_or(symbol);
+            let keep = market_runtime::rollover::kept_at_materialization(&self.source, &self.market, code, |c| kept.contains(&c.to_uppercase()));
+            if !keep {
+                dropped.push(code.to_owned());
+            }
+            keep
+        });
+        dropped
     }
 
     fn partition(&self, code: &str) -> Result<Partition, String> {
@@ -689,12 +748,14 @@ fn code_result(o: &Outcome) -> Value {
         "manifest_path": o.manifest_path().map(|p| p.to_string_lossy().into_owned())})
 }
 
-/// `--code *`: every instrument of the session found in the WAL.
-fn run_wildcard(job: &Job, input: SessionInput, progress: &mut Progress) -> Result<Value, String> {
+/// `--code *`: every instrument of the session found in the WAL, less the ones it does not keep (`not_kept`).
+fn run_wildcard(job: &Job, input: SessionInput, not_kept: Vec<String>, progress: &mut Progress) -> Result<Value, String> {
     if input.by_symbol.is_empty() {
         return Ok(json!({"ok": false, "status": "no_matching_input", "outcome": "no_matching_input", "mode": "wildcard",
             "source": job.source, "market": job.market, "trading_date": job.trading_date, "session": job.session,
-            "error": format!("no WAL events for {}:{} {} {}", job.source, job.market, job.trading_date, job.session)}));
+            "codes_not_kept": not_kept.len(),
+            "error": format!("no WAL events kept for {}:{} {} {} ({} instruments not kept)", job.source, job.market,
+                             job.trading_date, job.session, not_kept.len())}));
     }
     let mut outcomes = Vec::new();
     let mut worst = "complete";
@@ -744,7 +805,7 @@ fn run_wildcard(job: &Job, input: SessionInput, progress: &mut Progress) -> Resu
     let kbar_aging = age_kbars(job);
     let sum = |count: fn(&Outcome) -> usize| outcomes.iter().map(count).sum::<usize>();
     Ok(json!({"ok": true, "status": "materialized", "outcome": "succeeded_with_data", "mode": "wildcard", "daily_summary": summary_path,
-        "kbar_files": kbar_files, "kbar_aging": kbar_aging, "volume_baseline": baseline, "codes_materialized": codes.len(), "codes_expired": expired, "total_event_count": sum(|o| o.event_count),
+        "kbar_files": kbar_files, "kbar_aging": kbar_aging, "volume_baseline": baseline, "codes_materialized": codes.len(), "codes_expired": expired, "codes_not_kept": not_kept.len(), "total_event_count": sum(|o| o.event_count),
         // What the 收盤整理 card counts: the market events (Market Runtime's accepted, plus what a fill added).
         "market_event_count": sum(|o| o.event_count - o.control_count), "control_event_count": sum(|o| o.control_count),
         "backfill_event_count": sum(|o| o.backfill_count),
@@ -783,6 +844,53 @@ pub fn run(flags: &Flags, rules: RuleSet, progress: &mut Progress) -> Result<Val
         Ok(job) => job,
         Err(refusal) => return Ok(refusal),
     };
-    let input = if job.from_store { read_store(&job)? } else { read_session(&job, progress)? };
-    if job.wildcard() { run_wildcard(&job, input, progress) } else { run_single(&job, input, progress) }
+    let mut input = if job.from_store { read_store(&job)? } else { read_session(&job, progress)? };
+    let not_kept = job.drop_not_kept(&mut input.by_symbol);
+    if job.wildcard() { run_wildcard(&job, input, not_kept, progress) } else { run_single(&job, input, progress) }
+}
+
+#[cfg(test)]
+mod kept_tests {
+    use super::*;
+
+    #[test]
+    fn a_shioaji_session_keeps_the_listed_and_traded_stocks_and_no_odd_lot() {
+        // decisions.md 哪些行情會留在本地 (user 11-13): every stock of the day is in the WAL; the close keeps the ones on
+        // the background list and the ones a ledger traded.
+        let root = std::env::temp_dir().join(format!("b-kept-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let config = root.join("config");
+        assert_eq!(kept_stocks(&config, None).unwrap().0, BTreeSet::new(), "no list saved: no stock kept");
+        let dir = config.join("background");
+        fs::create_dir_all(dir.join("revisions")).unwrap();
+        fs::write(dir.join("pointer.json"), r#"{"active":1}"#).unwrap();
+        fs::write(dir.join("revisions").join("r000001.json"), r#"{"revision":1,"values":{"items":[
+            {"source":"shioaji","market":"STK","code":"2330","kinds":["trade","orderbook"],"owners":["watchlist"]},
+            {"source":"shioaji","market":"IDX","code":"TAIEX","kinds":["quote"],"owners":["market_context"]},
+            {"source":"futu","market":"US","code":"US.TSLA","kinds":["quote"],"owners":["watchlist"]}]}}"#).unwrap();
+        let traded = root.join("traded");
+        fs::create_dir_all(&traded).unwrap();
+        fs::write(traded.join("paper.json"), json!({"schema": market_runtime::storage::TRADED_CODES_SCHEMA,
+            "codes": {"shioaji": {"STK": ["2303"]}}}).to_string()).unwrap();
+        let (kept, error) = kept_stocks(&config, Some(&traded)).unwrap();
+        assert!(error.is_none());
+        assert_eq!(kept, ["2303", "2330"].iter().map(|c| c.to_string()).collect::<BTreeSet<_>>());
+        fs::write(dir.join("revisions").join("r000001.json"), "{").unwrap();
+        assert!(kept_stocks(&config, None).is_err(), "a list that cannot be read fails the job, never a guess");
+
+        let args = ["--out-dir", root.join("out").to_str().unwrap(), "--data-dir", root.to_str().unwrap(),
+            "--source", "shioaji", "--market", "STK", "--code", "*", "--trading-date", "2026-11-13", "--session", "DAY"].map(String::from);
+        let flags = Flags::parse(&args, &["--out-dir", "--data-dir", "--source", "--market", "--code", "--trading-date", "--session"], &[], false).unwrap();
+        let mut job = Job::parse(&flags, RuleSet::default()).unwrap();
+        job.kept_stocks = Some(kept);
+        let mut by_symbol: BTreeMap<String, Vec<MarketEvent>> = ["shioaji:STK:2330", "shioaji:STK:2303", "shioaji:STK:2454"]
+            .iter().map(|s| (s.to_string(), Vec::new())).collect();
+        assert_eq!(job.drop_not_kept(&mut by_symbol), vec!["2454".to_string()]);
+        assert_eq!(by_symbol.len(), 2);
+        job.market = "FUT".into();
+        let mut futures: BTreeMap<String, Vec<MarketEvent>> = ["shioaji:FUT:TXF202612", "shioaji:FUT:CDF202612", "shioaji:FUT:MXF202612"]
+            .iter().map(|s| (s.to_string(), Vec::new())).collect();
+        assert_eq!(job.drop_not_kept(&mut futures), vec!["CDF202612".to_string()], "a stock future never stays");
+        let _ = fs::remove_dir_all(&root);
+    }
 }

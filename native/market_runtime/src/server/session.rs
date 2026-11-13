@@ -719,13 +719,34 @@ pub(crate) fn replay_chunk(stream: &mut FrameWriter, hub: &Hub, session: &mut Se
     Ok(())
 }
 
+/// `<A data dir>/held_subscriptions.json`: what a hold-until-close provider's plan carries this session, so a restart
+/// subscribes it again (demand::DemandManager `held`).
+pub(crate) fn held_path(config: &ServerConfig) -> std::path::PathBuf {
+    config.data_dir.join("held_subscriptions.json")
+}
+
+fn write_held(config: &ServerConfig, held: &Value) {
+    let path = held_path(config);
+    let staged = path.with_extension("json.tmp");
+    let written = std::fs::write(&staged, held.to_string()).and_then(|_| std::fs::rename(&staged, &path));
+    if let Err(e) = written {
+        // A restart then subscribes only what is asked for again; nothing running is affected.
+        eprintln!("[market_runtime] writing the held subscriptions {}: {e}", path.display());
+    }
+}
+
 pub(crate) fn replan(hub: &Hub) {
     let plans = {
         let mut demand = lock(&hub.demand);
         let sources = demand.sources();
-        let plans: Vec<_> = sources.iter().filter_map(|s| demand.plan(s)).collect();
+        let now = now_ns();
+        let plans: Vec<_> = sources.iter().filter_map(|s| demand.plan_at(s, now)).collect();
         let pinned = demand.pinned();
+        let held = demand.take_held_wire();
         drop(demand);
+        if let Some(held) = held {
+            write_held(&hub.config, &held);
+        }
         lock(&hub.core).engine.set_pinned(pinned);
         plans
     };

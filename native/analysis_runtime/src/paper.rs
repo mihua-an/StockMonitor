@@ -4,8 +4,10 @@
 //! whole-lot order waits behind the volume the 五檔 showed at its price when it reached the exchange, that volume is
 //! worked off by the prints at its price coming from the other side and by the book shrinking there (a shrink beyond
 //! the prints is cancellations, all counted ahead of us: user 2026-10-16), and only then is the order filled. A print
-//! through its price fills it at its price. Odd lots never queue: they fill at the whole-lot book's best price once
-//! that reaches their price (M11). Call auctions (pre-open, close, 緩漲緩跌) are resolved by their match.
+//! through its price fills it at its price. An odd-lot order is matched as 零股交易 said when it was placed (user
+//! 11-13): `direct` never queues and fills at the whole-lot book's best price once that reaches its price (M11);
+//! `queue` waits in the stock's 盤中零股 (the market ODD: its own book and its periodic matches) like a call auction
+//! (M13). Call auctions (pre-open, close, 緩漲緩跌) are resolved by their match.
 //!
 //! Files, all in the paper matching directory (`--paper-dir`):
 //! * `orders.jsonl`  -- paper_account_api is its only writer: one command per line (`new`, `cancel`, `reduce`).
@@ -27,6 +29,8 @@ use std::path::{Path, PathBuf};
 
 pub const SOURCE: &str = "shioaji";
 pub const MARKET: &str = "STK";
+/// A stock's 盤中零股: read by the odd-lot orders queued at it (OddMatching::Queue).
+pub const ODD_MARKET: &str = market_runtime::rollover::ODD_MARKET;
 pub const LOT: f64 = 1000.0;
 const ORDERS_FILE: &str = "orders.jsonl";
 const RESULTS_FILE: &str = "results.jsonl";
@@ -48,6 +52,18 @@ pub enum Side {
 pub enum Lot {
     Whole,
     Odd,
+}
+
+/// 零股交易 (decisions.md 模擬零股的成交方式): how an odd-lot order is matched, as set when it was placed. A whole-lot
+/// order, and a command that names none, is `Direct`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum OddMatching {
+    /// Fills whole at the whole-lot book's best price once that reaches its price (M11).
+    #[default]
+    Direct,
+    /// Queues at the stock's 盤中零股 matches (M13).
+    Queue,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -111,6 +127,8 @@ pub enum Command {
         /// Shares.
         qty: f64,
         tif: Tif,
+        #[serde(default)]
+        odd_matching: OddMatching,
     },
     Cancel {
         cmd_id: String,
@@ -186,6 +204,8 @@ pub struct Order {
     /// Notices written for this order (a coverage loss / its return), numbering their record ids.
     #[serde(default)]
     pub notices: u32,
+    #[serde(default)]
+    pub odd_matching: OddMatching,
 }
 
 impl Order {
@@ -194,6 +214,10 @@ impl Order {
     }
     fn remaining_lots(&self) -> f64 {
         (self.remaining() / LOT).floor()
+    }
+    /// An odd-lot order queued at the 盤中零股 matches: the whole-lot book and prints do not fill it.
+    fn queued_odd(&self) -> bool {
+        self.lot == Lot::Odd && self.odd_matching == OddMatching::Queue
     }
     /// The price this order is matched at: its limit, or for a market order the limit price it rests at.
     fn limit(&self, book: &Book) -> Option<i64> {
@@ -239,6 +263,11 @@ impl Book {
             Side::Sell => &self.bids,
         }
     }
+}
+
+/// Where the desk keeps a stock's 盤中零股 book, beside the stock's own (keyed by its code).
+fn odd_book_key(code: &str) -> String {
+    format!("{ODD_MARKET}:{code}")
 }
 
 fn levels(levels: &[BookLevel]) -> Vec<(i64, f64)> {
@@ -603,11 +632,11 @@ impl PaperDesk {
         let after = self.recorded_reads.get(&cmd_id).copied().unwrap_or(position);
         self.emit(json!({"type": "read", "id": format!("{cmd_id}-R"), "cmd_id": cmd_id, "order_id": command.order_id(),
             "after_sequence": after}));
-        if let Command::New { order_id, trading_date, code, side, lot, price_type, price, qty, tif, .. } = &command {
+        if let Command::New { order_id, trading_date, code, side, lot, price_type, price, qty, tif, odd_matching, .. } = &command {
             self.orders.entry(order_id.clone()).or_insert_with(|| Order {
                 order_id: order_id.clone(), code: code.trim().to_uppercase(), trading_date: trading_date.clone(), side: *side, lot: *lot,
                 price_type: *price_type, price: *price, qty: *qty, tif: *tif, state: State::Pending, filled: 0.0, fills: 0, removed: 0.0,
-                ahead: None, entered: 0, notices: 0,
+                ahead: None, entered: 0, notices: 0, odd_matching: if *lot == Lot::Odd { *odd_matching } else { OddMatching::Direct },
             });
         }
         self.pending.push(Pending { command, after });
@@ -622,11 +651,13 @@ impl PaperDesk {
             return;
         }
         self.applied = self.applied.max(position);
-        if event.provider != SOURCE || event.market != MARKET {
+        let odd = event.market == ODD_MARKET;
+        if event.provider != SOURCE || (event.market != MARKET && !odd) {
             return;
         }
         if let Payload::Clock { .. } = &event.payload {
-            if event.code == CLOCK_CODE {
+            // The stock market's clock closes the day; the odd-lot scope's is the same time.
+            if event.code == CLOCK_CODE && !odd {
                 self.on_clock(event.exchange_ts_ns);
             }
             return;
@@ -640,30 +671,17 @@ impl PaperDesk {
         }
         self.enter_due(event, position);
         let code = event.code.to_uppercase();
+        if odd {
+            self.apply_odd(&code, event);
+            return;
+        }
         match &event.payload {
             // Rust A's coverage control: the source stopped (or resumed) delivering this stock. While it is out the
             // orders cannot be matched -- said so on each order at the exchange, never filled from a guess (R1). An
             // order still Pending is not at the exchange: in a rebuild every order of the journal is Pending from the
             // start of the stream until its recorded position, so the controls of the days before it was placed are
             // not its own.
-            Payload::SourceStatus { state, .. } => {
-                let reason = match state.as_str() {
-                    "unsubscribed" => "行情中斷（訂閱中止）：這段期間無法撮合",
-                    "subscribed" => "行情恢復：繼續撮合",
-                    _ => return,
-                };
-                let ids: Vec<String> = self.orders.values().filter(|o| o.code == code && o.state == State::Working).map(|o| o.order_id.clone()).collect();
-                for id in ids {
-                    let Some(order) = self.orders.get_mut(&id) else { continue };
-                    if state == "subscribed" && order.notices == 0 {
-                        continue;   // a first subscription is not a recovery
-                    }
-                    order.notices += 1;
-                    let n = order.notices;
-                    self.emit(json!({"type": "notice", "id": format!("{id}-N{n}"), "order_id": id, "reason": reason,
-                        "exchange_ts_ns": event.exchange_ts_ns}));
-                }
-            }
+            Payload::SourceStatus { state, .. } => self.coverage_notice(&code, state, event.exchange_ts_ns, false),
             Payload::Reference { limit_up, limit_down, .. } => {
                 let book = self.book_of(&code, &event.trading_date);
                 book.limit_up = limit_up.or(book.limit_up);
@@ -710,6 +728,96 @@ impl PaperDesk {
             self.emit(json!({"type": "notice", "id": format!("{id}-G{through}"), "order_id": id,
                 "reason": "行情遺失（事件流缺口）：這段期間無法撮合", "exchange_ts_ns": at_ns}));
         }
+    }
+
+    /// Rust A's coverage control of the stock (`odd`: of its 盤中零股) said on each order at the exchange that reads it.
+    fn coverage_notice(&mut self, code: &str, state: &str, ts: i64, odd: bool) {
+        let reason = match state {
+            "unsubscribed" => "行情中斷（訂閱中止）：這段期間無法撮合",
+            "subscribed" => "行情恢復：繼續撮合",
+            _ => return,
+        };
+        let ids: Vec<String> = self.orders.values().filter(|o| o.code == code && o.state == State::Working && o.queued_odd() == odd)
+            .map(|o| o.order_id.clone()).collect();
+        for id in ids {
+            let Some(order) = self.orders.get_mut(&id) else { continue };
+            if state == "subscribed" && order.notices == 0 {
+                continue;   // a first subscription is not a recovery
+            }
+            order.notices += 1;
+            let n = order.notices;
+            self.emit(json!({"type": "notice", "id": format!("{id}-N{n}"), "order_id": id, "reason": reason, "exchange_ts_ns": ts}));
+        }
+    }
+
+    /// One event of a stock's 盤中零股 (M13). Its book places each queued odd-lot order at its price (the queue only
+    /// shortens, as a whole-lot one's); each print is one of the periodic matches.
+    fn apply_odd(&mut self, code: &str, event: &MarketEvent) {
+        let key = odd_book_key(code);
+        match &event.payload {
+            Payload::SourceStatus { state, .. } => self.coverage_notice(code, state, event.exchange_ts_ns, true),
+            Payload::OrderBook { bids, asks, simtrade } => {
+                let book = self.book_of(&key, &event.trading_date);
+                book.bids = levels(bids);
+                book.asks = levels(asks);
+                book.auction = *simtrade;
+                let book = book.clone();
+                for id in self.queued_odd_on(code) {
+                    let Some(limit) = self.odd_limit(&id) else { continue };
+                    if let Some(o) = self.orders.get_mut(&id) {
+                        o.ahead = ahead_after_book(o.side, limit, book.own(o.side), o.ahead);
+                    }
+                }
+            }
+            Payload::Trade { price, volume, simtrade: false, no_last_sale: false, .. } => self.on_odd_match(code, *price, *volume, event.exchange_ts_ns),
+            _ => {}
+        }
+    }
+
+    /// A 盤中零股 match at `price` of `volume` shares: a queued order better than it fills whole at it, one at it fills
+    /// from what the match leaves after the queue ahead (an unknown place is behind the whole match), a worse one waits
+    /// (M13, as M10). An IOC / FOK has its one match: what it did not fill is gone (a FOK fills whole or not at all).
+    fn on_odd_match(&mut self, code: &str, price: i64, volume: f64, ts: i64) {
+        let mut used = 0.0;
+        for id in self.queued_odd_on(code) {
+            let (Some(order), Some(limit)) = (self.orders.get(&id).cloned(), self.odd_limit(&id)) else { continue };
+            let qty = if !reaches(order.side, limit, price) {
+                0.0
+            } else if limit != price {
+                order.remaining()
+            } else {
+                let ahead = order.ahead.unwrap_or(volume);
+                if let Some(o) = self.orders.get_mut(&id) {
+                    o.ahead = Some((ahead - volume).max(0.0));
+                }
+                ((volume - ahead).max(0.0) - used).floor().min(order.remaining())
+            };
+            if order.tif == Tif::FOK && qty + 1e-9 < order.remaining() {
+                self.finish(&id, State::Cancelled, "FOK 無法全部成交", ts);
+                continue;
+            }
+            if qty > 0.0 {
+                if limit == price {
+                    used += qty;
+                }
+                self.fill(&id, qty, price, ts, if limit == price { "零股排隊輪到" } else { "零股撮合（價格優於撮合價）" });
+            }
+            if order.tif != Tif::ROD {
+                self.finish(&id, State::Cancelled, "IOC／FOK 未成交部分取消", ts);
+            }
+        }
+    }
+
+    /// The odd-lot orders of `code` queued at its 盤中零股, in the order they reached the exchange.
+    fn queued_odd_on(&self, code: &str) -> Vec<String> {
+        self.working_on(code).filter(|id| self.orders.get(id).is_some_and(Order::queued_odd)).collect()
+    }
+
+    /// A queued odd-lot order's price: its limit, or a market order's protection price from the stock's official limits.
+    fn odd_limit(&self, order_id: &str) -> Option<i64> {
+        let order = self.orders.get(order_id)?;
+        let book = self.books.get(&order.code).filter(|b| b.trading_date == order.trading_date).cloned().unwrap_or_default();
+        order.limit(&book)
     }
 
     /// The book of `code` on `trading_date`. A new day starts it empty -- yesterday's limits, reference and shadow are
@@ -863,6 +971,20 @@ impl PaperDesk {
             self.finish(order_id, State::Rejected, "還沒有今天的官方漲跌停價：不受理市價單", ts);
             return;
         }
+        if order.queued_odd() {
+            // Waits for the 盤中零股 matches (M13); its place is what the odd-lot book shows at its price.
+            let odd_book = self.books.get(&odd_book_key(&order.code)).filter(|b| b.trading_date == order.trading_date).cloned();
+            let ahead = match (odd_book, order.limit(&book)) {
+                (Some(odd), Some(limit)) => ahead_after_book(order.side, limit, odd.own(order.side), None),
+                _ => None,
+            };
+            if let Some(o) = self.orders.get_mut(order_id) {
+                o.state = State::Working;
+                o.entered = position;
+                o.ahead = ahead;
+            }
+            return;
+        }
         if book.auction && order.tif != Tif::ROD {
             self.finish(order_id, State::Rejected, "集合競價時段只接受 ROD", ts);
             return;
@@ -994,6 +1116,7 @@ impl PaperDesk {
         for id in ids {
             let Some(order) = self.orders.get(&id).cloned() else { continue };
             match order.lot {
+                Lot::Odd if order.queued_odd() => {}
                 Lot::Odd => self.match_odd(&id, &book, event.exchange_ts_ns, "零股（依整股價）"),
                 Lot::Whole => {
                     let Some(limit) = order.limit(&book) else { continue };
@@ -1080,7 +1203,7 @@ impl PaperDesk {
         for id in ids {
             let Some(order) = self.orders.get(&id).cloned() else { continue };
             let Some(limit) = order.limit(&book) else { continue };
-            if !reaches(order.side, limit, price) {
+            if !reaches(order.side, limit, price) || order.queued_odd() {
                 continue;
             }
             match order.lot {
@@ -1295,7 +1418,7 @@ mod tests {
         Command::New { cmd_id: id.into(), order_id: id.into(), accepted_ns: (accepted_s * 1_000_000_000) as u64,
             trading_date: "2026-10-16".into(), code: "2330".into(), side, lot,
             price_type: if price.is_some() { PriceType::Limit } else { PriceType::Market },
-            price: price.map(|p| (p * P as f64) as i64), qty, tif }
+            price: price.map(|p| (p * P as f64) as i64), qty, tif, odd_matching: OddMatching::Direct }
     }
 
     fn fills(records: &[Value]) -> Vec<(f64, f64, String)> {
@@ -1827,5 +1950,59 @@ mod tests {
         d.apply(&next, 4);
         let today = &d.books["2330"];
         assert_eq!((today.trading_date.as_str(), today.limit_up, today.limit_down), ("2026-10-19", Some(1_090_000), Some(900_000)));
+    }
+
+
+    /// The same event of the stock's 盤中零股 (market ODD).
+    fn odd(mut event: MarketEvent) -> MarketEvent {
+        event.market = ODD_MARKET.into();
+        event.symbol = format!("shioaji:{ODD_MARKET}:{}", event.code);
+        event
+    }
+
+    fn queued(id: &str, side: Side, price: Option<f64>, qty: f64, tif: Tif, accepted_s: i64) -> Command {
+        match new(id, side, Lot::Odd, price, qty, tif, accepted_s) {
+            Command::New { cmd_id, order_id, accepted_ns, trading_date, code, side, lot, price_type, price, qty, tif, .. } =>
+                Command::New { cmd_id, order_id, accepted_ns, trading_date, code, side, lot, price_type, price, qty, tif, odd_matching: OddMatching::Queue },
+            other => other,
+        }
+    }
+
+    #[test]
+    fn a_queued_odd_lot_waits_behind_the_odd_lot_book_and_fills_at_the_odd_lot_matches() {
+        // decisions.md 模擬零股的成交方式 (user 11-13): 根據實際排隊 reads the 盤中零股 book and matches, never the whole lots.
+        let mut d = PaperDesk::default();
+        d.apply(&book("2330", 1, 100, &[(99.0, 10.0)], &[(99.5, 2.0)], false), 1);
+        d.apply(&odd(book("2330", 2, 100, &[(100.0, 500.0)], &[(100.5, 80.0)], false)), 2);
+        d.receive(queued("Q", Side::Buy, Some(100.0), 300.0, Tif::ROD, 100), 2);
+        d.apply(&book("2330", 3, 101, &[(99.0, 10.0)], &[(99.5, 2.0)], false), 3);
+        assert_eq!((d.orders["Q"].state, d.orders["Q"].ahead), (State::Working, Some(500.0)), "behind the 500 shares shown at 100");
+        // The whole-lot ask at 99.5 is below its price: a direct odd lot would fill, a queued one does not.
+        d.apply(&trade("2330", 4, 102, 99.5, 3.0, 1, false), 4);
+        assert!(fills(&d.take_records()).is_empty());
+        d.apply(&odd(trade("2330", 5, 103, 100.0, 600.0, 0, false)), 5);
+        assert_eq!(fills(&d.take_records()), vec![(100.0, 100.0, "零股排隊輪到".into())], "600 matched, 500 ahead");
+        d.apply(&odd(trade("2330", 6, 104, 100.0, 50.0, 0, false)), 6);
+        assert_eq!(fills(&d.take_records()), vec![(50.0, 100.0, "零股排隊輪到".into())]);
+        d.apply(&odd(trade("2330", 7, 105, 99.5, 10.0, 0, false)), 7);
+        let records = d.take_records();
+        assert_eq!(fills(&records), vec![(150.0, 99.5, "零股撮合（價格優於撮合價）".into())], "a match below a buy's price fills it whole");
+        assert_eq!(done(&records), vec!["filled".to_string()]);
+
+        // A match above a buy's price fills nothing; an IOC has its one match and the rest is gone.
+        d.receive(queued("I", Side::Buy, Some(100.0), 200.0, Tif::IOC, 105), 7);
+        d.apply(&book("2330", 8, 106, &[(99.0, 10.0)], &[(99.5, 2.0)], false), 8);
+        d.apply(&odd(trade("2330", 9, 107, 100.5, 10.0, 0, false)), 9);
+        let records = d.take_records();
+        assert!(fills(&records).is_empty());
+        assert_eq!(d.orders["I"].state, State::Cancelled);
+    }
+
+    #[test]
+    fn a_command_without_odd_matching_is_direct_and_the_fixture_names_a_queued_one() {
+        let commands: Vec<Command> = include_str!("../../../tests/fixtures/paper_commands.jsonl").lines().filter(|l| !l.trim().is_empty())
+            .map(|l| serde_json::from_str(l).unwrap_or_else(|e| panic!("{l}: {e}"))).collect();
+        assert!(matches!(&commands[0], Command::New { odd_matching: OddMatching::Direct, .. }));
+        assert!(matches!(&commands[4], Command::New { lot: Lot::Odd, odd_matching: OddMatching::Queue, .. }));
     }
 }

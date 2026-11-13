@@ -71,10 +71,29 @@ def test_the_commands_are_what_rust_b_reads(tmp_path):
     desk.cancel(order["order_id"])
     written = read_commands(desk)
     fixture = [json.loads(line) for line in FIXTURE.read_text(encoding="utf-8").splitlines() if line.strip()]
-    assert [sorted(c) for c in written] == [sorted(c) for c in fixture], "the same fields as the fixture Rust parses"
+    assert [sorted(c) for c in written] == [sorted(c) for c in fixture[:4]], "the same fields as the fixture Rust parses"
     assert [c["type"] for c in written] == ["new", "reduce", "replace", "cancel"]
     assert written[0]["price"] == 1_005_000 and written[0]["lot"] == "whole" and written[0]["side"] == "buy"
     assert written[2]["order_id"] == order["order_id"] and "new_order_id" not in written[2], "改價 is on the same order"
+
+
+def test_an_odd_lot_order_carries_the_odd_lot_matching_set_when_it_was_placed(tmp_path):
+    # decisions.md 模擬零股的成交方式 (user 11-13): 設定 → 資金 → 模擬帳務 → 零股交易, read when the order is placed.
+    desk, ledger, _clock = make_desk(tmp_path)
+    assert ledger.get_capital_settings()["markets"]["台股"]["odd_lot_matching"] == "direct", "直接成交 by default"
+    first = desk.place({"code": "2330", "side": "買進", "price": "100.5", "qty": 37, "tif": "ROD"})["order"]
+    ledger.save_capital_settings({"markets": {"台股": {"odd_lot_matching": "queue"}}})
+    second = desk.place({"code": "2317", "side": "買進", "price": "100.5", "qty": 37, "tif": "ROD"})["order"]
+    whole = desk.place({"code": "2454", "side": "買進", "price": "100.5", "qty": 1000, "tif": "ROD"})["order"]
+    by_id = {c["order_id"]: c for c in read_commands(desk)}
+    assert (by_id[first["order_id"]]["odd_matching"], by_id[second["order_id"]]["odd_matching"]) == ("direct", "queue")
+    assert "odd_matching" not in by_id[whole["order_id"]], "a whole-lot order has none"
+    fixture = [json.loads(line) for line in FIXTURE.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert sorted(by_id[second["order_id"]]) == sorted(fixture[4]), "the same fields as the fixture Rust parses"
+    # The queued odd lot keeps the stock's 盤中零股 subscribed beside its quotes; the direct one only the quotes.
+    assert desk.working_instruments() == [("2317", False), ("2317", True), ("2330", False), ("2454", False)]
+    with pytest.raises(ActualAccountError, match="零股交易"):
+        ledger.save_capital_settings({"markets": {"台股": {"odd_lot_matching": "fast"}}})
 
 
 def test_an_order_carries_its_stock_name(tmp_path):
@@ -252,7 +271,7 @@ def test_a_refused_replace_leaves_the_order_and_a_done_replace_changes_its_price
     view = desk.view(oid)
     assert (view["price"], [c["to"] for c in view["price_changes"]]) == (99, [99])
     assert len(desk.orders()["orders"]) == 1, "one order, its number kept"
-    assert desk.working_codes() == ["2330"]
+    assert desk.working_instruments() == [("2330", False)]
     # Its reservation is at the price it has now: 99 x 1,000 and its fee.
     assert desk.funds()["capital"]["reserved_limit"] == 99_000
 

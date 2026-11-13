@@ -26,7 +26,7 @@ function futuresOf(raw) {
 }
 
 export function createDraft(snapshot) {
-  return { base: snapshot, view: snapshot, pages: normalizePages(snapshot.pages), edits: new Map(), context: null, sector: null };
+  return { base: snapshot, view: snapshot, pages: normalizePages(snapshot.pages), edits: new Map(), context: null, sector: null, oddLots: null };
 }
 
 /** The rows to draw: the latest view's (a preview after a change, else the snapshot). */
@@ -53,6 +53,24 @@ export function setLane(draft, row, field, value) {
   editOf(draft, row)[field] = Boolean(value);
 }
 
+/** The one switch both screens draw for a product (現貨, or 訂閱 on an index future): on only with both 明細 and 五檔,
+ *  since a product subscribed with only one of them is not one the screens offer (user 11-13). */
+export const spotOn = (lane) => Boolean(lane.trade && lane.orderbook);
+
+/** Turns 明細 and 五檔 of one instrument on or off together. */
+export function setSpot(draft, row, on) {
+  setLane(draft, row, "trade", on);
+  setLane(draft, row, "orderbook", on);
+}
+
+/** A stock's 期貨: on subscribes its months with both 明細 and 五檔 (they have no switches of their own). */
+export function setFuturesOn(draft, row, on) {
+  setFutures(draft, row, "on", on);
+  if (!on) return;
+  setFutures(draft, row, "trade", true);
+  setFutures(draft, row, "orderbook", true);
+}
+
 /** A stock's 期貨 (field "on") and its 明細／五檔 ("trade" / "orderbook"). */
 export function setFutures(draft, row, field, value) {
   const edit = editOf(draft, row);
@@ -77,6 +95,15 @@ export function contextOf(draft) {
 export function setContext(draft, field, value) {
   draft.context ||= {};
   draft.context[field] = Boolean(value);
+}
+
+/** 零股: the product pages' stocks keep their 盤中零股 from before the open, as this window has it. */
+export function oddLotsOf(draft) {
+  return draft.oddLots ?? Boolean(draft.base.preferences.odd_lots);
+}
+
+export function setOddLots(draft, value) {
+  draft.oddLots = Boolean(value);
 }
 
 export function sectorOf(draft) {
@@ -120,6 +147,7 @@ export function draftOpsOf(draft) {
   for (const field of ["taiex", "txf"]) {
     if (context[field] !== prefs[field]) ops.push({ op: "context.set", field, value: context[field] });
   }
+  if (oddLotsOf(draft) !== Boolean(prefs.odd_lots)) ops.push({ op: "odd_lots.set", value: oddLotsOf(draft) });
   const sector = sectorOf(draft);
   if (sector.enabled !== prefs.sector.enabled || sector.scope !== prefs.sector.scope) ops.push({ op: "sector.set", ...sector });
   return ops;

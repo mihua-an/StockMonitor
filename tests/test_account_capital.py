@@ -142,7 +142,7 @@ def test_each_ledger_keeps_only_its_own_settings(tmp_path):
         paper.save_capital_settings({"markets": {"美股": {"daily_limit": 1}}})
     with pytest.raises(ActualAccountError, match="不支援的市場：美股"):
         _trade(paper, "U1", "2026-10-15", "買進", "1@100", code="NVDA", market="美股")
-    assert paper.get_capital_settings()["scope"] == {"markets": ["台股"], "fields": ["initial_principal", "daily_limit", "fee_discount"]}
+    assert paper.get_capital_settings()["scope"] == {"markets": ["台股"], "fields": ["initial_principal", "daily_limit", "fee_discount", "odd_lot_matching"]}
 
 
 def test_the_paper_fee_discount_recomputes_every_fee(tmp_path):

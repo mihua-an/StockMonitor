@@ -134,13 +134,33 @@ def test_the_adapter_registers_its_real_instrument_capacity(monkeypatch):
     ShioajiBrokerService(event_sink=sink)
     assert registered["max_subscriptions"] == 300
     assert callable(registered["report_subscriptions"])
+    assert registered["hold_until_close"] is True, "盤中訂閱過的不退訂: Market Runtime keeps what the plan carried"
     monkeypatch.setattr(broker_connection_settings, "shioaji", lambda config_root=None: {
         "connections": 1, "per_connection_limit": 200, "revision": 2})
     ShioajiBrokerService(event_sink=sink)
     assert registered["max_subscriptions"] == 100
     # The exact capacity is in streams, per kind: an index or TXFR1 its quote, a stock or a futures month its
     # trade and orderbook, one each.
-    assert registered["stream_budget"] == {"streams": 200, "kinds_by_market": {"FUT": {"orderbook": 1, "quote": 1, "trade": 1}, "IDX": {"quote": 1}, "STK": {"orderbook": 1, "trade": 1}}}
+    assert registered["stream_budget"] == {"streams": 200, "kinds_by_market": {"FUT": {"orderbook": 1, "quote": 1, "trade": 1}, "IDX": {"quote": 1}, "ODD": {"orderbook": 1, "trade": 1}, "STK": {"orderbook": 1, "trade": 1}}}
+
+
+def test_a_holding_provider_says_so_when_it_registers_and_releases_a_settled_session_once():
+    sink = RustDaemonEventSink(source="shioaji", token="t")
+    sink.register_adapter(source="shioaji", max_subscriptions=2, hold_until_close=True,
+                          replace_subscriptions=lambda items, generation: {}, report_subscriptions=lambda: {})
+    assert json.loads(sink._control._register_message())["payload"]["hold_until_close"] is True
+    sink.release_held(["STK", "ODD"], "2026-11-13T00:00:00", "day")
+    sink.release_held(["STK", "ODD"], "2026-11-13", "DAY")
+    socket = Socket()
+    sink._control.send_due_releases(socket)
+    sink._control.send_due_releases(socket)
+    assert socket.sent == [{"type": "demand.release", "payload": {
+        "source": "shioaji", "markets": ["STK", "ODD"], "trading_date": "2026-11-13", "session": "DAY"}}]
+
+    quiet = RustDaemonEventSink(source="futu", token="t")
+    quiet.register_adapter(source="futu", max_subscriptions=2, replace_subscriptions=lambda items, generation: {},
+                           report_subscriptions=lambda: {})
+    assert "hold_until_close" not in json.loads(quiet._control._register_message())["payload"]
 
 
 def test_a_stream_budget_is_registered_and_the_provider_bills_the_plan_by_streams():

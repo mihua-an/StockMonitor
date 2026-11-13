@@ -185,6 +185,7 @@ pub(crate) fn handle(stream: &mut FrameWriter, hub: &Arc<Hub>, session: &mut Ses
         "metrics" => write_json(stream, &json!({"type": "metrics", "payload": metrics(hub)})),
         "demand.status" => write_json(stream, &json!({"type": "demand.status", "payload": lock(&hub.demand).status()})),
         "background.replace" => cmd_background_replace(stream, hub, &p),
+        "demand.release" => cmd_demand_release(stream, hub, session, &p),
         "breadth.configure" => cmd_breadth_configure(stream, hub, &p),
         "wal.prune" => {
             let result = prune_wal(hub, &p);
@@ -533,6 +534,37 @@ pub(crate) struct AdapterRegister {
     pub(crate) kinds: Vec<Kind>,
     #[serde(default)]
     pub(crate) stream_budget: Option<StreamBudgetWire>,
+    /// What this provider subscribed stays subscribed until its session is materialized (Shioaji, user 11-13).
+    #[serde(default)]
+    pub(crate) hold_until_close: bool,
+}
+
+/// `demand.release`: a closed session is materialized, so what was held subscribed for it is let go (the provider
+/// that owns the session's lifecycle says so; rollover lets go of whatever no release named).
+#[derive(serde::Deserialize)]
+struct DemandRelease {
+    source: String,
+    markets: Vec<String>,
+    trading_date: String,
+    session: String,
+}
+
+fn cmd_demand_release(stream: &mut FrameWriter, hub: &Arc<Hub>, session: &mut Session, p: &Value) -> io::Result<()> {
+    let Role::Provider(own) = &session.role else { return forbidden(stream, hub, session, "demand.release") };
+    let release: DemandRelease = match serde_json::from_value(p.clone()) {
+        Ok(release) => release,
+        Err(e) => return invalid_payload(stream, "demand.release", &Value::Null, &e.to_string()),
+    };
+    if !release.source.eq_ignore_ascii_case(own) {
+        return forbidden(stream, hub, session, "demand.release(other source)");
+    }
+    let released = lock(&hub.demand).release_session(&release.source.to_lowercase(), &release.markets, &release.trading_date, &release.session);
+    write_json(stream, &json!({"type": "demand.released", "payload": {"source": release.source, "markets": release.markets,
+        "trading_date": release.trading_date, "session": release.session, "released": released}}))?;
+    if released {
+        replan(hub);
+    }
+    Ok(())
 }
 
 pub(crate) fn cmd_adapter_register(stream: &mut FrameWriter, hub: &Arc<Hub>, session: &mut Session, p: &Value) -> io::Result<()> {
@@ -551,7 +583,7 @@ pub(crate) fn cmd_adapter_register(stream: &mut FrameWriter, hub: &Arc<Hub>, ses
             None => Ok(capacity),
         }
     }) {
-        Ok(capacity) => capacity,
+        Ok(capacity) => capacity.holding_until_close(register.hold_until_close),
         Err(e) => return invalid_payload(stream, "adapter.register", &Value::Null, &e),
     };
     let limit = capacity.limit;

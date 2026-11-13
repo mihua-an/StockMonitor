@@ -2,3 +2,4 @@
 {"type": "reduce", "cmd_id": "PO-20261016-0001:r1", "order_id": "PO-20261016-0001", "accepted_ns": 1792116000000000000, "qty": 1000.0}
 {"type": "replace", "cmd_id": "PO-20261016-0001:p2", "order_id": "PO-20261016-0001", "accepted_ns": 1792116000000000000, "price": 1000000}
 {"type": "cancel", "cmd_id": "PO-20261016-0001:c3", "order_id": "PO-20261016-0001", "accepted_ns": 1792116000000000000}
+{"type": "new", "cmd_id": "PO-20261016-0002", "order_id": "PO-20261016-0002", "accepted_ns": 1792116000000000000, "trading_date": "2026-10-16", "code": "2330", "side": "buy", "lot": "odd", "price_type": "limit", "price": 1005000, "qty": 37, "tif": "ROD", "odd_matching": "queue"}

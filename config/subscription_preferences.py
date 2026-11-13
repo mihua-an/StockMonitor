@@ -14,6 +14,8 @@ One setting per instrument, shared by every product page it is on (decisions.md 
   beside the near month, which is always subscribed.
 * ``taiex``: 加權指數. ``txf``: 台指期 TXFR1's Quote (the dashboard's 期貨走勢); its months are the TXF product's.
 * ``sector``: 產業指數 -- ``enabled``, and ``scope`` ``related`` (the indexes of the stocks listed) or ``all``.
+* ``odd_lots``: the product pages' Shioaji stocks keep their 盤中零股 subscribed before the open (user 11-14), only
+  into the streams every other demand leaves (background_demand.py owner ``odd_lots``, spare).
 * ``batches``: the ids of the last applied batches, so a batch sent twice is applied once.
 
 An instrument without an entry takes its owner's default (background_demand.py): 明細 and 五檔 on for a Shioaji stock;
@@ -33,6 +35,7 @@ DEFAULTS: dict[str, Any] = {
     "taiex": True,
     "txf": True,
     "sector": {"enabled": True, "scope": "related"},
+    "odd_lots": False,
     "batches": [],
 }
 
@@ -44,8 +47,10 @@ def defaults() -> dict[str, Any]:
 def read(values: dict[str, Any]) -> dict[str, Any]:
     """Saved preferences as this program reads them. ``txf`` was once ``{on, trade, orderbook, months}`` with the
     TXF months on the 大盤 setting; the name is kept (AGENTS.md 0.3, a saved setting never disappears) and only its
-    ``on`` -- the TXFR1 Quote -- is read: the months are the TXF product's now."""
+    ``on`` -- the TXFR1 Quote -- is read: the months are the TXF product's now. A revision saved before ``odd_lots``
+    existed has it off, its default."""
     out = copy.deepcopy(values)
+    out.setdefault("odd_lots", DEFAULTS["odd_lots"])
     if isinstance(out.get("txf"), dict):
         out["txf"] = bool(out["txf"].get("on"))
     return out
@@ -128,6 +133,8 @@ def validate(values: dict[str, Any]) -> list[dict[str, Any]]:
         problems.append(_problem("TAIEX", "taiex must be a JSON boolean"))
     if not isinstance(values.get("txf"), bool):
         problems.append(_problem("TXF", "txf must be a JSON boolean"))
+    if not isinstance(values.get("odd_lots", DEFAULTS["odd_lots"]), bool):
+        problems.append(_problem("ODD_LOTS", "odd_lots must be a JSON boolean"))
     sector = values.get("sector")
     if (not isinstance(sector, dict) or set(sector) != {"enabled", "scope"} or not isinstance(sector.get("enabled"), bool)
             or sector.get("scope") not in SCOPES):

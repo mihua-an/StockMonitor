@@ -6,7 +6,7 @@ import { computeFreshnessBanner, createFreshnessBannerDebouncer, recordFreshness
 import { setWebSocketFreshness } from "../../core/status.js";
 import { eventEpochMs } from "../../market_data/realtime_market_math.js";
 import { industryIndexStore } from "./industry_index_store.js";
-import { benchmarkViewSpec, stockCanonicalViewSpec as sharedStockCanonicalViewSpec } from "../../market_data/stock_view_spec.js";
+import { benchmarkViewSpec, hasOddLots, oddLotViewSpec, stockCanonicalViewSpec as sharedStockCanonicalViewSpec } from "../../market_data/stock_view_spec.js";
 import { industryIndexViewSpec } from "./industry_index_view_model.js";
 import { detailTargetCode, liveMarketDataGateway, realtimePageVisible, restoredMarketPanelState, viewResources } from "./live_page_state.js";
 
@@ -324,6 +324,29 @@ export function stockCanonicalViewSpec(code) {
   let spec = stockViewSpecs.byCode.get(normalized);
   if (!spec) { spec = Object.freeze(sharedStockCanonicalViewSpec(normalized, tradingDate, futures)); stockViewSpecs.byCode.set(normalized, spec); }
   return spec;
+}
+
+// 買賣報價's 零股／整張 (docs/decisions.md 零股行情的顯示): whether 買賣報價 and 成交明細 show the detail stock's 盤中零股.
+// Off when the page starts; a product without odd lots shows its own whatever it is.
+export let oddLotShown = false;
+export function setOddLotShown(on) {
+  oddLotShown = Boolean(on);
+}
+
+// One frozen 盤中零股 spec per stock and trading date, as stockCanonicalViewSpec.
+const oddLotViewSpecs = { key: null, byCode: new Map() };
+function oddLotCanonicalViewSpec(code) {
+  const tradingDate = String(realtimeDisplayContext?.equity?.trading_date || "").slice(0, 10);
+  const normalized = String(code || "").trim().toUpperCase();
+  if (oddLotViewSpecs.key !== tradingDate) { oddLotViewSpecs.key = tradingDate; oddLotViewSpecs.byCode.clear(); }
+  let spec = oddLotViewSpecs.byCode.get(normalized);
+  if (!spec) { spec = Object.freeze(oddLotViewSpec(normalized, tradingDate)); oddLotViewSpecs.byCode.set(normalized, spec); }
+  return spec;
+}
+
+/** The view 買賣報價 and 成交明細 read for `code`: its 盤中零股 while 零股 is shown and it has odd lots, else its own. */
+export function detailBookViewSpec(code) {
+  return oddLotShown && hasOddLots(code) ? oddLotCanonicalViewSpec(code) : stockCanonicalViewSpec(code);
 }
 
 export function taiexCanonicalViewSpec() {

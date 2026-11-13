@@ -126,6 +126,33 @@ def test_the_detail_and_book_switches_set_each_instruments_kinds(state):
     assert items_of(state)["2330"]["owners"] == ["holdings", "watchlist"] and items_of(state)["2330"]["kinds"] == ["trade"]
 
 
+def test_the_odd_lots_switch_lists_the_product_pages_stocks_odd_lots_as_spare(state):
+    # User 11-14: the product pages' stocks keep their 盤中零股 from before the open, only into the room left.
+    def odd(items):
+        return {code[4:]: i for code, i in ((f"{i['market']}:{i['code']}", i) for i in items.values()) if code.startswith("ODD:")}
+
+    latest = lambda: {f"{i['market']}:{i['code']}": i for i in ConfigRevisionStore(state.config, "background").latest()["values"]["items"]}
+    assert state.state.snapshot()["preferences"]["odd_lots"] is False, "off by default"
+    used_before = state.state.apply(ops("0", {"op": "page.rename", "page_id": "p1", "name": "x"}))["quota"]["shioaji"]["used"]
+    result = state.state.apply(ops("1", {"op": "odd_lots.set", "value": True}))
+    assert result["ok"] and result["preferences"]["odd_lots"] is True
+    items = latest()
+    assert sorted(k for k in items if k.startswith("ODD:")) == ["ODD:2317", "ODD:2330"], "the Shioaji page's stocks, no Futu"
+    assert items["ODD:2330"]["spare"] is True and items["ODD:2330"]["kinds"] == ["trade", "orderbook"]
+    assert items["ODD:2330"]["owners"] == ["odd_lots"] and "spare" not in items["STK:2330"]
+    quota = result["quota"]["shioaji"]
+    assert quota["used"] == used_before and quota["spare"] == {"instruments": 2, "streams": 4}, "never against the share"
+    # A paper order's own odd-lot claim makes it no spare: B matches on it.
+    bd.replace_owner(state.config, "paper_orders", bd.paper_order_items([("2330", True)]), summary="t")
+    assert "spare" not in latest()["ODD:2330"] and latest()["ODD:2330"]["owners"] == ["odd_lots", "paper_orders"]
+    bd.replace_owner(state.config, "paper_orders", [], summary="t")
+    # Off: the odd lots leave the list.
+    state.state.apply(ops("2", {"op": "odd_lots.set", "value": False}))
+    assert not any(k.startswith("ODD:") for k in latest())
+    refused = state.state.apply(ops("3", {"op": "odd_lots.set", "value": "yes"}))
+    assert refused["ok"] is False
+
+
 def test_a_switch_holds_for_a_stock_several_owners_keep(state):
     # 2330 on a page and in the holdings, both claiming 明細＋五檔; then 五檔 off: no owner's earlier claim keeps it.
     state.holdings.append({"market": "台股", "code": "2330"})
@@ -136,7 +163,7 @@ def test_a_switch_holds_for_a_stock_several_owners_keep(state):
     from service.market.reference import background_demand as bd_module
 
     # The paper orders' own claim still brings the book back: B matches on it.
-    bd_module.replace_owner(state.config, "paper_orders", bd_module.paper_order_items(["2330"]), summary="t")
+    bd_module.replace_owner(state.config, "paper_orders", bd_module.paper_order_items([("2330", False)]), summary="t")
     assert items_of(state)["2330"]["kinds"] == ["trade", "orderbook"]
 
 

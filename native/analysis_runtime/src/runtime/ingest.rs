@@ -168,6 +168,14 @@ pub(crate) fn refuse_old_format(shared: &Shared, sequence: Option<u64>, reason: 
 /// One event into the engine, the feature fold and the paper desk, by how Market Runtime keeps it (`lane`): an
 /// unlisted stock's into the shown overlays only (engine::LiveOverlay), never into the paper desk or the capture.
 pub(crate) fn apply_event(shared: &Shared, local: &mut Local, event: &MarketEvent, lane: Lane, touched: &mut Vec<KeyId>) {
+    // 盤中零股 is read by the paper desk's odd-lot matching alone: never the stock's analysis, features or samples.
+    if market_runtime::rollover::is_odd_lot(&event.provider, &event.market) {
+        local.engine.note_unanalysed(event);
+        if lane == Lane::Durable {
+            local.paper.apply(event, event.durable_sequence);
+        }
+        return;
+    }
     let rolled = local.engine.is_rolled_event(event);
     if lane == Lane::Unlisted {
         local.engine.apply_live_only(event);

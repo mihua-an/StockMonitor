@@ -40,7 +40,7 @@ assert.equal(realtimeViewSpecKey(quoteStoreSpec), realtimeViewSpecKey(focusedSpe
   const python = readFileSync(new URL('../service/market/shared/session_identity_contract.py', import.meta.url), 'utf8');
   const walTable = python.match(/^_WAL_SESSIONS = \{(.*)\}$/m)?.[1] || '';
   const entries = [...walTable.matchAll(/\("(\w+)", "(\w+)"\): "(\w+)"/g)].map(([, source, market, session]) => [source, market, session]);
-  assert.deepEqual(entries, [['shioaji', 'STK', 'DAY'], ['shioaji', 'IDX', 'DAY']], 'the Python WAL table');
+  assert.deepEqual(entries, [['shioaji', 'STK', 'DAY'], ['shioaji', 'ODD', 'DAY'], ['shioaji', 'IDX', 'DAY']], 'the Python WAL table');
   for (const [source, market, session] of entries) {
     assert.equal(normalizeRealtimeViewSpec({ source, market, code: 'X' }).session, session, `${source} ${market} follows the WAL table`);
   }

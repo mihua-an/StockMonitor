@@ -16,7 +16,7 @@
 //   2. the caller's candidates, in the order given (put catalog-joined names before live ones);
 //   3. the code, only when nothing better is known.
 // A Shioaji "name" equal to its code is not a name and never counts. That rule is Shioaji-only on
-// purpose: a Futu product's ticker is a legitimate display name.
+// purpose: a Futu product's ticker is a legitimate display name when the catalog has none.
 
 import { beginRemediation } from "./remediation.js";
 
@@ -156,12 +156,12 @@ function learn(source, answer, codes) {
   return changed;
 }
 
-/** Asks the catalog for the names of these codes, those not known at the current revision. Only Shioaji: a Futu
- *  view passes its ticker, already a name. */
+/** Asks the catalog for the names of these codes, those not known at the current revision (Shioaji's and Futu's:
+ *  the catalog names both, 台積電 for 2330 and SpaceX for US.SPCX). */
 export function requestInstrumentNames(source, codes) {
   bind();
   const wanted = String(source || "shioaji").trim().toLowerCase();
-  if (!NAMES || wanted !== "shioaji") return;
+  if (!NAMES || !["shioaji", "futu"].includes(wanted)) return;
   const now = Date.now();
   const ask = [...new Set((Array.isArray(codes) ? codes : [codes]).map((code) => String(code || "").trim().toUpperCase()).filter(Boolean))]
     .filter((code) => {

@@ -1,5 +1,5 @@
 // 設定 → 訂閱管理: what Shioaji and Futu keep subscribed -- 大盤 (加權指數, 台指期's TXFR1 Quote), every product of the
-// product pages and holdings with its 明細／五檔／期貨 and months (台指期、小台指 are products with only months), the 產業指數, and the Futu products -- with the
+// product pages and holdings with its 現貨 (明細＋五檔 as one switch)／期貨 and months (台指期、小台指 are products with only months), the 產業指數, and the Futu products -- with the
 // quota they take. The same pages and 訂閱偏好 as the 商品頁設定 window (decisions.md 訂閱清單在兩個地方管理):
 // settings_api is their one writer (POST /api/subscriptions/ops), this page sends only what it changed, and every
 // row, quota and sector list it draws is the server's (GET /api/subscriptions, or the answer to the last change). A
@@ -9,13 +9,13 @@
 import { apiGet, apiJsonPost } from "../core/api.js";
 import { escapeHtml } from "../core/utility.js";
 import { morphInto } from "../core/dom_morph.js";
-import { setNote, showToast } from "../core/settings_ui.js";
+import { setNote, showToast, syncSegmented } from "../core/settings_ui.js";
 import { createExpandMotion } from "../core/expand_motion.js";
 import { addOrMergeItem, normalizeItem } from "../features/watch_pages/watch_page_draft.js";
 import { opsBatch } from "../features/watch_pages/watch_page_ops.js";
 import {
-  contextOf, createDraft, draftOpsOf, laneOf, rowKey, rows, sectorOf, setContext, setFutures, setLane,
-  setSector, toggleMonth,
+  contextOf, createDraft, draftOpsOf, laneOf, oddLotsOf, rowKey, rows, sectorOf, setContext, setFuturesOn, setOddLots, setSector,
+  setSpot, spotOn, toggleMonth,
 } from "../features/subscriptions/subscription_draft.js";
 
 const $ = (id) => document.getElementById(id);
@@ -29,6 +29,11 @@ let pendingRemove = null;   // { key, pages: Set }: ✕ pressed, waiting for the
 const searchResults = { shioaji: [], futu: [] };
 const searchGeneration = { shioaji: 0, futu: 0 };
 let unsubscribe = null;
+// The connection slots below the quota are a subscription PLAN (how the demand is split across 永豐 logins), not live
+// connections. Read the broker link and whether its SDK is installed alongside it, so a not-connected or SDK-missing
+// state says so instead of reading as active connections that never arrive (user 11-13).
+let shioajiConnected = null;    // null = unknown, from GET /api/shioaji/status
+let shioajiSdkInstalled = null; // null = unknown, from Health's import probe (getProviderSdkStatus)
 
 function recordFailure(operation, target, detail) {
   console.warn(`[settings/subscriptions: ${operation} ${target}] failed`, detail);
@@ -67,17 +72,26 @@ function renderQuota() {
   $("subShioajiUsed").textContent = s.used;
   $("subShioajiLimit").textContent = s.limit;
   bar($("subShioajiBar"), { trade: s.trade, orderbook: s.orderbook, index: s.index, futures: s.futures }, s.limit);
+  // 零股 takes only the room left (never counted above, never refused): how many stocks it asks for.
+  const spare = s.spare?.instruments || 0;
+  const oddNote = $("subOddLotsNote");
+  const oddText = oddLotsOf(draft) && spare ? `${spare} 檔，額度夠才訂` : "額度夠才訂";
+  if (oddNote && oddNote.textContent !== oddText) oddNote.textContent = oddText;
   // Shioaji fills a connection before it opens the next (session.py _pick_connection).
   let left = s.used;
   const conns = Array.from({ length: s.connections }, () => { const n = Math.max(0, Math.min(s.per_connection, left)); left -= n; return n; });
   morphInto($("subShioajiConns"), conns.map((n, i) => `<span class="${n ? "is-on" : ""}"><i class="settings-quota-dot"></i>連線 ${i + 1}${n ? `　${n}` : ""}</span>`).join(""));
+  // The slots are the plan; say when there is no live connection behind them (user 11-13).
+  const note = $("subShioajiNote");
+  if (note) note.textContent = shioajiSdkInstalled === false ? "尚未安裝 SDK（設定 → 券商帳號 安裝），下面是訂閱計畫"
+    : shioajiConnected === false ? "永豐尚未連線，下面是訂閱計畫" : "";
   // Futu against the background share of OpenD's quota, as OpenD said it (unknown while OpenD is not connected);
   // 退訂中 is what OpenD still holds outside the plan until its one-minute minimum is over.
   const f = quota.futu;
   $("subFutuUsed").textContent = f.used;
   $("subFutuLimit").textContent = f.known ? f.limit : "—";
-  $("subFutuNote").textContent = !f.known ? "OpenD 未連線，額度未知"
-    : `OpenD 額度 ${f.streams}${f.used_by_others ? `（其他連線用 ${f.used_by_others}）` : ""}${f.draining ? `・退訂中 ${f.draining}` : ""}`;
+  // Only what the number does not say: OpenD not connected, or 退訂中 (the total is not repeated, user 11-14).
+  $("subFutuNote").textContent = !f.known ? "OpenD 未連線，額度未知" : f.draining ? `退訂中 ${f.draining}` : "";
   bar($("subFutuBar"), { base: f.base, trade: f.trade, orderbook: f.orderbook, draining: f.draining }, f.known ? f.limit : f.used);
 }
 
@@ -90,16 +104,17 @@ function monthPills(key, months, chosen) {
     : `<button type="button" class="settings-pill is-accent${chosen.has(m) ? " is-active" : ""}" data-sub-month="${escapeHtml(key)}" data-month="${m}" aria-pressed="${chosen.has(m)}">${monthLabel(m)}</button>`)).join("");
 }
 
-function lanePills(attrs, lane, locked = false) {
-  const lock = locked ? " disabled" : "";
-  return `<button type="button" class="settings-pill${lane.trade ? " is-active" : ""}" ${attrs} data-lane="trade" aria-pressed="${lane.trade}"${lock}>明細</button>`
-    + `<button type="button" class="settings-pill${lane.orderbook ? " is-active" : ""}" ${attrs} data-lane="orderbook" aria-pressed="${lane.orderbook}"${lock}>五檔</button>`;
+// 明細 and 五檔 are one switch: 現貨, or 訂閱 on an index future (台指期、小台指), whose product is its months.
+function spotPill(attrs, lane, label) {
+  const on = spotOn(lane);
+  return `<button type="button" class="settings-pill${on ? " is-active" : ""}" ${attrs} data-spot aria-pressed="${on}"${lane.locked ? " disabled" : ""}>${label}</button>`;
 }
 
 function renderContext() {
   const context = contextOf(draft);
   $("subTaiex").checked = context.taiex;
   $("subTxf").checked = context.txf;
+  $("subOddLots").checked = oddLotsOf(draft);
 }
 
 // The pages a row is on as this window has them (the draft's pages, not only the server's).
@@ -122,7 +137,7 @@ function rowHtml(row) {
   const lane = laneOf(draft, row);
   const futu = row.source === "futu";
   const fut = lane.futures;
-  // An index future (台指期、小台指): the product is its months, always shown; its 明細／五檔 are the row's own.
+  // An index future (台指期、小台指): the product is its months, always shown; its 訂閱 is the row's own switch.
   const indexFuture = Boolean(row.index_futures);
   const onPages = pagesWith(row).length;
   const unsubscribed = !lane.trade && !lane.orderbook && !lane.locked && !futu;
@@ -132,12 +147,11 @@ function rowHtml(row) {
     + `<span class="settings-item-main"><span class="settings-item-code">${escapeHtml(row.code)}</span><b>${escapeHtml(row.name)}</b>`
     + (unsubscribed ? `<span class="settings-item-value">未訂閱</span>` : "")
     + (futu && drainingCodes().has(row.code) ? `<span class="settings-item-value">1 分鐘後退訂</span>` : "") + `</span>`
-    + `<span class="settings-pills">${futButton}${lanePills(`data-row="${escapeHtml(key)}"`, lane, lane.locked)}</span>`
+    + `<span class="settings-pills">${futButton}${spotPill(`data-row="${escapeHtml(key)}"`, lane, indexFuture ? "訂閱" : "現貨")}</span>`
     + `<button type="button" class="settings-icon-btn is-danger" data-remove-row="${escapeHtml(key)}" ${onPages ? 'aria-label="從商品頁移除"' : "disabled"}>✕</button></div>`;
   if (fut && (fut.on || motion.closing(key))) {
     html += `<div class="settings-item-sub" data-sub-key="${escapeHtml(key)}" data-morph-key="sub:${escapeHtml(key)}">`
       + monthPills(key, fut.months_listed || [], fut.months)
-      + (indexFuture ? "" : `<span class="settings-sub-actions">${lanePills(`data-row="${escapeHtml(key)}" data-futures-lane="1"`, fut)}</span>`)
       + `</div>`;
   }
   return html + removePicker(row);
@@ -207,6 +221,23 @@ async function load(gen = generation) {
   if (!snapshot || snapshot.ok === false) throw new Error(snapshot?.message || snapshot?.error || "設定服務沒有回應");
   draft = createDraft(snapshot);
   render();
+  loadShioajiLink(gen);
+}
+
+// The broker link and SDK-install state for the quota note. Read after the plan so the page shows at once; a failure
+// leaves the note blank (unknown), never a wrong "connected". The note is redrawn when the answers arrive.
+async function loadShioajiLink(gen) {
+  const [statusResult, sdkResult] = await Promise.allSettled([
+    apiGet("/api/shioaji/status"),
+    Promise.resolve(window.desktopAPI?.getProviderSdkStatus?.() || null),
+  ]);
+  if (gen !== generation) return;
+  if (statusResult.status === "rejected") recordFailure("reading", "GET /api/shioaji/status", statusResult.reason);
+  const status = statusResult.status === "fulfilled" ? statusResult.value : null;
+  shioajiConnected = status && status.ok !== false && typeof status.shioaji_connected === "boolean" ? status.shioaji_connected : null;
+  const sdk = sdkResult.status === "fulfilled" ? sdkResult.value : null;
+  shioajiSdkInstalled = typeof sdk?.providers?.shioaji?.installed === "boolean" ? sdk.providers.shioaji.installed : null;
+  if (draft) renderQuota();
 }
 
 /** What the screen has changed, applied now; the answer is the new state. A refused change is taken back. */
@@ -273,25 +304,45 @@ function rowByKey(key) {
   return rows(draft).find((row) => rowKey(row) === key);
 }
 
+// The list shown: 台股 (永豐) or 美股與加密貨幣 (富途). 全部開啟 is the 台股 list's.
+let shownSource = "shioaji";
+
+function showSource(source) {
+  shownSource = source === "futu" ? "futu" : "shioaji";
+  const seg = $("subSourceSeg");
+  for (const button of seg?.querySelectorAll("[data-sub-source]") || []) {
+    const active = button.dataset.subSource === shownSource;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  }
+  for (const list of document.querySelectorAll("[data-sub-list]")) list.hidden = list.dataset.subList !== shownSource;
+  const allOn = $("subStockAllOn");
+  if (allOn) allOn.hidden = shownSource !== "shioaji";
+  syncSegmented(seg);
+}
+
 function onClick(event) {
   const target = event.target.closest("button");
   if (!target || target.disabled) return;
+  // Switching the list shown changes no subscription.
+  if (target.dataset.subSource) {
+    showSource(target.dataset.subSource);
+    return;
+  }
   const pressed = { id: target.id, d: { ...target.dataset } };
   enqueue("saving", "POST /api/subscriptions/ops", () => applyClick(pressed));
 }
 
 function applyClick({ id, d }) {
   if (!draft) return undefined;
-  if (d.lane && d.row) {
+  if (d.spot !== undefined && d.row) {
     const row = rowByKey(d.row);
-    const lane = laneOf(draft, row);
-    if (d.futuresLane) setFutures(draft, row, d.lane, !lane.futures[d.lane]);
-    else setLane(draft, row, d.lane, !lane[d.lane]);
+    setSpot(draft, row, !spotOn(laneOf(draft, row)));
   } else if (d.futures) {
     const row = rowByKey(d.row);
     const on = !laneOf(draft, row).futures.on;
     if (!motion.start(d.row, on)) return undefined;
-    setFutures(draft, row, "on", on);
+    setFuturesOn(draft, row, on);
   } else if (d.subMonth) {
     toggleMonth(draft, rowByKey(d.subMonth), d.month);
   } else if (d.removeRow) {
@@ -318,8 +369,7 @@ function applyClick({ id, d }) {
   } else if (id === "subStockAllOn") {
     for (const row of rows(draft, "shioaji")) {
       if (row.market !== "STK") continue;
-      setLane(draft, row, "trade", true);
-      setLane(draft, row, "orderbook", true);
+      setSpot(draft, row, true);
     }
   } else return undefined;
   return edited();
@@ -327,11 +377,12 @@ function applyClick({ id, d }) {
 
 function onChange(event) {
   const { id, checked } = event.target;
-  if (!["subTaiex", "subTxf", "subSector"].includes(id)) return;
+  if (!["subTaiex", "subTxf", "subSector", "subOddLots"].includes(id)) return;
   enqueue("saving", "POST /api/subscriptions/ops", () => {
     if (!draft) return undefined;
     if (id === "subTaiex") setContext(draft, "taiex", checked);
     else if (id === "subTxf") setContext(draft, "txf", checked);
+    else if (id === "subOddLots") setOddLots(draft, checked);
     else setSector(draft, { ...sectorOf(draft), enabled: checked });
     return edited();
   });
@@ -343,6 +394,7 @@ export function initSubscriptionSettings() {
   if (!panel) return;
   panel.addEventListener("click", onClick);
   panel.addEventListener("change", onChange);
+  showSource(shownSource);
   for (const [id, source] of [["subStockFilter", "shioaji"], ["subFutuFilter", "futu"]]) {
     $(id)?.addEventListener("input", () => { render(); void searchCatalog(source); });
   }
@@ -351,6 +403,12 @@ export function initSubscriptionSettings() {
     enqueue("reading", "GET /api/subscriptions (after another window saved)", () => load());
   }) || null;
   enqueue("reading", "GET /api/subscriptions", () => load());
+}
+
+/** The panel was shown (settings.js): the list switch's sliding background is placed now that it has a size -- a
+ *  hidden switch has none to measure. */
+export function subscriptionSettingsShown() {
+  syncSegmented($("subSourceSeg"));
 }
 
 export function disposeSubscriptionSettings() {

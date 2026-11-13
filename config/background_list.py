@@ -45,6 +45,8 @@ def validate_background(values: dict[str, Any]) -> list[dict[str, Any]]:
             problems.append(_problem("UNKNOWN_KIND", f"kinds must be within {sorted(KINDS)}", index=i))
         elif len(set(kinds)) != len(kinds):
             problems.append(_problem("REPEATED_KIND", "kinds names a kind twice", index=i))
+        if not isinstance(item.get("spare", False), bool):
+            problems.append(_problem("INVALID_SPARE", "spare must be a JSON boolean", index=i))
         # Each owner's claim (background_demand.merge): owner -> the kinds it wants.
         claims = item.get("claims", {})
         if not isinstance(claims, dict) or any(not isinstance(k, list) or not set(k) <= KINDS for k in claims.values()):

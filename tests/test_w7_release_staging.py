@@ -28,10 +28,12 @@ def test_bundled_locks_carry_no_broker_sdk_and_include_the_model_chain():
 def test_provider_sdk_lists_hold_only_what_the_bundle_lacks():
     stage = _load("stage_python_runtime")
     sdk = stage.provider_sdk_requirements()
-    names = {provider: {line.split("==")[0] for line in lines} for provider, lines in sdk.items()}
+    names = {provider: set(lines) for provider, lines in sdk.items()}
     assert names["shioaji"] == {"shioaji"}
     assert "moomoo-api" in names["futu"] and "protobuf" not in names["futu"]  # protobuf is bundled (onnx)
-    assert all("--hash=sha256:" in line for lines in sdk.values() for line in lines)
+    # Bare package names, not pinned lines: the broker SDK is installed latest from PyPI, unpinned (decisions.md
+    # 券商 SDK 裝最新不綁版本). `pip install --no-deps` of these names finds every other dependency in the bundle.
+    assert all("==" not in name and "--hash" not in name for lines in sdk.values() for name in lines)
 
 
 def test_a_bundled_lock_that_pins_a_broker_sdk_is_refused(monkeypatch, tmp_path):

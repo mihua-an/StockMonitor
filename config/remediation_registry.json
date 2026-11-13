@@ -509,6 +509,16 @@
       "trigger_reasons": ["unsubscribe_failed"],
       "emission": ["service/market/futu/subscriptions.py"]
     },
+    "provider.futu_trend_backfill": {
+      "s1": null,
+      "label": "盤中才訂閱的富途商品補當天走勢",
+      "owner": "Futu provider",
+      "component": "futu_trend_backfill",
+      "zero_expected": false,
+      "description": "A Futu code that joins the subscription plan while the provider runs (the user added it, a view opened it) only receives RT_DATA minute bars from the subscription on, so its 個股走勢 had nothing before it. Its earlier today 分時 is read once from OpenD (get_rt_data, the same rows as the push) and published as backfill minute bars (flags.backfill), which Rust B keeps strictly before the cut-off where the live stream takes over. Not an error when the user added the instrument; the first plan the provider receives (what was subscribed before it started, sent again on an App restart) is not read; one operation per code each time it joins the plan, succeeded with the minutes published or failed.",
+      "trigger_reasons": ["late_join"],
+      "emission": ["service/market/futu/trend_backfill.py"]
+    },
     "client.futu_daemon_attach": {
       "s1": "S1-19",
       "label": "API 連接 Futu 重試",

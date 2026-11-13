@@ -269,12 +269,18 @@
   border-color: var(--blue-400);
 }
 
+/* One set of columns for every row (each result is a subgrid of it): the code column is as wide as the longest code
+   shown (CC.BANDUSDT), never narrower than a four-digit stock code, so a long code never runs into its name. */
 .product-quote-search-results {
   position: absolute;
   z-index: 60;
   top: calc(100% + 3px);
   left: 0;
+  display: grid;
+  grid-template-columns: minmax(7ch, max-content) 1fr auto;
+  column-gap: 8px;
   min-width: 240px;
+  font-size: 12px;
   max-height: 280px;
   overflow-y: auto;
   background: var(--blue-900x-7);
@@ -287,15 +293,16 @@
 }
 
 .product-quote-search-result {
+  grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: 7ch 1fr auto;
-  gap: 8px;
+  grid-template-columns: subgrid;
   width: 100%;
   padding: 4px 8px;
   border: 0;
   background: transparent;
   color: var(--blue-100x-4);
-  font-size: 12px;
+  /* The App's font, not the button default (Arial). */
+  font: inherit;
   text-align: left;
   cursor: pointer;
 }
@@ -312,6 +319,7 @@
 }
 
 .product-quote-search-empty {
+  grid-column: 1 / -1;
   padding: 6px 8px;
   color: var(--slate-400);
   font-size: 12px;

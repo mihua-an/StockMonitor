@@ -4,8 +4,8 @@
 
 .DESCRIPTION
   The installer does not contain the broker SDKs: their redistribution terms are not confirmed, so you download
-  them yourself from PyPI. This script uses the app's own bundled Python and pip, installs exactly the versions
-  the app was built and tested with (hash-checked, no dependency resolution: everything else is already bundled),
+  them yourself from PyPI. This script uses the app's own bundled Python and pip, installs the latest version from
+  PyPI (no version pin, no dependency resolution: the bundled runtime already carries everything the SDK needs),
   into your profile -- never into the installation directory.
 
   Default root: %APPDATA%\<installed flavor>\provider-sdk, from installed_flavor.json (the app reads STOCK_MONITOR_PROVIDER_SDK_DIR instead when it
@@ -82,24 +82,21 @@ foreach ($name in $providers) {
   $requirements = Join-Path $runtime "provider_sdk\$name.txt"
   if (-not (Test-Path $requirements)) { throw "找不到 $requirements" }
   $check = $checks[$name]
-  $pinned = (Select-String -Path $requirements -Pattern ("^" + [regex]::Escape($check.dist) + "==([^\s]+)") | Select-Object -First 1)
-  if (-not $pinned) { throw "$requirements 沒有 $($check.dist) 的固定版本" }
-  $version = $pinned.Matches[0].Groups[1].Value
 
   $providerRoot = Join-Path $Target $name
   New-Item -ItemType Directory -Force -Path $providerRoot | Out-Null
   $lock = Open-ProviderInstallLock $providerRoot
   try {
   $stage = New-ProviderStage $providerRoot
-  Write-Host "安裝 $name SDK $version 到 $stage ..."
+  Write-Host "安裝 $name SDK（最新版）到 $stage ..."
   try {
-    & $python -m pip install --no-user --disable-pip-version-check --no-deps --require-hashes --target $stage -r $requirements
+    & $python -m pip install --no-user --disable-pip-version-check --no-deps --target $stage -r $requirements
     if ($LASTEXITCODE -ne 0) { throw "$name SDK 安裝失敗（pip exit $LASTEXITCODE）" }
-    # Imported from the new folder alone, and its version the pinned one: a partial install never becomes active.
+    # Imported from the new folder alone: an install that did not build, or is missing a dependency, never becomes
+    # active. Its version is read for the activation line, not matched against a pin (the newest is what we want).
     $probe = "import sys, importlib, importlib.metadata as m; sys.path.insert(0, sys.argv[1]); importlib.import_module(sys.argv[2]); print(m.version(sys.argv[3]))"
-    $installed = (& $python -c $probe $stage $check.module $check.dist | Select-Object -Last 1)
+    $installed = (& $python -c $probe $stage $check.module $check.dist | Select-Object -Last 1).Trim()
     if ($LASTEXITCODE -ne 0) { throw "$name SDK 安裝後無法匯入（exit $LASTEXITCODE）" }
-    if ("$installed".Trim() -ne $version) { throw "$name SDK 版本 $installed 不是預期的 $version" }
   } catch {
     $failure = $_
     try { Remove-Item -Recurse -Force -LiteralPath $stage -ErrorAction Stop }
@@ -116,7 +113,7 @@ foreach ($name in $providers) {
   Move-Item -LiteralPath $tmp -Destination $active -Force
   Get-ChildItem -LiteralPath $providerRoot -Directory -Filter "v-*" | Where-Object { $_.Name -ne (Split-Path -Leaf $stage) -and $_.Name -ne $previous } |
     ForEach-Object { Remove-Item -Recurse -Force -LiteralPath $_.FullName -ErrorAction Continue }
-  Write-Host "$name SDK $version 已啟用（$(Split-Path -Leaf $stage)）"
+  Write-Host "$name SDK $installed 已啟用（$(Split-Path -Leaf $stage)）"
   } finally {
     $lock.Dispose()
   }

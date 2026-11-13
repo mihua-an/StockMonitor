@@ -67,7 +67,7 @@ function canonicalBookRead(book, source) {
 // The renderer's copy of config/market_timezones.json (the one table; Python loads it, Rust A's offsets are tested
 // against it): the clock a market's trading date, minutes and trade times are read on.
 // tests/renderer_market_timezones_contract.mjs keeps this copy equal to the JSON.
-const MARKET_TIMEZONES = { STK: "Asia/Taipei", IDX: "Asia/Taipei", FUT: "Asia/Taipei", OTC: "Asia/Taipei", TW: "Asia/Taipei",
+const MARKET_TIMEZONES = { STK: "Asia/Taipei", ODD: "Asia/Taipei", IDX: "Asia/Taipei", FUT: "Asia/Taipei", OTC: "Asia/Taipei", TW: "Asia/Taipei",
   US: "America/New_York", HK: "Asia/Hong_Kong", SH: "Asia/Shanghai", SZ: "Asia/Shanghai", CC: "America/New_York" };
 
 export function marketTimezone(market) {

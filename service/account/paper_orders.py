@@ -783,6 +783,10 @@ class PaperOrderDesk:
             command = {"type": "new", "cmd_id": order_id, "order_id": order_id, "accepted_ns": self._clock_ns(), "trading_date": trading_date,
                        "code": code, "side": "buy" if side == "買進" else "sell", "lot": lot, "price_type": price_type, "price": price,
                        "qty": int(qty), "tif": tif}
+            if lot == "odd":
+                # 零股交易 as set when the order is placed: the order is matched so to the end, a rebuild too.
+                settings = capital.read_settings(self.ledger._get_meta, self.ledger.capital_scope)
+                command["odd_matching"] = settings["台股"]["odd_lot_matching"]
             self._check_funds({**command, "reserve_price": reserve_scaled})
             line = dict(command)
             if reserve_scaled:
@@ -999,10 +1003,13 @@ class PaperOrderDesk:
                         "origin": "撮合" if t.get("source") == "paper_match" else "手動"})
         return {"ok": True, "trading_date": trading_date, "fills": out}
 
-    def working_codes(self) -> list[str]:
-        """Codes with an order not finished: their quotes must stay subscribed (background owner paper_orders)."""
+    def working_instruments(self) -> list[tuple[str, bool]]:
+        """(code, odd lots) of every order not finished: the stock's quotes, and for an odd-lot order queued at the odd-lot
+        matches (零股交易 根據實際排隊) its 盤中零股 too (background owner paper_orders)."""
         with self._lock:
-            return sorted({o["command"]["code"] for o in self._working()})
+            out = {(o["command"]["code"], False) for o in self._working()}
+            out |= {(o["command"]["code"], True) for o in self._working() if o["command"].get("odd_matching") == "queue"}
+        return sorted(out)
 
     def funds(self) -> dict[str, Any]:
         """額度 / 交割款 with the working orders' reservation (A3): the ledger's capital block (交割款 by date with the

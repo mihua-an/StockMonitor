@@ -45,7 +45,8 @@ def _load_trading_sessions() -> dict[str, Any]:
 
 TRADING_SESSIONS = _load_trading_sessions()
 
-_WAL_SESSIONS = {("shioaji", "STK"): "DAY", ("shioaji", "IDX"): "DAY"}
+# ODD: a stock's 盤中零股, its own market (service/market/shioaji/subscriptions.py ODD_MARKET).
+_WAL_SESSIONS = {("shioaji", "STK"): "DAY", ("shioaji", "ODD"): "DAY", ("shioaji", "IDX"): "DAY"}
 # Markets stored per business session (DAY / NIGHT) rather than per calendar day.
 _SESSION_PARTITIONED = {("shioaji", "FUT")}
 

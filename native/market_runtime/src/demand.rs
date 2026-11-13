@@ -9,7 +9,7 @@
 //! reported as QUOTA_EXCEEDED, never silently claimed as maintained.
 
 use crate::event::{InstrumentKey, MarketEvent};
-use crate::rollover::{never_stored, stored_per_instrument};
+use crate::rollover::{never_stored, stored_per_instrument, stored_until_materialized};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -39,6 +39,11 @@ pub struct BackgroundItem {
     /// Who keeps it on the list (product pages, holdings, the market context): shown, never interpreted.
     #[serde(default)]
     pub owners: Vec<String>,
+    /// Planned only into the room every other demand leaves (the product pages' 盤中零股 subscribed before the open
+    /// when 訂閱管理 asks for it, user 11-14): it never takes a stream another instrument would use, and when it does not
+    /// fit it is QUOTA_EXCEEDED like any background item.
+    #[serde(default)]
+    pub spare: bool,
 }
 
 fn default_kinds() -> Vec<Kind> {
@@ -101,13 +106,16 @@ pub struct StoragePolicy {
 
 impl StoragePolicy {
     /// How `event` is kept. A never-stored market never is; in a market of individual stocks only an instrument on
-    /// the background list is (the product pages, the holdings, the paper ledger, the market context); indices,
-    /// futures and the market context are stored as before. 盤前試撮 of a stored instrument is shown only.
+    /// the background list is (the product pages, the holdings, the paper ledger, the market context) -- except a
+    /// Shioaji stock and its 盤中零股, written whole while the session runs and sorted out when it is materialized
+    /// (rollover::stored_until_materialized); indices, futures and the market context are stored as before.
+    /// 盤前試撮 of a stored instrument is shown only.
     pub fn classify(&self, event: &MarketEvent) -> Storage {
         if never_stored(&event.provider, &event.market) {
             return Storage::NeverStored;
         }
         let listed = !stored_per_instrument(&event.provider, &event.market)
+            || stored_until_materialized(&event.provider, &event.market)
             || self.listed.as_ref().is_none_or(|listed| listed.contains(&event.symbol));
         match (listed, event.is_preopen_indicative()) {
             (false, _) => Storage::Unlisted,
@@ -169,6 +177,9 @@ pub struct AdapterCapacity {
     pub limit: NonZeroUsize,
     pub kinds: BTreeSet<Kind>,
     pub streams: Option<StreamBudget>,
+    /// `adapter.register` `hold_until_close` (Shioaji): what the plan once carried stays subscribed for the rest of
+    /// its session whatever the screens show next (DemandManager `held`).
+    pub hold_until_close: bool,
 }
 
 impl AdapterCapacity {
@@ -182,11 +193,15 @@ impl AdapterCapacity {
         if kinds.len() != count {
             return Err("kinds names a kind twice".into());
         }
-        Ok(Self { limit, kinds, streams: None })
+        Ok(Self { limit, kinds, streams: None, hold_until_close: false })
     }
 
     pub fn with_streams(self, budget: StreamBudget) -> Self {
         Self { streams: Some(budget), ..self }
+    }
+
+    pub fn holding_until_close(self, hold: bool) -> Self {
+        Self { hold_until_close: hold, ..self }
     }
 
     /// What the plan may spend, in its unit: streams with a budget, instruments without.
@@ -237,6 +252,8 @@ enum Reason {
     Focus,
     View,
     Workspace,
+    /// Nothing asks for it now, but its provider keeps what it subscribed until the session's close.
+    Held,
 }
 
 impl Reason {
@@ -246,6 +263,7 @@ impl Reason {
             Self::Focus => "focus",
             Self::View => "view",
             Self::Workspace => "workspace",
+            Self::Held => "held",
         }
     }
 }
@@ -280,7 +298,31 @@ pub struct DemandManager {
     view_history_waiting: Vec<(InstrumentKey, String, String)>,
     /// Percent of each source's quota kept for focus/views/workspace (the rest may be used by the background list).
     pub view_reserve_percent: usize,
+    /// What a `hold_until_close` provider's plan has carried in the current session (user 11-13: anything subscribed
+    /// during a session stays subscribed until the session is materialized): the kinds it was planned with and when
+    /// it first was. Kept across a restart (`held_wire` / `restore_held`), let go when the session is released or
+    /// rolls over, and -- for an instrument nothing asks for any more -- when the quota is full, oldest first.
+    held: BTreeMap<InstrumentKey, Held>,
+    held_changed: bool,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Held {
+    kinds: Vec<Kind>,
+    since_ns: u64,
+}
+
+/// One held instrument as `<A data dir>/held_subscriptions.json` keeps it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct HeldWire {
+    source: String,
+    market: String,
+    code: String,
+    kinds: Vec<Kind>,
+    since_ns: u64,
+}
+
+pub const HELD_SCHEMA: &str = "held-subscriptions-v1";
 
 impl DemandManager {
     pub fn new() -> Self {
@@ -415,6 +457,7 @@ impl DemandManager {
     /// Everything the engine must keep resident (never evict).
     pub fn pinned(&self) -> BTreeSet<InstrumentKey> {
         let mut out: BTreeSet<InstrumentKey> = self.background.items.iter().map(BackgroundItem::instrument).collect();
+        out.extend(self.held.keys().cloned());
         out.extend(self.views.keys().cloned());
         out.extend(self.workspaces.values().flatten().cloned());
         out.extend(self.focus.values().cloned());
@@ -430,6 +473,11 @@ impl DemandManager {
     /// wants (a Futu product page keeps only quote+trade, and the product the user opens still needs its book). A
     /// view adds none to a listed instrument: every product-list row opens the same full view as the selected product,
     /// and a book for each row is not what the list asks for.
+    /// The background items of `source` planned only into the room left (BackgroundItem::spare).
+    fn spare(&self, source: &str) -> BTreeSet<InstrumentKey> {
+        self.background.items.iter().filter(|i| i.source == source && i.spare).map(BackgroundItem::instrument).collect()
+    }
+
     fn desired(&self, source: &str) -> BTreeMap<InstrumentKey, (BTreeSet<Reason>, Vec<Kind>, u64)> {
         let mut out: BTreeMap<InstrumentKey, (BTreeSet<Reason>, Vec<Kind>, u64)> = BTreeMap::new();
         let mut want = |instrument: InstrumentKey, reason: Reason, kinds: &[Kind], add_kinds: bool, touched: u64| {
@@ -457,12 +505,84 @@ impl DemandManager {
         for instrument in self.workspaces.values().flatten().filter(|k| k.source == source) {
             want(instrument.clone(), Reason::Workspace, &default_kinds(), true, 0);
         }
+        // A held instrument keeps every kind it was planned with, also the ones nothing asks for any more.
+        if self.adapters.get(source).is_some_and(|a| a.capacity.hold_until_close) {
+            for (instrument, held) in self.held.iter().filter(|(k, _)| k.source == source) {
+                want(instrument.clone(), Reason::Held, &held.kinds, true, held.since_ns);
+            }
+        }
         out
     }
 
+    /// The held instruments, to be written beside A's other session files; None when nothing changed since the last
+    /// call.
+    pub fn take_held_wire(&mut self) -> Option<Value> {
+        if !std::mem::take(&mut self.held_changed) {
+            return None;
+        }
+        Some(self.held_wire())
+    }
+
+    pub fn held_wire(&self) -> Value {
+        let held: Vec<HeldWire> = self.held.iter().map(|(k, h)| HeldWire {
+            source: k.source.clone(), market: k.market.clone(), code: k.code.clone(), kinds: h.kinds.clone(), since_ns: h.since_ns,
+        }).collect();
+        json!({"schema": HELD_SCHEMA, "held": held})
+    }
+
+    /// The held instruments a previous run of A wrote. Err: not that document (nothing is restored).
+    pub fn restore_held(&mut self, doc: &Value) -> Result<usize, String> {
+        if doc.get("schema").and_then(Value::as_str) != Some(HELD_SCHEMA) {
+            return Err(format!("schema is not {HELD_SCHEMA}"));
+        }
+        let rows: Vec<HeldWire> = serde_json::from_value(doc.get("held").cloned().unwrap_or(Value::Null)).map_err(|e| e.to_string())?;
+        self.held = rows.into_iter().filter(|r| !r.kinds.is_empty())
+            .map(|r| (InstrumentKey::new(&r.source, &r.market, &r.code), Held { kinds: r.kinds, since_ns: r.since_ns })).collect();
+        Ok(self.held.len())
+    }
+
+    /// Let go of what was held in sessions that have rolled over: an instrument is held for the session it was first
+    /// planned in (`rolled`: every family's cutoff, Engine::rolled). True when anything was let go.
+    pub fn release_rolled(&mut self, rolled: &BTreeMap<String, String>) -> bool {
+        self.release_where(|key, held| {
+            let Some((date, session, _)) = crate::event::wal_partition(&key.source, &key.market, held.since_ns as i64) else { return true };
+            rolled.get(&crate::rollover::family(&key.source, &key.market, session)).is_some_and(|cutoff| date.as_str() < cutoff.as_str())
+        })
+    }
+
+    /// Let go of what was held in one closed session (its materialization is done): every instrument of `markets`
+    /// first planned in that session or an earlier one. True when anything was let go.
+    pub fn release_session(&mut self, source: &str, markets: &[String], trading_date: &str, session: &str) -> bool {
+        self.release_where(|key, held| {
+            if !key.source.eq_ignore_ascii_case(source) || !markets.iter().any(|m| m.eq_ignore_ascii_case(&key.market)) {
+                return false;
+            }
+            match crate::event::wal_partition(&key.source, &key.market, held.since_ns as i64) {
+                Some((date, at, _)) => date.as_str() < trading_date || (date == trading_date && at.eq_ignore_ascii_case(session)),
+                None => true,
+            }
+        })
+    }
+
+    fn release_where(&mut self, gone: impl Fn(&InstrumentKey, &Held) -> bool) -> bool {
+        let before = self.held.len();
+        self.held.retain(|key, held| !gone(key, held));
+        let changed = self.held.len() != before;
+        self.held_changed |= changed;
+        changed
+    }
+
     /// Recompute one source's plan; Some(plan) only when it differs from the last plan sent.
+    #[cfg(test)]
     pub fn plan(&mut self, source: &str) -> Option<Plan> {
+        self.plan_at(source, 0)
+    }
+
+    /// Recompute one source's plan as of `now_ns` (when a newly planned instrument of a `hold_until_close` provider
+    /// starts being held); Some(plan) only when it differs from the last plan sent.
+    pub fn plan_at(&mut self, source: &str, now_ns: u64) -> Option<Plan> {
         let desired = self.desired(source);
+        let spare = self.spare(source);
         let adapter = self.adapters.get(source)?;
         let capacity = &adapter.capacity;
         // Billed in the provider's unit (AdapterCapacity::total / cost): instruments, or streams by each market's lanes.
@@ -473,8 +593,12 @@ impl DemandManager {
         // An instrument the user is looking at (focus, a view, a workspace) is interactive even when it is also on the
         // background list: it competes in the interactive order, never in the background share, which would cut it off.
         // Only background-only instruments take the background share.
-        let interactive_reason = |r: &BTreeSet<Reason>| r.iter().any(|x| *x != Reason::Background);
-        let mut background: Vec<_> = desired.iter().filter(|(_, (r, _, _))| !interactive_reason(r)).collect();
+        let interactive_reason = |r: &BTreeSet<Reason>| r.iter().any(|x| !matches!(x, Reason::Background | Reason::Held));
+        let held_only = |r: &BTreeSet<Reason>| r.iter().all(|x| *x == Reason::Held);
+        // A spare background item nothing else asks for (not looked at, not held) waits for whatever room is left last.
+        let spare_only = |k: &InstrumentKey, r: &BTreeSet<Reason>| spare.contains(k) && r.iter().all(|x| *x == Reason::Background);
+        let mut background: Vec<_> = desired.iter()
+            .filter(|(k, (r, _, _))| !interactive_reason(r) && !held_only(r) && !spare_only(k, r)).collect();
         background.sort_by(|a, b| a.0.cmp(b.0));
         let mut interactive: Vec<_> = desired.iter().filter(|(_, (r, _, _))| interactive_reason(r)).collect();
         // focus first, then the most recently opened views, then workspace members.
@@ -508,6 +632,34 @@ impl DemandManager {
         // Background items beyond their share may still use room the interactive set left free.
         for (instrument, (_, kinds, _)) in background.iter().filter(|(i, _)| !taken.contains(i)) {
             take(instrument, kinds, total, &mut items);
+        }
+        // What is only held takes the room left, the newest first: when the quota is full the oldest goes (FIFO).
+        let mut held: Vec<_> = desired.iter().filter(|(_, (r, _, _))| held_only(r)).collect();
+        held.sort_by(|a, b| b.1 .2.cmp(&a.1 .2).then(a.0.cmp(b.0)));
+        let mut evicted = Vec::new();
+        for (instrument, (_, kinds, _)) in held {
+            if !take(instrument, kinds, total, &mut items) {
+                evicted.push(instrument.clone());
+            }
+        }
+        for (instrument, (r, kinds, _)) in &desired {
+            if spare_only(instrument, r) {
+                take(instrument, kinds, total, &mut items);
+            }
+        }
+        if capacity.hold_until_close {
+            for instrument in evicted {
+                self.held_changed |= self.held.remove(&instrument).is_some();
+            }
+            for (instrument, kinds) in &items {
+                let entry = self.held.entry(instrument.clone()).or_insert_with(|| Held { kinds: Vec::new(), since_ns: now_ns });
+                for kind in kinds {
+                    if !entry.kinds.contains(kind) {
+                        entry.kinds.push(*kind);
+                        self.held_changed = true;
+                    }
+                }
+            }
         }
         let adapter = self.adapters.get_mut(source)?;
         if adapter.plan_generation != 0 && adapter.planned == items {
@@ -667,7 +819,7 @@ mod tests {
     }
 
     fn item(market: &str, code: &str, kinds: &[Kind], owner: &str) -> BackgroundItem {
-        BackgroundItem { source: "shioaji".into(), market: market.into(), code: code.into(), kinds: kinds.to_vec(), owners: vec![owner.into()] }
+        BackgroundItem { source: "shioaji".into(), market: market.into(), code: code.into(), kinds: kinds.to_vec(), owners: vec![owner.into()], spare: false }
     }
 
     #[test]
@@ -735,7 +887,7 @@ mod tests {
         let mut d = DemandManager::new();
         d.register_adapter("futu", cap(25, &[]).with_streams(budget));
         let rows: Vec<BackgroundItem> = (0..40).map(|i| BackgroundItem { source: "futu".into(), market: "US".into(),
-            code: format!("US.S{i:02}"), kinds: vec![Kind::Quote, Kind::Trade], owners: vec!["watchlist".into()] }).collect();
+            code: format!("US.S{i:02}"), kinds: vec![Kind::Quote, Kind::Trade], owners: vec!["watchlist".into()], spare: false }).collect();
         d.replace_background(BackgroundList { revision: Some(1), items: rows }).unwrap();
         d.set_focus("futu", Some(InstrumentKey::new("futu", "CC", "CC.BTC")));
         let plan = d.plan("futu").unwrap();
@@ -766,7 +918,7 @@ mod tests {
     fn bg(codes: &[&str], revision: u64) -> BackgroundList {
         BackgroundList {
             revision: Some(revision),
-            items: codes.iter().map(|c| BackgroundItem { source: "shioaji".into(), market: "STK".into(), code: (*c).into(), kinds: default_kinds(), owners: vec!["watchlist".into()] }).collect(),
+            items: codes.iter().map(|c| BackgroundItem { source: "shioaji".into(), market: "STK".into(), code: (*c).into(), kinds: default_kinds(), owners: vec!["watchlist".into()], spare: false }).collect(),
         }
     }
 
@@ -840,7 +992,7 @@ mod tests {
         let mut d = DemandManager::new();
         d.replace_background(BackgroundList { revision: Some(1), items: ["US.SPCX", "US.TSM"].iter().map(|c| BackgroundItem {
             source: "futu".into(), market: "US".into(), code: (*c).into(), kinds: vec![Kind::Quote, Kind::Trade],
-            owners: vec!["watchlist".into()] }).collect() }).unwrap();
+            owners: vec!["watchlist".into()], spare: false }).collect() }).unwrap();
         d.register_adapter("futu", cap(10, &[]));
         d.register_adapter("shioaji", cap(10, &[]));
         d.view_opened(1, &futu("US.SPCX"), 5);
@@ -933,5 +1085,118 @@ mod tests {
         assert_eq!(d.status()["adapters"]["shioaji"]["limit"], 3);
         assert_eq!(d.status()["adapters"]["shioaji"]["kinds"], json!(["quote"]));
         assert_eq!(d.status()["adapters"]["shioaji"]["connections"], 1);
+    }
+
+    /// 2026-11-13 10:00 Taipei, in nanoseconds: a time inside the STK / ODD / FUT day session.
+    const TEN: u64 = 1_794_535_200_000_000_000;
+
+    fn holding(streams: usize) -> AdapterCapacity {
+        let mut budget = wire(streams, &[("STK", &[(Kind::Trade, 1), (Kind::Orderbook, 1)]), ("ODD", &[(Kind::Trade, 1), (Kind::Orderbook, 1)]),
+                                         ("FUT", &[(Kind::Trade, 1), (Kind::Orderbook, 1)])]);
+        budget.streams = streams;
+        cap(streams, &[]).with_streams(StreamBudget::new(budget).unwrap()).holding_until_close(true)
+    }
+
+    fn codes(plan: &Plan) -> Vec<String> {
+        plan.items.iter().map(|(k, _)| format!("{}:{}", k.market, k.code)).collect()
+    }
+
+    #[test]
+    fn what_a_holding_provider_subscribed_stays_planned_after_the_view_closes() {
+        // User 11-13: anything subscribed during a session stays subscribed until the session is materialized.
+        let mut d = DemandManager::new();
+        d.register_adapter("shioaji", holding(8));
+        d.view_opened(1, &k("2330"), 5);
+        d.set_focus("shioaji", Some(InstrumentKey::new("shioaji", "ODD", "2330")));
+        assert_eq!(codes(&d.plan_at("shioaji", TEN).unwrap()), vec!["ODD:2330", "STK:2330"]);
+        d.view_closed(1, &k("2330"));
+        d.set_focus("shioaji", None);
+        assert!(d.plan_at("shioaji", TEN + 1).is_none(), "nothing asks for them, and both stay");
+        let status = d.status();
+        let row = status["instruments"].as_array().unwrap().iter().find(|r| r["market"] == "ODD").unwrap().clone();
+        assert_eq!((row["reasons"].clone(), row["planned"].clone()), (json!(["held"]), json!(true)));
+        assert!(d.pinned().contains(&k("2330")), "a held instrument stays resident");
+
+        // A provider that does not hold lets a closed view go, as before.
+        let mut d = DemandManager::new();
+        d.register_adapter("futu", cap(8, &[]));
+        let aapl = InstrumentKey::new("futu", "US", "US.AAPL");
+        d.view_opened(1, &aapl, 5);
+        assert_eq!(d.plan_at("futu", TEN).unwrap().items.len(), 1);
+        d.view_closed(1, &aapl);
+        assert!(d.plan_at("futu", TEN + 1).unwrap().items.is_empty());
+    }
+
+    #[test]
+    fn a_full_quota_lets_the_oldest_held_instrument_go_first() {
+        let mut d = DemandManager::new();
+        d.register_adapter("shioaji", holding(4));
+        for (n, code) in ["1101", "1102"].iter().enumerate() {
+            d.set_focus("shioaji", Some(k(code)));
+            d.plan_at("shioaji", TEN + n as u64);
+        }
+        d.set_focus("shioaji", Some(k("1103")));
+        let plan = d.plan_at("shioaji", TEN + 9).unwrap();
+        assert_eq!(codes(&plan), vec!["STK:1103", "STK:1102"], "4 streams: the focus, then the newer of the two held");
+        // The one let go is not held any more: room freed later does not bring it back.
+        d.set_focus("shioaji", None);
+        d.set_adapter_capacity("shioaji", holding(8));
+        assert_eq!(codes(&d.plan_at("shioaji", TEN + 10).unwrap()), vec!["STK:1103", "STK:1102"]);
+    }
+
+    #[test]
+    fn held_instruments_survive_a_restart_and_go_when_their_session_is_released_or_rolls_over() {
+        let mut d = DemandManager::new();
+        d.register_adapter("shioaji", holding(8));
+        d.set_focus("shioaji", Some(k("2330")));
+        d.plan_at("shioaji", TEN);
+        let saved = d.take_held_wire().expect("a new held instrument is written");
+        assert!(d.take_held_wire().is_none(), "written once per change");
+
+        // A restart: nothing asks for 2330, and the provider is told to subscribe it again.
+        let mut again = DemandManager::new();
+        assert_eq!(again.restore_held(&saved), Ok(1));
+        assert!(again.restore_held(&json!({"schema": "other"})).is_err());
+        again.register_adapter("shioaji", holding(8));
+        assert_eq!(codes(&again.plan_at("shioaji", TEN + 5).unwrap()), vec!["STK:2330"]);
+
+        // Another market's release, or an earlier date's, leaves it; its own session's lets it go.
+        assert!(!again.release_session("shioaji", &["FUT".into()], "2026-11-13", "DAY"));
+        assert!(!again.release_session("shioaji", &["STK".into()], "2026-11-12", "DAY"));
+        assert!(again.release_session("shioaji", &["STK".into(), "ODD".into()], "2026-11-13", "DAY"));
+        assert!(again.plan_at("shioaji", TEN + 6).unwrap().items.is_empty());
+
+        // Rollover: held for the 11-13 session, gone once the family's cutoff is the next day.
+        let mut rolled = DemandManager::new();
+        rolled.restore_held(&saved).unwrap();
+        let cutoff = |date: &str| BTreeMap::from([(crate::rollover::family("shioaji", "STK", "DAY"), date.to_string())]);
+        assert!(!rolled.release_rolled(&cutoff("2026-11-13")));
+        assert!(rolled.release_rolled(&cutoff("2026-11-16")));
+        assert!(rolled.pinned().is_empty());
+    }
+
+    #[test]
+    fn a_spare_item_takes_only_the_room_every_other_demand_leaves() {
+        // User 11-14: the product pages' 盤中零股 subscribed before the open, only when the quota has room for it.
+        let mut d = DemandManager::new();
+        d.view_reserve_percent = 0;
+        d.register_adapter("shioaji", holding(6));
+        let odd = |code: &str| BackgroundItem { spare: true, ..item("ODD", code, &[Kind::Trade, Kind::Orderbook], "odd_lots") };
+        d.replace_background(BackgroundList { revision: Some(1), items: vec![
+            odd("1101"), odd("1102"), item("STK", "2330", &[Kind::Trade, Kind::Orderbook], "watchlist")] }).unwrap();
+        d.set_focus("shioaji", Some(k("2454")));
+        // 6 streams: the listed stock and the focus first (4), then one spare odd lot (2); the other does not fit.
+        assert_eq!(codes(&d.plan_at("shioaji", TEN).unwrap()), vec!["STK:2330", "STK:2454", "ODD:1101"]);
+        let status = d.status();
+        let state = |market: &str, code: &str| status["instruments"].as_array().unwrap().iter()
+            .find(|r| r["market"] == market && r["code"] == code).unwrap()["state"].clone();
+        assert_eq!(state("ODD", "1102"), "QUOTA_EXCEEDED");
+        // The same odd lot also looked at is no spare: it competes as what the user looks at.
+        d.set_focus("shioaji", Some(InstrumentKey::new("shioaji", "ODD", "1102")));
+        let plan = codes(&d.plan_at("shioaji", TEN + 1).unwrap());
+        assert!(plan.contains(&"ODD:1102".to_string()) && plan.contains(&"STK:2330".to_string()), "{plan:?}");
+        // A list saved before the field existed reads as not spare.
+        let parsed: BackgroundItem = serde_json::from_value(json!({"source": "shioaji", "market": "STK", "code": "2330"})).unwrap();
+        assert!(!parsed.spare);
     }
 }

@@ -161,7 +161,12 @@ pub(crate) fn roll_over(hub: &Arc<Hub>, now: i64) -> Option<usize> {
         (gone.len() + projected.len(), json!(engine.rolled()), json!(engine.cleared()), Arc::new(moved))
     };
     // Before B hears of the rollover: its prune reads these cutoffs.
-    write_cutoffs(&hub.config, &serde_json::from_value(rolled.clone()).unwrap_or_default());
+    let cutoffs: BTreeMap<String, String> = serde_json::from_value(rolled.clone()).unwrap_or_default();
+    write_cutoffs(&hub.config, &cutoffs);
+    // What was held subscribed for a session that just rolled over is let go.
+    if lock(&hub.demand).release_rolled(&cutoffs) {
+        crate::server::session::replan(hub);
+    }
     let session = session_current(hub);
     let bytes = Arc::new(rollover_notice(&rolled, &cleared, session).to_string().into_bytes());
     broadcast_role(hub, |c| c.role == Role::AnalysisRuntime, Outgoing { kind: OutKind::Adapter, bytes: bytes.clone(), trace: None });

@@ -135,11 +135,28 @@ pub(crate) use crate::config_store::{read_active_revision, RevisionRead};
 /// The sessions the checkpointed cutoffs show opened: a Shioaji day family at a date means that day opened, the
 /// futures NIGHT family the night.
 pub(crate) fn opened_from_rolled(rolled: &BTreeMap<String, String>, opened: &mut Opened) {
-    for (market, session, group) in [("STK", "DAY", OpeningGroup::Day), ("IDX", "DAY", OpeningGroup::Day),
-                                     ("FUT", "DAY", OpeningGroup::Day), ("FUT", "NIGHT", OpeningGroup::Night)] {
+    let day = rollover::SHIOAJI_DAY_MARKETS.iter().map(|market| (*market, "DAY", OpeningGroup::Day));
+    for (market, session, group) in day.chain([("FUT", "NIGHT", OpeningGroup::Night)]) {
         if let Some(date) = rolled.get(&rollover::family("shioaji", market, session)) {
             opened.advance(group, date);
         }
+    }
+}
+
+/// What the previous run held subscribed, less the sessions that rolled over since: subscribed again when the
+/// provider registers. No file: nothing was held. An unreadable one restores nothing and is logged.
+fn restore_held(config: &ServerConfig, demand: &mut DemandManager, rolled: &BTreeMap<String, String>) {
+    let path = crate::server::session::held_path(config);
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return, // not an error: nothing was held
+        Err(e) => return eprintln!("[market_runtime] reading the held subscriptions {}: {e}", path.display()),
+    };
+    match serde_json::from_str::<Value>(&text).map_err(|e| e.to_string()).and_then(|doc| demand.restore_held(&doc)) {
+        Ok(_) => {
+            demand.release_rolled(rolled);
+        }
+        Err(e) => eprintln!("[market_runtime] the held subscriptions {} are not usable ({e}): nothing is restored", path.display()),
     }
 }
 
@@ -473,7 +490,6 @@ pub fn start(mut config: ServerConfig) -> Result<Running, String> {
     if let Err(e) = demand.replace_background(background) {
         report_unusable("background", &e, "no background list is applied; every instrument is stored until one is");
     }
-    engine.set_pinned(demand.pinned());
     // The replay took time: roll over again to now before anything is served.
     if config.rollover {
         let now = now_ns() as i64;
@@ -481,6 +497,8 @@ pub fn start(mut config: ServerConfig) -> Result<Running, String> {
         engine.clear(&rollover::clears(now));
         write_cutoffs(&config, engine.rolled());
     }
+    restore_held(&config, &mut demand, engine.rolled());
+    engine.set_pinned(demand.pinned());
     let mut breadth = MarketBreadth::new(breadth_config);
     for state in engine.iter() {
         breadth.observe(state);

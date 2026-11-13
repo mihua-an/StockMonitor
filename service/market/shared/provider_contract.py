@@ -521,6 +521,10 @@ def _sector_index_codes() -> tuple[str, ...]:
     return tuple(code for code in tw_industry_indexes.all_index_codes() if code != "IX0001")
 
 
+# The capability rule of a stock's 盤中零股 streams (no broker security type of its own: a stock contract).
+ODD_LOT_SECURITY = "ODD"
+
+
 def _shioaji_rules() -> tuple[InstrumentCapabilities, ...]:
     return (
         InstrumentCapabilities(
@@ -528,6 +532,17 @@ def _shioaji_rules() -> tuple[InstrumentCapabilities, ...]:
             logical_code="*",
             session_market="STK",
             canonical_market="STK",
+            lanes=("Tick", "BidAsk"),
+            live_trade_detail=True,
+            live_orderbook=True,
+        ),
+        # 盤中零股: the same stock contract subscribed with ``intraday_odd`` -- its own Tick and BidAsk streams, its own
+        # book and prints -- which Market Runtime keeps as the market ODD, apart from the stock's whole lots.
+        InstrumentCapabilities(
+            security_type=ODD_LOT_SECURITY,
+            logical_code="*",
+            session_market="STK",
+            canonical_market="ODD",
             lanes=("Tick", "BidAsk"),
             live_trade_detail=True,
             live_orderbook=True,

@@ -21,7 +21,8 @@ class AdapterControlConnection:
     def __init__(self, *, source: str, max_subscriptions: int | None, kinds: list[str] | None,
                  replace_subscriptions: ReplaceSubscriptions, report_subscriptions: ReportSubscriptions,
                  url: Callable[[], str | None], auth_headers: Callable[[], dict[str, str]],
-                 on_transport_error: Callable[[str], None], stream_budget: Mapping[str, Any] | None = None) -> None:
+                 on_transport_error: Callable[[str], None], stream_budget: Mapping[str, Any] | None = None,
+                 hold_until_close: bool = False) -> None:
         """replace_subscriptions(items, generation): make the plan's instruments -- ``{"market", "code", "kinds"}``,
             named as Market Runtime names them -- the provider's subscriptions, and return what the BROKER did:
             ``{"subscribed": [{"market", "code"[, "since_ns"]}], "failed": [{"market", "code", "reason"}]}``; ``since_ns``
@@ -33,12 +34,18 @@ class AdapterControlConnection:
             {market: {kind: streams}}}`` -- its capacity in the broker's unit and what each kind of an instrument of a
             market takes, registered beside the instrument count. With it the provider bills a plan by streams itself
             (refusing past the budget with a reason), so the plan is not cut at the instrument count here.
+        hold_until_close: what this provider subscribed stays subscribed until its session is materialized (Shioaji):
+            Market Runtime keeps a planned instrument in the plan after nothing asks for it any more, until
+            :meth:`release_held` names its session or the session rolls over.
         max_subscriptions None: the capacity is the broker's to say and not known yet (Futu: OpenD's quota); the adapter
             is registered once set_max_subscriptions states it, never with an assumed one."""
         self.source = str(source).strip().lower()
         self._max_subscriptions = None if max_subscriptions is None else max(1, int(max_subscriptions))
         self._stream_budget = self._valid_stream_budget(stream_budget)
         self._kinds = list(kinds or ["quote", "trade", "orderbook"])
+        self._hold_until_close = bool(hold_until_close)
+        # Sessions whose held subscriptions are to be let go, not sent yet (kept across a reconnect).
+        self._releases: list[dict[str, Any]] = []
         self._replace_subscriptions = replace_subscriptions
         self._report_subscriptions = report_subscriptions
         self._url = url
@@ -97,7 +104,26 @@ class AdapterControlConnection:
         payload: dict[str, Any] = {"source": self.source, "max_subscriptions": limit, "kinds": self._kinds}
         if budget is not None:
             payload["stream_budget"] = budget
+        if self._hold_until_close:
+            payload["hold_until_close"] = True
         return json.dumps({"type": "adapter.register", "payload": payload}, separators=(",", ":"))
+
+    def release_held(self, markets: list[str], trading_date: str, session: str) -> None:
+        """A closed session is materialized: Market Runtime lets go of what it held subscribed for it
+        (``demand.release``), sent on the control connection -- at once when it is open, else when it opens again."""
+        release = {"source": self.source, "markets": [str(m).upper() for m in markets],
+                   "trading_date": str(trading_date)[:10], "session": str(session).upper()}
+        with self._lock:
+            if release not in self._releases:
+                self._releases.append(release)
+
+    def send_due_releases(self, websocket: Any) -> None:
+        with self._lock:
+            due = list(self._releases)
+        for release in due:
+            websocket.send(json.dumps({"type": "demand.release", "payload": release}, separators=(",", ":")))
+            with self._lock:
+                self._releases.remove(release)
 
     @staticmethod
     def plan_items(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -225,6 +251,7 @@ class AdapterControlConnection:
                             self._register_due.clear()
                             websocket.send(self._register_message())
                         self.send_due_report(websocket)
+                        self.send_due_releases(websocket)
                         try:
                             raw = websocket.recv(timeout=0.25)
                         except TimeoutError:  # not an error: no plan change in this window is the normal case

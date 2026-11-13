@@ -44,7 +44,8 @@ _MAX_SUBSCRIPTIONS = "Max Num Subscriptions Exceeded"
 _TOPIC = re.compile(r"Topic '([A-Z]+)/v\d+/([A-Z]+)/[^/]*/[A-Z]+/([A-Z0-9]+)'")
 # The topic's security token -> the capability security type; the lane of a security type with two lanes (a stock)
 # is read from the topic's kind, a security type with one lane needs none.
-_TOPIC_SECURITY = {"STK": "STK", "IND": "IND", "FOP": "FUT", "FUT": "FUT"}
+# 盤中零股 has its own topic security (TIC/v1/ODD/...): the stock contract subscribed with intraday_odd.
+_TOPIC_SECURITY = {"STK": "STK", "ODD": "STK", "IND": "IND", "FOP": "FUT", "FUT": "FUT"}
 _TOPIC_LANE = {"TIC": "Tick", "QUO": "BidAsk"}
 
 
@@ -274,6 +275,8 @@ class ShioajiBrokerService:
                 source="shioaji",
                 max_subscriptions=self._instrument_limit(),
                 stream_budget=self._stream_budget(),
+                # 盤中訂閱過的不退訂 (decisions.md): what the plan carried stays until its session is materialized.
+                hold_until_close=True,
                 replace_subscriptions=lambda items, _generation: self.apply_demand_plan(items),
                 report_subscriptions=self.plan_report,
             )
@@ -633,7 +636,7 @@ class ShioajiBrokerService:
             if self._stream_connection.get(key, 0) != connection:
                 continue
             identity = self._identity_from_state(key)
-            instrument = None if identity is None else wal_instrument(identity.security_type, identity.code)
+            instrument = None if identity is None else wal_instrument(identity.security_type, identity.code, identity.intraday_odd)
             if instrument is not None:
                 found.add(instrument)
         return sorted(found)
@@ -807,7 +810,7 @@ class ShioajiBrokerService:
                 try:
                     with broker_operation("shioaji", "unsubscribe", self._session_generation,
                                           symbol=_key.split(":")[1], lane=quote_name):
-                        stream_api.unsubscribe(contract, quote_type=quote_type)
+                        stream_api.unsubscribe(contract, quote_type=quote_type, intraday_odd=bool(state.get("intraday_odd")))
                 except Exception as exc:
                     record_failure(logger, "unsubscribing a contract", exc)
         self._logout_extra_connections("broker_session_stop")
@@ -916,6 +919,7 @@ class ShioajiBrokerService:
         """One stream from connection `source` to `target`: subscribe there first, then unsubscribe here."""
         sj = self._sj
         lane = key.split(":")[2]
+        odd = key.endswith(":odd")
         with self._lock:
             contract = self._active_stream_contracts.get(key)
             from_api, to_api = self._api_for(source), self._api_for(target)
@@ -926,7 +930,7 @@ class ShioajiBrokerService:
         code = key.split(":")[1]
         try:
             with broker_operation("shioaji", "subscribe", self._session_generation, symbol=code, lane=lane):
-                to_api.subscribe(contract, quote_type=quote_type)
+                to_api.subscribe(contract, quote_type=quote_type, intraday_odd=odd)
         except Exception as exc:
             record_failure(logger, f"moving {key} onto connection {target + 1} (it stays on {source + 1})", exc)
             return False
@@ -937,7 +941,7 @@ class ShioajiBrokerService:
                 state["connection"] = target + 1
         try:
             with broker_operation("shioaji", "unsubscribe", self._session_generation, symbol=code, lane=lane):
-                from_api.unsubscribe(contract, quote_type=quote_type)
+                from_api.unsubscribe(contract, quote_type=quote_type, intraday_odd=odd)
         except Exception as exc:
             # Moved all the same: the old connection's copy is dropped downstream, and it ends when that connection
             # logs out empty.
@@ -1133,7 +1137,7 @@ class ShioajiBrokerService:
             if self._stream_connection.get(key, 0) != index:
                 continue
             identity = self._identity_from_state(key)
-            if identity is None or identity.security_type != security_type:
+            if identity is None or identity.security_type != security_type or identity.intraday_odd != (security == "ODD"):
                 continue
             lanes = self.subscription_manager.subscription_plan(security_type, identity.code).lanes
             lane = lanes[0] if len(lanes) == 1 else _TOPIC_LANE.get(kind)
@@ -1681,7 +1685,7 @@ class ShioajiBrokerService:
         state["last_request_at"] = datetime.now().isoformat(timespec="milliseconds")
         with broker_operation("shioaji", "subscribe", self._session_generation,
                               symbol=identity.code, lane=identity.quote_type):
-            stream_api.subscribe(contract, quote_type=quote_type)
+            stream_api.subscribe(contract, quote_type=quote_type, intraday_odd=identity.intraday_odd)
         with self._lock:
             self._stream_since.setdefault(identity.key, time.time_ns())
         self._mark_stream_confirmed(identity)
@@ -1893,7 +1897,7 @@ class ShioajiBrokerService:
             try:
                 with broker_operation("shioaji", "unsubscribe", self._session_generation,
                                       symbol=identity.code, lane=identity.quote_type):
-                    api.unsubscribe(contract, quote_type=quote_type)
+                    api.unsubscribe(contract, quote_type=quote_type, intraday_odd=identity.intraday_odd)
             except Exception as exc:
                 unsubscribe_error = exc
 

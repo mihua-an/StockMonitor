@@ -97,6 +97,7 @@ def _provider(manager, codes_hook):
         reset_lane_activity=lambda: None,
         provider_backend=SimpleNamespace(reset_callbacks=lambda: None),
         reference=SimpleNamespace(run=lambda *_a, **_k: None),
+        trend_backfill=SimpleNamespace(run=lambda *_a, **_k: 0),
     )
 
 

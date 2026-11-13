@@ -280,6 +280,13 @@ impl Engine {
 
     /// Apply one durable event (already cursor-checked by the caller), or one of a never-stored market: the stored
     /// fold, and the overlay's scope and partition when it holds them.
+    /// An event of a market no analysis folds (rollover::is_odd_lot): counted and its durable position taken, nothing
+    /// else.
+    pub fn note_unanalysed(&mut self, e: &MarketEvent) {
+        self.stats.events += 1;
+        self.cursor = self.cursor.max(e.durable_sequence);
+    }
+
     pub fn apply(&mut self, e: &MarketEvent) {
         self.stats.events += 1;
         self.cursor = self.cursor.max(e.durable_sequence);

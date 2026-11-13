@@ -23,17 +23,27 @@ const PRINCIPAL = ["initial_principal", "起始本金"];
 const LIMIT = ["daily_limit", "每日交易額度"];
 // The paper ledger's 手續費 折數 of the list rate 0.1425% (service/account/capital.py fee_rate); 0 = the actual account's 2.8 折.
 const FEE = ["fee_discount", "手續費折扣", "折", "0 = 2.8 折"];
+// 模擬下單's 零股交易 (docs/decisions.md 模擬零股的成交方式; service/account/capital.py CHOICE_FIELDS): a choice, the
+// first the default.
+const ODD_LOT = ["odd_lot_matching", "零股交易", "", "", [["direct", "直接成交"], ["queue", "根據實際排隊"]]];
 const LEDGERS = [
   { id: "actual", label: "實際帳務", path: "/api/actual-account/capital", markets: [TW, US], fields: [LIMIT] },
-  { id: "paper", label: "模擬帳務", path: "/api/paper-wallet/capital", markets: [TW], fields: [PRINCIPAL, LIMIT, FEE] },
+  { id: "paper", label: "模擬帳務", path: "/api/paper-wallet/capital", markets: [TW], fields: [PRINCIPAL, LIMIT, FEE, ODD_LOT] },
 ];
+const CHOICES = Object.fromEntries(LEDGERS.flatMap((ledger) => ledger.fields).filter((field) => field[4]).map((field) => [field[0], field[4]]));
 
 let generation = 0;
 
-const isMoney = (field) => field !== FEE[0];
+const isChoice = (field) => field in CHOICES;
+const isMoney = (field) => field !== FEE[0] && !isChoice(field);
 const isWhole = (text) => /^[0-9]*$/.test(text);
 
-function itemMarkup(market, [field, label, unit, placeholder]) {
+function itemMarkup(market, [field, label, unit, placeholder, choices]) {
+  if (choices) {
+    const options = choices.map(([value, name]) => `<option value="${escapeHtml(value)}">${escapeHtml(name)}</option>`).join("");
+    return `<label class="settings-item"><span class="settings-item-main"><b>${escapeHtml(market.id)}${escapeHtml(label)}</b></span>`
+      + `<span class="settings-select"><select data-capital-field="${field}" data-capital-market="${escapeHtml(market.id)}">${options}</select></span></label>`;
+  }
   const money = isMoney(field);
   const input = money
     ? `<input class="settings-input is-short" type="text" inputmode="numeric" data-capital-field="${field}" data-capital-market="${escapeHtml(market.id)}" placeholder="${escapeHtml(placeholder || "未設定")}" />`
@@ -91,7 +101,12 @@ function bindAmount(ledger, input) {
 
 function fill(ledger, payload) {
   for (const input of inputs(ledger)) {
-    const value = Number(payload?.markets?.[input.dataset.capitalMarket]?.[input.dataset.capitalField] || 0);
+    const stored = payload?.markets?.[input.dataset.capitalMarket]?.[input.dataset.capitalField];
+    if (isChoice(input.dataset.capitalField)) {
+      input.value = stored || CHOICES[input.dataset.capitalField][0][0];
+      continue;
+    }
+    const value = Number(stored || 0);
     input.value = value > 0 ? String(isMoney(input.dataset.capitalField) ? value / WAN : value) : "";
   }
   checkWhole(ledger);
@@ -111,7 +126,7 @@ async function save(ledger) {
   const markets = {};
   for (const input of inputs(ledger)) {
     const text = input.value.trim();
-    const value = !text ? "0" : isMoney(input.dataset.capitalField) ? String(Number(text) * WAN) : text;
+    const value = isChoice(input.dataset.capitalField) ? text : !text ? "0" : isMoney(input.dataset.capitalField) ? String(Number(text) * WAN) : text;
     (markets[input.dataset.capitalMarket] ??= {})[input.dataset.capitalField] = value;
   }
   const result = await apiJsonPost(ledger.path, { markets });

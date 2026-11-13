@@ -254,9 +254,12 @@ def test_manifest_is_not_settled_as_no_input_while_a_sibling_partition_is_still_
     state(stk, ml.RUNNING)
     orchestrator.poll_materialization_jobs()
     assert status() == "pending", "one finished-empty key must not settle the manifest while STK still runs"
+    released = []
+    orchestrator._app().live_event_sink.release_held = lambda *args: released.append(args)
     state(stk, ml.SUCCEEDED)
     orchestrator.poll_materialization_jobs()
     assert status() == "materialized"
+    assert released == [(["STK", "ODD"], DATE, "DAY"), (["IDX"], DATE, "DAY")], "the settled stock session lets its stocks, odd lots and indices go"
 
 
 def test_the_stk_day_session_is_published_settled_only_when_the_whole_session_ended(tmp_path):

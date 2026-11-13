@@ -57,33 +57,42 @@ function queueJammed(probe) {
 // has nothing coming: no connection tiles to wait on. A reconnect is a 補救事件 (provider.broker_session_reconnect),
 // not a tile; 上次推送 is not a tile either (user 10-19). Quotes arriving are the node's events per second and its
 // moving link, not a state of their own (user 10-27): connected is 已連線 either way.
-function sourceNodes({ snap, uptimeOf, shioajiProbe, futuProbe, moomoo, shConnected, svcNode, put }) {
+function sourceNodes({ snap, uptimeOf, shioajiProbe, futuProbe, moomoo, shConnected, svcNode, put, input }) {
+  // The broker SDK is user-installed (安裝版不內含；設定 → 券商帳號 安裝). Health's import probe says whether it is
+  // there; without it the provider process runs but can never connect, so the node says 尚未安裝 SDK rather than a
+  // generic 未連線 that reads as "logged out" and leaves the user waiting for data that cannot come (user 11-13).
+  const sdkMissing = (id) => input?.providerSdk?.providers?.[id]?.installed === false;
+  const sdkGroups = [["連線", [T("狀態", "尚未安裝 SDK", { tone: "fail", sub: "設定 → 券商帳號 安裝" })]]];
   const sh = svcNode("shioaji");
   const shOff = sh.tone === "off";
+  const shNoSdk = sdkMissing("shioaji");
   const shState = sh.tone !== "ok" ? [sh.tone, sh.state]
-    : shConnected === false ? ["fail", "券商未連線"]
-      : queueJammed(shioajiProbe) ? ["warn", "轉送塞車"]
-        : shConnected === true ? ["ok", "已連線"] : ["unknown", "狀態未知"];
+    : shNoSdk ? ["fail", "尚未安裝 SDK"]
+      : shConnected === false ? ["fail", "券商未連線"]
+        : queueJammed(shioajiProbe) ? ["warn", "轉送塞車"]
+          : shConnected === true ? ["ok", "已連線"] : ["unknown", "狀態未知"];
   put("shioaji", {
     ...sh, tone: shState[0], state: shState[1],
     // 連線時長 and 訂閱數, as Futu's (user 10-22: the two sources alike). Events per second are on the node itself.
-    groups: shOff ? [] : [["連線", [uptimeTile(shConnected, shioajiProbe?.last_login_at, uptimeOf), shioajiQuotaTile(shioajiProbe?.shioaji)]]],
+    groups: shOff ? [] : shNoSdk ? sdkGroups : [["連線", [uptimeTile(shConnected, shioajiProbe?.last_login_at, uptimeOf), shioajiQuotaTile(shioajiProbe?.shioaji)]]],
   });
   const fu = svcNode("futu");
   const fuOff = fu.tone === "off";
+  const fuNoSdk = sdkMissing("futu");
   const opendSvc = serviceOf(snap, "external_futu_opend");
   const opendReach = opendSvc?.state_reason === "reachable" ? true : opendSvc?.state_reason === "unreachable" ? false : null;
   const futuConnected = Boolean(moomoo?.readiness?.connected);
   const fuState = fu.tone !== "ok" ? [fu.tone, fu.state]
-    : opendReach === false ? ["fail", "OpenD 無法連線"]
-      : queueJammed(futuProbe) ? ["warn", "轉送塞車"]
-        : !futuConnected ? ["warn", "服務在，沒行情"] : ["ok", "已連線"];
+    : fuNoSdk ? ["fail", "尚未安裝 SDK"]
+      : opendReach === false ? ["fail", "OpenD 無法連線"]
+        : queueJammed(futuProbe) ? ["warn", "轉送塞車"]
+          : !futuConnected ? ["warn", "服務在，沒行情"] : ["ok", "已連線"];
   put("futu", {
     ...fu, tone: fuState[0], state: fuState[1],
     // 連線時長 and 訂閱數, as Shioaji's (user 10-22). No 端點 tile on any node (user 10-14).
-    groups: fuOff ? [] : [["連線", [uptimeTile(moomoo ? futuConnected : null, moomoo?.last_connected_at, uptimeOf), futuQuotaTile(moomoo)]]],
-    // 重新檢查 Futu 連線 is offered only while Futu is not connected (user 10-19).
-    action: futuConnected ? null : "futu-reconnect",
+    groups: fuOff ? [] : fuNoSdk ? sdkGroups : [["連線", [uptimeTile(moomoo ? futuConnected : null, moomoo?.last_connected_at, uptimeOf), futuQuotaTile(moomoo)]]],
+    // 重新檢查 Futu 連線 is offered only while Futu is not connected and the SDK is there to connect with (user 10-19, 11-13).
+    action: fuNoSdk ? null : futuConnected ? null : "futu-reconnect",
   });
 }
 

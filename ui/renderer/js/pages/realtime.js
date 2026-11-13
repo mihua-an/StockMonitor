@@ -22,7 +22,7 @@ import { industryIndexStore } from "../features/realtime/industry_index_store.js
 import { activeTrendTarget, liveMarketDataGateway, livePageMounted, marketPanelUiState, realtimePageVisible, requestAnimationFrame, selectedStockCode, selectionIntentStore, setLivePageMounted, setMountingPresentation, setRealtimePageShown, viewResources } from "../features/realtime/live_page_state.js";
 import { connectCanonicalViewOwner, loadTxfTrendSnapshot, reconcileCanonicalViews, stockViewWarmOrSubscribed } from "../features/realtime/canonical_view_owner.js";
 import { applyOptimisticTradePageCount, bindOrderbookAdaptiveLayout, buildTrendOverlaySeries, ensureTaiexOverlayData, ensureTrendOverlayData, liveTradePager, loadLiveTickPage, ownEventMarkerToggle, realtimeOrderbookController, registerLiveViewModelResolvers, technicalAnalysisService } from "../features/realtime/live_view_models.js";
-import { activateDashboardComponent, applyWatchPageToRealtime, bindProductCompleteRowScroll, bindProductSelectionExtras, bindProductSides, bindSearchFocus, bindWatchPageSources, disposeSelectionBindings, loadWatchPages, publishSelectedSymbol, bindProductColumnSettings, setTrendViewMode, shioajiProductQuoteSearch, syncSelectedSymbolAdapter } from "../features/realtime/selection_controller.js";
+import { activateDashboardComponent, applyWatchPageToRealtime, bindProductCompleteRowScroll, bindProductSelectionExtras, bindProductSides, bindSearchFocus, bindWatchPageSources, disposeSelectionBindings, loadWatchPages, publishSelectedSymbol, bindProductColumnSettings, setTrendViewMode, shioajiProductQuoteSearch, syncSelectedSymbolAdapter, toggleOddLotShown } from "../features/realtime/selection_controller.js";
 import { activeTxfSession, setActiveTxfSession, startFreshnessBannerWatch, stockCanonicalViewSpec } from "../features/realtime/session_state.js";
 import { bindStockFuturesSessionControl, bindTxfSessionControl, startRealtimeSessionSync, syncRealtimeSessionOwnershipFromStatus } from "../features/realtime/session_controller.js";
 import { invalidateLiveTrendComponents, renderTaiexAsPrimary, renderTxfAsPrimary } from "../features/realtime/live_redraw.js";
@@ -95,6 +95,8 @@ function configureLiveDashboardContext() {
   };
   // The 期貨走勢 tab the user chose: what its buttons show, whatever data is on screen yet.
   realtimeContext.services.futuresSession = { selected: () => activeTxfSession };
+  // 買賣報價's 零股／整張: the book and 成交明細 switch between the detail stock and its 盤中零股.
+  realtimeContext.services.oddLot = { toggle: toggleOddLotShown };
   realtimeContext.services.dashboard = { onComponentActivate: activateDashboardComponent };
   // A 買賣報價 price clicked: a 模擬 order at it, in 模擬帳務 when it is on the page, else in the popover.
   paperOrderPopover?.destroy();
@@ -289,6 +291,7 @@ export function disposeRealtimePage({ retainSelection = false } = {}) {
   realtimeOrderbookController.dispose();
   realtimeContext.services.trendOverlays = null;
   realtimeContext.services.futuresSession = null;
+  realtimeContext.services.oddLot = null;
   realtimeContext.services.paperOrderEntry = null;
   paperOrderPopover?.destroy();
   paperOrderPopover = null;

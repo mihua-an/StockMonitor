@@ -36,7 +36,11 @@ MARKETS = ("台股", "美股")
 SETTLEMENT_DAYS = {"台股": 2, "美股": 1}
 MARKET_ZONES = {"台股": "Asia/Taipei", "美股": "America/New_York"}
 SETTING_FIELDS = ("initial_principal", "daily_limit")
-FIELD_LABELS = {"initial_principal": "起始本金", "daily_limit": "每日交易額度", "fee_discount": "手續費折扣"}
+FIELD_LABELS = {"initial_principal": "起始本金", "daily_limit": "每日交易額度", "fee_discount": "手續費折扣",
+                "odd_lot_matching": "零股交易"}
+# 模擬下單's 零股交易 (decisions.md 模擬零股的成交方式, user 11-13): `direct` fills at the whole-lot book's best price,
+# `queue` subscribes the stock's 盤中零股 and queues at its matches. A choice, not an amount: the first is the default.
+CHOICE_FIELDS = {"odd_lot_matching": ("direct", "queue")}
 
 
 @dataclass(frozen=True)
@@ -51,7 +55,7 @@ class CapitalScope:
 
 ACTUAL_SCOPE = CapitalScope(MARKETS, ("daily_limit",))
 # fee_discount: the paper ledger's 手續費 折數 (2.8 = 2.8 折 of the list rate; 0 = the actual account's 2.8 折).
-PAPER_SCOPE = CapitalScope(("台股",), SETTING_FIELDS + ("fee_discount",))
+PAPER_SCOPE = CapitalScope(("台股",), SETTING_FIELDS + ("fee_discount", "odd_lot_matching"))
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -169,8 +173,12 @@ def _amount(value: Any, label: str) -> Decimal:
 
 
 def read_settings(get_meta, scope: CapitalScope) -> dict[str, dict[str, str]]:
-    """{market: {field: value}} of the scope's markets and fields as stored (decimal text, "0" when not set)."""
-    return {market: {field: get_meta(_meta_key(market, field), "0") or "0" for field in scope.fields} for market in scope.markets}
+    """{market: {field: value}} of the scope's markets and fields as stored: an amount as decimal text ("0" when not
+    set), a choice as its value (its first when not set)."""
+    def stored(market: str, field: str) -> str:
+        default = CHOICE_FIELDS[field][0] if field in CHOICE_FIELDS else "0"
+        return get_meta(_meta_key(market, field), default) or default
+    return {market: {field: stored(market, field) for field in scope.fields} for market in scope.markets}
 
 
 def settings_to_meta(payload: dict[str, Any], scope: CapitalScope) -> dict[str, str]:
@@ -188,6 +196,11 @@ def settings_to_meta(payload: dict[str, Any], scope: CapitalScope) -> dict[str, 
         for field, value in entry.items():
             if field not in scope.fields:
                 raise invalid_account_input(f"這個帳本沒有{FIELD_LABELS.get(field, field)}設定")
+            if field in CHOICE_FIELDS:
+                if value not in CHOICE_FIELDS[field]:
+                    raise invalid_account_input(f"{FIELD_LABELS[field]}必須是 {'、'.join(CHOICE_FIELDS[field])} 之一")
+                values[_meta_key(market, field)] = value
+                continue
             amount = _amount(value, f"{market}{FIELD_LABELS[field]}")
             if field == "fee_discount" and amount > 10:
                 raise invalid_account_input("手續費折扣是 0～10 折")

@@ -26,9 +26,10 @@ import { themeColor } from "../../core/market_palette.js";
 import { industryIndexStore } from "./industry_index_store.js";
 import { industryIndexTrendViewModel } from "./industry_index_view_model.js";
 import { technicalViewService } from "./technical_window_service.js";
-import { activeTxfSession, currentTxfDisplayIdentity, equityDateListeners, equityTradingDate, futuresMonthTrendSpecs, industryIndexCanonicalViewSpec, stockFuturesSessionShown, stockCanonicalViewSpec, taiexCanonicalViewSpec, txfCanonicalViewSpec, txfIdentityMatches, txfTickMatchesDisplayWindow } from "./session_state.js";
+import { activeTxfSession, currentTxfDisplayIdentity, detailBookViewSpec, equityDateListeners, equityTradingDate, futuresMonthTrendSpecs, industryIndexCanonicalViewSpec, oddLotShown, stockFuturesSessionShown, stockCanonicalViewSpec, taiexCanonicalViewSpec, txfCanonicalViewSpec, txfIdentityMatches, txfTickMatchesDisplayWindow } from "./session_state.js";
 import { activeTrendTarget, detailSymbolContext, detailTargetCode, liveMarketDataGateway, selectedStockCode, selectionIntentStore, viewResources } from "./live_page_state.js";
-import { currentTaiexView, currentTxfBenchmarkView, ensureTaiexCanonicalView, ensureTxfBenchmarkView, orderbookDeltaTokens, stockViewState, txfDisplay } from "./canonical_view_owner.js";
+import { currentTaiexView, currentTxfBenchmarkView, ensureTaiexCanonicalView, ensureTxfBenchmarkView, oddLotBookTokenKey, orderbookDeltaTokens, txfDisplay } from "./canonical_view_owner.js";
+import { hasOddLots } from "../../market_data/stock_view_spec.js";
 import { invalidateLiveTrendComponents } from "./live_redraw.js";
 import { watchPages } from "./product_pages.js";
 import { productOfInstrument, productSides } from "./product_sides.js";
@@ -53,9 +54,9 @@ export const { reset: resetLiveTickPageState, load: loadLiveTickPage, count: app
 function liveTradeQuery() {
   const target = detailTargetCode();
   if (target && target !== "TXFR1") {
-    // A stock, or a futures month (CDF202611): the partition its view is bound to.
-    const spec = stockCanonicalViewSpec(target);
-    const viewKey = stockViewState(target).session_key || {};
+    // A stock (its 盤中零股 while 零股 is shown), or a futures month (CDF202611): the partition its view is bound to.
+    const spec = detailBookViewSpec(target);
+    const viewKey = liveMarketDataGateway.snapshot(spec)?.session_key || {};
     const tradingDate = String(viewKey.trading_date || spec.trading_date || "").slice(0, 10);
     const actualContract = String(viewKey.contract_code || target).trim().toUpperCase();
     return { target, market: spec.market, session: spec.session, tradingDate, actualContract,
@@ -64,7 +65,7 @@ function liveTradeQuery() {
   const market = target === "TXFR1" ? "FUT" : "STK";
   const session = market === "FUT" ? activeTxfSession.toUpperCase() : "DAY";
   const committedTxfIdentity = market === "FUT" ? currentTxfDisplayIdentity(activeTxfSession) : null;
-  const viewKey = market === "FUT" ? null : (stockViewState(target).session_key || {});
+  const viewKey = market === "FUT" ? null : (liveMarketDataGateway.snapshot(stockCanonicalViewSpec(target))?.session_key || {});
   const identity = market === "FUT" ? committedTxfIdentity
     : { ...viewKey, actual_contract: viewKey.contract_code || target };
   const tradingDate = String(identity?.trading_date || (target === "TXFR1" ? txfDisplay()?.trading_date : equityTradingDate()) || "").slice(0, 10);
@@ -139,13 +140,15 @@ const NO_SELECTION_TEXT = "請先在商品列表選擇商品";
 // three times, and every read copied all 100 trades.
 const selectedTickRows = new WeakMap();
 let selectedTicksCache = { target: "", trades: null, rows: [] };
+// A product's market facts are its canonical view's state in the view store, read as it is (liveMarketDataGateway
+// .snapshot): the page keeps no copies with rules of its own ("an empty book does not clear", "dedupe by trade key").
 function selectedTicks() {
   // TXFR1 intentionally runs Quote-only like TAIEX; Quote snapshots are not
   // transaction details. Legacy historical trade data stays on disk but is not
   // presented as a live subscribed lane.
   const target = detailTargetCode();
   if (!target || target === "TXFR1") return [];
-  const trades = stockViewState(target).trades;
+  const trades = liveMarketDataGateway.snapshot(detailBookViewSpec(target))?.trades;
   if (selectedTicksCache.target === target && selectedTicksCache.trades === trades) return selectedTicksCache.rows;
   const rows = (Array.isArray(trades) ? trades : []).filter((tick) => !isSimtradeTick(tick)).map((tick) => {
     const known = tick && typeof tick === "object" ? selectedTickRows.get(tick) : null;
@@ -174,8 +177,8 @@ function selectedDaemonPriceVolume() {
   if (!target) return normalizeDaemonPriceVolume({});
   const state = target === "TXFR1"
     ? liveMarketDataGateway.snapshot(txfCanonicalViewSpec(activeTxfSession))
-    : liveMarketDataGateway.snapshot(stockCanonicalViewSpec(target));
-  // The view's projection only: no second, cached context copy to prefer between.
+    : liveMarketDataGateway.snapshot(detailBookViewSpec(target));
+  // The view's projection only: no second, cached context copy to prefer between (盤中零股 has none).
   return normalizeDaemonPriceVolume(state?.price_volume && typeof state.price_volume === "object" ? state.price_volume : {});
 }
 
@@ -205,12 +208,14 @@ function buildLiveOrderbookViewModel() {
     const book = { ...(state.orderbook && typeof state.orderbook === "object" ? state.orderbook : {}), diff_renderable: true };
     return { ...FuturesOrderBookAdapter.build({ tick, book, aggregate, readModel: liveMarketDataGateway.readSnapshot({...txfCanonicalViewSpec(activeTxfSession), selectionGeneration:selectionIntentStore.generation}) }), ...canonicalDisplayFrame(target, state, null, selectionIntentStore.generation) };
   }
-  const state = liveMarketDataGateway.snapshot(stockCanonicalViewSpec(target)) || {};
+  const spec = detailBookViewSpec(target);
+  const odd = spec.market === "ODD";
+  const state = liveMarketDataGateway.snapshot(spec) || {};
   const canonicalSummary = state?.summary && typeof state.summary === "object" ? state.summary : {};
   // The view's book as Market Runtime holds it -- an empty book is empty (no REST context book, no "keep the
   // previous levels"). A level flashes only for a book that came by delta.
   const canonicalBook = state?.orderbook && typeof state.orderbook === "object" ? state.orderbook : {};
-  const deltaToken = orderbookDeltaTokens.get(target) || null;
+  const deltaToken = orderbookDeltaTokens.get(odd ? oddLotBookTokenKey(target) : target) || null;
   const selectedBook = { ...canonicalBook, code: target, diff_event_token: deltaToken,
     diff_renderable: Boolean(deltaToken) && deltaToken === orderbookDiffEventToken(canonicalBook) };
   const view = StockOrderBookAdapter.build({
@@ -221,10 +226,10 @@ function buildLiveOrderbookViewModel() {
     // while the trend and product list already show the new session quote.
     signal: { ...(getSelectedRealtimeSignal() || {}), ...canonicalSummary },
     book: selectedBook,
-    readModel: liveMarketDataGateway.readSnapshot({...stockCanonicalViewSpec(target), selectionGeneration:selectionIntentStore.generation}),
+    readModel: liveMarketDataGateway.readSnapshot({...spec, selectionGeneration:selectionIntentStore.generation}),
     aggregate,
   });
-  return { ...view, ...canonicalDisplayFrame(target, state, null, selectionIntentStore.generation) };
+  return { ...view, oddLot: { available: hasOddLots(target), shown: odd }, ...canonicalDisplayFrame(target, state, null, selectionIntentStore.generation) };
 }
 
 function tradeFlowViewSpec(target) {
@@ -541,12 +546,12 @@ function liveTickDetailsViewModel() {
   const liveNewest = Math.max(...selectedTicks().map((row) => Number(tradeRowSequence(row) || 0)), 0);
   const canonicalFrame = canonicalDisplayFrame(target, target === "TXFR1"
     ? (liveMarketDataGateway.snapshot(txfCanonicalViewSpec(activeTxfSession)) || {})
-    : (liveMarketDataGateway.snapshot(stockCanonicalViewSpec(target)) || {}), liveNewest, selectionIntentStore.generation);
+    : (liveMarketDataGateway.snapshot(detailBookViewSpec(target)) || {}), liveNewest, selectionIntentStore.generation);
   return {
     availability: rows.length ? "AVAILABLE" : "UNAVAILABLE", rows, referencePrice, ...tapeLimitPrices(target),
     referenceSource: target === "TXFR1" ? (txfDisplay()?.reference_source || null) : "prev_close",
-    emptyText: !target ? NO_SELECTION_TEXT : "等待即時成交",
-    marketRead: liveMarketDataGateway.readSnapshot({... (target === "TXFR1" ? txfCanonicalViewSpec(activeTxfSession) : stockCanonicalViewSpec(target)), selectionGeneration:selectionIntentStore.generation}, {trades:rows}),
+    emptyText: !target ? NO_SELECTION_TEXT : oddLotShown && hasOddLots(target) ? "等待零股成交" : "等待即時成交",
+    marketRead: liveMarketDataGateway.readSnapshot({... (target === "TXFR1" ? txfCanonicalViewSpec(activeTxfSession) : detailBookViewSpec(target)), selectionGeneration:selectionIntentStore.generation}, {trades:rows}),
     page, pageSize: TRADE_DETAIL_PAGE_SIZE, totalCount: liveTickPageState.bootstrapReady ? liveTickPageState.totalCount : rows.length,
     totalPages: liveTickPageState.totalPages || 1, snapshotWatermark: liveTickPageState.snapshotWatermark || liveNewest,
     ...canonicalFrame,

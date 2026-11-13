@@ -16,10 +16,10 @@ import {
 import { createWatchPageSearch } from "./js/features/watch_pages/watch_page_search.js";
 import { opsBatch } from "./js/features/watch_pages/watch_page_ops.js";
 import {
-  changed, createDraft, draftOpsOf, keyOf, laneOf, rebase, rows, setFutures, setLane, toggleMonth,
+  changed, createDraft, draftOpsOf, keyOf, laneOf, rebase, rows, setFuturesOn, setSpot, spotOn, toggleMonth,
 } from "./js/features/subscriptions/subscription_draft.js";
 
-// The 商品頁設定 window: the product pages (left), the page's products with their 低價／高價 and 期貨／明細／五檔
+// The 商品頁設定 window: the product pages (left), the page's products with their 低價／高價 and 期貨／現貨
 // (middle), 加入商品 (right). The same pages and 訂閱偏好 as 設定 → 訂閱管理: settings_api is their one writer
 // (POST /api/subscriptions/ops) and this window sends only what it changed (subscription_draft.js); another window's
 // save is laid under this window's own changes (rebase).
@@ -206,7 +206,7 @@ function itemRow(item, index, page) {
   const key = keyOf(row.source, row.market, row.code);
   const lock = lane.locked ? " disabled" : "";
   const fut = lane.futures;
-  // An index future: its months are the product, always listed; its 明細／五檔 are the row's own switches.
+  // An index future: its months are the product, always listed; its 訂閱 (明細＋五檔) is the row's own switch.
   const indexFuture = Boolean(row.index_futures);
   const pill = (attrs, on, label, accent = false) => `<button type="button" class="settings-pill watch-cell-pill${accent ? " is-accent" : ""}${on ? " is-active" : ""}" ${attrs} aria-pressed="${on}">${label}</button>`;
   let html = `<div class="watch-row watch-item" data-morph-key="item:${esc(item.code)}" data-item-index="${index}">`
@@ -216,8 +216,8 @@ function itemRow(item, index, page) {
     + alertCell(item, "lower_alert") + alertCell(item, "upper_alert")
     // 期貨: only a Shioaji stock with 個股期貨; on subscribes the near month and opens the months under the row.
     + (fut && !indexFuture ? pill(`data-key="${esc(key)}" data-futures="on"`, fut.on, "期貨", true) : `<span></span>`)
-    + `<button type="button" class="settings-pill watch-cell-pill${lane.trade ? " is-active" : ""}" data-key="${esc(key)}" data-lane="trade" aria-pressed="${lane.trade}"${lock}>明細</button>`
-    + `<button type="button" class="settings-pill watch-cell-pill${lane.orderbook ? " is-active" : ""}" data-key="${esc(key)}" data-lane="orderbook" aria-pressed="${lane.orderbook}"${lock}>五檔</button>`
+    // 現貨 (訂閱 on an index future): 明細 and 五檔 as one switch.
+    + `<button type="button" class="settings-pill watch-cell-pill${spotOn(lane) ? " is-active" : ""}" data-key="${esc(key)}" data-spot aria-pressed="${spotOn(lane)}"${lock}>${indexFuture ? "訂閱" : "現貨"}</button>`
     + `<button type="button" class="settings-icon-btn is-danger" data-remove-index="${index}" aria-label="從這個商品頁刪除">✕</button></div>`;
   if (fut && (fut.on || motion.closing(key))) {
     const months = fut.months_listed || [];
@@ -226,10 +226,6 @@ function itemRow(item, index, page) {
       + months.map((m, i) => (i === 0
         ? `<span class="settings-pill is-accent is-active is-locked">近月 ${monthLabel(m)}</span>`
         : `<button type="button" class="settings-pill is-accent${fut.months.has(m) ? " is-active" : ""}" data-key="${esc(key)}" data-month="${m}" aria-pressed="${fut.months.has(m)}">${monthLabel(m)}</button>`)).join("")
-      + (indexFuture ? "" : `<span class="watch-months-lanes">`
-        + `<button type="button" class="settings-pill${fut.trade ? " is-active" : ""}" data-key="${esc(key)}" data-futures="trade" aria-pressed="${fut.trade}">明細</button>`
-        + `<button type="button" class="settings-pill${fut.orderbook ? " is-active" : ""}" data-key="${esc(key)}" data-futures="orderbook" aria-pressed="${fut.orderbook}">五檔</button>`
-        + `</span>`)
       + `</div>`;
   }
   return html;
@@ -239,7 +235,7 @@ function renderItems() {
   const page = current();
   const head = `<div class="watch-row watch-row-head" data-morph-key="head"><span></span><span class="watch-cell">代號</span><span class="watch-cell">名稱</span>`
     + `<span class="watch-cell watch-cell-num">低價</span><span class="watch-cell watch-cell-num watch-cell-high">高價</span>`
-    + `<span class="watch-cell watch-cell-center">期貨</span><span class="watch-cell watch-cell-center">明細</span><span class="watch-cell watch-cell-center">五檔</span><span></span></div>`;
+    + `<span class="watch-cell watch-cell-center">期貨</span><span class="watch-cell watch-cell-center">現貨</span><span></span></div>`;
   const items = page?.items || [];
   morphInto($("watchPageItems"), items.length && draft
     ? head + items.map((item, index) => itemRow(item, index, page)).join("")
@@ -476,12 +472,11 @@ function onItemsClick(event) {
   if (!d.key) return;
   const row = rowByKey(d.key);
   const lane = laneOf(draft, row);
-  if (d.lane) setLane(draft, row, d.lane, !lane[d.lane]);
+  if (d.spot !== undefined) setSpot(draft, row, !spotOn(lane));
   else if (d.futures === "on") {
     if (!motion.start(d.key, !lane.futures.on)) return;
-    setFutures(draft, row, "on", !lane.futures.on);
-  } else if (d.futures) setFutures(draft, row, d.futures, !lane.futures[d.futures]);
-  else if (d.month) toggleMonth(draft, row, d.month);
+    setFuturesOn(draft, row, !lane.futures.on);
+  } else if (d.month) toggleMonth(draft, row, d.month);
   else return;
   markDraftEdited();
   render();

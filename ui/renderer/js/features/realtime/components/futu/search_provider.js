@@ -1,21 +1,17 @@
 import { registerProductQuoteSearchProvider } from "../../../../core/components/product_quote_search.js";
+import { apiGet } from "../../../../core/api.js";
 import { moomooQuoteStore } from "../../moomoo_quote_store.js";
+import { createFutuSearchProvider } from "./search_provider_logic.js";
+import { addToFutuWatchPage } from "./futu_watch_page.js";
 
-// The Futu headers' code box: the Futu catalog is what can be shown, so it is searched and selected from there.
-registerProductQuoteSearchProvider("futu",{
-  async suggest(text){
-    const q=String(text||"").trim().toUpperCase();
-    return moomooQuoteStore.products
-      .map((row)=>({code:String(row?.code||"").toUpperCase(),name:String(row?.name||"")}))
-      .filter((row)=>row.code&&(row.code.includes(q)||row.code.split(".").pop().startsWith(q)||row.name.toUpperCase().includes(q)))
-      .slice(0,12);
-  },
-  async submit(item){
-    const q=String(item?.code||"").trim().toUpperCase();
-    const codes=moomooQuoteStore.products.map((row)=>String(row?.code||"").toUpperCase());
-    const code=codes.find((value)=>value===q)||codes.find((value)=>value.split(".").pop()===q);
-    if(!code)return{ok:false,message:"不在 Futu 商品列表；請先加入商品列表"};
-    await moomooQuoteStore.select(code);
-    return{ok:true};
-  },
-});
+// The Futu headers' code box searches the whole Futu security master (US stocks/ETFs, crypto), so an unsubscribed
+// product can be found; submitting one that is not on the list yet subscribes it and keeps it on a Futu product page.
+async function searchMaster(query, signal) {
+  const q = String(query || "").trim();
+  const payload = await apiGet(`/api/futu/security-master/search?q=${encodeURIComponent(q)}&limit=12`, { signal });
+  return (Array.isArray(payload?.items) ? payload.items : [])
+    .map((row) => ({ code: String(row?.code || "").toUpperCase(), name: String(row?.name || "") }))
+    .filter((row) => row.code);
+}
+
+registerProductQuoteSearchProvider("futu", createFutuSearchProvider({ store: moomooQuoteStore, searchMaster, addToPage: addToFutuWatchPage }));

@@ -5,6 +5,7 @@
   "markets": {
     "shioaji|STK": [{"session": "DAY", "intervals": [[540, 810]], "print_instants": [813, 870]}],
     "shioaji|OTC": [{"session": "DAY", "intervals": [[540, 810]], "print_instants": [813, 870]}],
+    "shioaji|ODD": [{"session": "DAY", "intervals": [[540, 810]]}],
     "shioaji|IDX": [{"session": "DAY", "intervals": [[540, 810]], "print_instants": [813]}],
     "shioaji|FUT": [
       {"session": "DAY", "intervals": [[525, 825]]},

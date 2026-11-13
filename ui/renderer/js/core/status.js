@@ -264,7 +264,10 @@ function withinDiagnosticsBudget(promise) {
   });
   return Promise.race([Promise.resolve(promise), timeout]).finally(() => clearTimeout(timer));
 }
-const diagnostics = { timer: null, model: null, trend: createMonitoringTrend(), selected: "sources", startup: null, detailAt: 0, busy: false };
+// The broker SDK install state (Health's import probe) changes only when the user installs one, and reading it spawns
+// a Python process, so it is read on a slow cadence and the last value kept between reads.
+const DIAGNOSTICS_SDK_RENEW_MS = 30000;
+const diagnostics = { timer: null, model: null, trend: createMonitoringTrend(), selected: "sources", startup: null, detailAt: 0, providerSdk: null, providerSdkAt: 0, busy: false };
 
 async function loadDiagnosticsInputs() {
   const api = window.desktopAPI;
@@ -273,6 +276,13 @@ async function loadDiagnosticsInputs() {
     api?.requestMonitoringDetail?.()?.catch?.((error) => console.warn("[diagnostics: requestMonitoringDetail] failed", error));
   }
   let monitoringReceivedAt = null;
+  // Whether each provider's SDK is installed (Health's import probe): read on a slow cadence (it spawns Python), the
+  // last value kept. The 行情來源 nodes read it so a missing SDK says 尚未安裝 SDK, not a generic 未連線 (user 11-13).
+  if (!diagnostics.providerSdk || Date.now() - diagnostics.providerSdkAt >= DIAGNOSTICS_SDK_RENEW_MS) {
+    diagnostics.providerSdkAt = Date.now();
+    Promise.resolve(api?.getProviderSdkStatus?.()).then((value) => { if (value) diagnostics.providerSdk = value; })
+      .catch((error) => console.warn("[diagnostics: getProviderSdkStatus] failed", error));
+  }
   // How long this App start took (Electron main's startup coordinator): read until the first screen is in, then kept.
   const readStartup = !diagnostics.startup?.steps?.some((step) => step.id === "first_paint" && step.status === "done");
   // The Shioaji connection and each provider's acknowledgements are Health's snapshot alone (its provider probes):
@@ -297,7 +307,7 @@ async function loadDiagnosticsInputs() {
   // Already loaded by app.js (startRendererRuntimeHealth); imported lazily so status.js does not pull it in first.
   const paint = await import("./renderer_runtime_health.js").then((m) => m.rendererPaintStats?.() || null).catch((error) => { console.warn("[diagnostics: reading paint stats] failed", error); return null; });
   return {
-    external: value(external), monitoring: snapshot, monitoringReceivedAt, moomoo: value(moomoo),
+    external: value(external), monitoring: snapshot, monitoringReceivedAt, moomoo: value(moomoo), providerSdk: diagnostics.providerSdk,
     trend: diagnostics.trend.points(), views: getRealtimeViewStats(), transport: getRealtimeTransportHealth(), paint, startup: diagnostics.startup,
     // The dock's own 資料未同步 (setWebSocketFreshness): the WebSocket node says the same.
     freshness: wsFreshnessTone,

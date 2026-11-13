@@ -46,6 +46,23 @@ export function stockCanonicalViewSpec(code, tradingDate, futuresPartition = nul
   };
 }
 
+// A Taiwan stock's 盤中零股 (Market Runtime's market ODD: its own book and prints, docs/decisions.md 零股行情的顯示):
+// what 買賣報價 and 成交明細 show of it. No analysis folds it, so it has no trend, flow or 價量.
+const ODD_LOT_CHANNELS = Object.freeze(["summary", "trades", "orderbook"]);
+
+/** The 盤中零股 view of a Taiwan stock on `tradingDate` (the stock's own DAY date); none of a futures month or a Futu code. */
+export function oddLotViewSpec(code, tradingDate) {
+  return { market: "ODD", code: String(code || "").trim().toUpperCase(), trading_date: String(tradingDate || "").slice(0, 10),
+    session: "DAY", channels: ODD_LOT_CHANNELS };
+}
+
+/** Whether `code` is a Taiwan stock, the only product with a 盤中零股. */
+export function hasOddLots(code) {
+  const normalized = String(code || "").trim().toUpperCase();
+  const prefix = normalized.includes(".") ? normalized.split(".", 1)[0] : "";
+  return Boolean(normalized) && !FUTU_MARKETS.has(prefix) && shioajiMarketOf(normalized) === "STK" && !INDEX_FUTURE_PRODUCTS.has(normalized);
+}
+
 const BENCHMARK_CHANNELS = Object.freeze(["summary", "trend"]);
 
 /**

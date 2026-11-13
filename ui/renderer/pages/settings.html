@@ -100,14 +100,26 @@
       <div class="settings-pagewrap" data-settings-panel="subscription" hidden>
         <h1 class="settings-page-title">訂閱管理</h1>
 
-        <h2 class="settings-section-title">永豐 Shioaji</h2>
+        <!-- Both providers' quotas side by side: what each list takes is seen at once (user 11-14). -->
         <div class="settings-group">
-          <div class="settings-quota">
-            <div class="settings-quota-head">
-              <div class="settings-quota-num"><span id="subShioajiUsed">0</span><small>／<span id="subShioajiLimit">0</span></small></div>
+          <div class="settings-quota-pair">
+            <div class="settings-quota">
+              <div class="settings-quota-name">永豐 Shioaji</div>
+              <div class="settings-quota-head">
+                <div class="settings-quota-num"><span id="subShioajiUsed">0</span><small>／<span id="subShioajiLimit">0</span></small></div>
+                <span id="subShioajiNote" class="settings-item-value"></span>
+              </div>
+              <div id="subShioajiBar" class="settings-quota-bar"></div>
+              <div id="subShioajiConns" class="settings-quota-conns"></div>
             </div>
-            <div id="subShioajiBar" class="settings-quota-bar"></div>
-            <div id="subShioajiConns" class="settings-quota-conns"></div>
+            <div class="settings-quota">
+              <div class="settings-quota-name">富途 Futu</div>
+              <div class="settings-quota-head">
+                <div class="settings-quota-num"><span id="subFutuUsed">0</span><small>／<span id="subFutuLimit">—</span></small></div>
+                <span id="subFutuNote" class="settings-item-value"></span>
+              </div>
+              <div id="subFutuBar" class="settings-quota-bar"></div>
+            </div>
           </div>
         </div>
 
@@ -121,16 +133,32 @@
             <span class="settings-item-main"><b>台指期</b><span class="settings-item-code">TXFR1</span></span>
             <input id="subTxf" class="settings-switch" type="checkbox" />
           </label>
+          <label class="settings-item">
+            <span class="settings-item-main"><b>盤中零股</b><span id="subOddLotsNote" class="settings-item-code">額度夠才訂</span></span>
+            <input id="subOddLots" class="settings-switch" type="checkbox" />
+          </label>
         </div>
 
+        <!-- One list at a time: 台股 (永豐) or 美股與加密貨幣 (富途). -->
         <div class="settings-group-title">
-          <span>個股</span>
+          <span id="subSourceSeg" class="settings-seg" role="group" aria-label="切換商品清單">
+            <button type="button" class="settings-seg-btn is-active" data-sub-source="shioaji" aria-pressed="true">台股</button>
+            <button type="button" class="settings-seg-btn" data-sub-source="futu" aria-pressed="false">美股與加密貨幣</button>
+          </span>
           <button id="subStockAllOn" class="settings-link" type="button">全部開啟</button>
         </div>
-        <input id="subStockFilter" class="settings-search" type="search" placeholder="搜尋或加入股票（股號、股名）" autocomplete="off" />
-        <div id="subStockRows" class="settings-group settings-scroll"></div>
-        <div id="subStockAddTitle" class="settings-group-title" hidden><span>加入</span></div>
-        <div id="subStockAdd" class="settings-group" hidden></div>
+        <div data-sub-list="shioaji">
+          <input id="subStockFilter" class="settings-search" type="search" placeholder="搜尋或加入股票（股號、股名）" autocomplete="off" />
+          <div id="subStockRows" class="settings-group settings-scroll"></div>
+          <div id="subStockAddTitle" class="settings-group-title" hidden><span>加入</span></div>
+          <div id="subStockAdd" class="settings-group" hidden></div>
+        </div>
+        <div data-sub-list="futu" hidden>
+          <input id="subFutuFilter" class="settings-search" type="search" placeholder="搜尋或加入富途商品（例如 US.AAPL）" autocomplete="off" />
+          <div id="subFutuRows" class="settings-group settings-scroll"></div>
+          <div id="subFutuAddTitle" class="settings-group-title" hidden><span>加入</span></div>
+          <div id="subFutuAdd" class="settings-group" hidden></div>
+        </div>
 
         <div class="settings-group-title">
           <span>產業指數</span>
@@ -144,23 +172,6 @@
         </div>
         <div id="subSectorListTitle" class="settings-group-title" hidden></div>
         <div id="subSectorList" class="settings-group settings-scroll" hidden></div>
-
-        <h2 class="settings-section-title">富途 Futu</h2>
-        <div class="settings-group">
-          <div class="settings-quota">
-            <div class="settings-quota-head">
-              <div class="settings-quota-num"><span id="subFutuUsed">0</span><small>／<span id="subFutuLimit">—</span></small></div>
-              <span id="subFutuNote" class="settings-item-value"></span>
-            </div>
-            <div id="subFutuBar" class="settings-quota-bar"></div>
-          </div>
-        </div>
-
-        <div class="settings-group-title"><span>美股與加密貨幣</span></div>
-        <input id="subFutuFilter" class="settings-search" type="search" placeholder="搜尋或加入富途商品（例如 US.AAPL）" autocomplete="off" />
-        <div id="subFutuRows" class="settings-group settings-scroll"></div>
-        <div id="subFutuAddTitle" class="settings-group-title" hidden><span>加入</span></div>
-        <div id="subFutuAdd" class="settings-group" hidden></div>
 
         <div class="settings-actions">
           <span id="subMessage" class="settings-actions-note"></span>

@@ -311,7 +311,8 @@ class RustDaemonEventSink:
     def register_adapter(self, *, source: str, max_subscriptions: int | None,
                          replace_subscriptions: ReplaceSubscriptions,
                          report_subscriptions: ReportSubscriptions,
-                         kinds: list[str] | None = None, stream_budget: Mapping[str, Any] | None = None) -> None:
+                         kinds: list[str] | None = None, stream_budget: Mapping[str, Any] | None = None,
+                         hold_until_close: bool = False) -> None:
         """Execute Market Runtime's subscription plan for `source` on an adapter-control connection
         (adapter_control.AdapterControlConnection says what the two callbacks do). The provider calls
         :meth:`subscriptions_changed` whenever its broker state moves (a login, a reconnect, a resync), and the fresh
@@ -322,7 +323,13 @@ class RustDaemonEventSink:
             source=self._adapter_source, max_subscriptions=max_subscriptions, kinds=kinds,
             replace_subscriptions=replace_subscriptions, report_subscriptions=report_subscriptions,
             url=self._url, auth_headers=self._auth_headers, on_transport_error=self._control_failed,
-            stream_budget=stream_budget)
+            stream_budget=stream_budget, hold_until_close=hold_until_close)
+
+    def release_held(self, markets: list[str], trading_date: str, session: str) -> None:
+        """A closed session is materialized: what was held subscribed for it is let go (a provider that registered no
+        adapter holds nothing)."""
+        if self._control is not None:
+            self._control.release_held(markets, trading_date, session)
 
     def fill_gaps_with(self, handler: Callable[[list[dict[str, Any]]], None]) -> None:
         """This provider fills gaps from its broker's history: each new ingest connection says so, and the gaps Market

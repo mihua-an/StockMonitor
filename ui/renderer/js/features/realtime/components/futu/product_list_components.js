@@ -13,7 +13,9 @@ import { US_HOLDINGS_LEDGERS } from "../../ledger_holdings.js";
 import { renderExternalRealtimeQuoteTable } from "../realtime_quote_table.js";
 import { renderProductCards, watchProductListWidth } from "../product_cards.js";
 import { setProductListOverviewOnly } from "../../product_pages.js";
-import { product } from "./futu_product.js";
+import { futuName, product } from "./futu_product.js";
+import { onInstrumentNamesLearned } from "../../../../core/instrument_names.js";
+import { FUTU_WATCH_PAGE_SAVED } from "./futu_watch_page.js";
 import { currentUsSession } from "./us_session_policy.js";
 
 // The watch-page store gives every page its canonical source.
@@ -89,6 +91,13 @@ export class MoomooProductListComponent{
     this.cleanup.push(watchProductListWidth(host,(narrow)=>this.setCardView(narrow)));
     this.cleanup.push(moomooQuoteStore.subscribe((state)=>this.render(state)));
     this.cleanup.push(window.desktopAPI?.onWatchPagesChanged?.(()=>this.loadPages())||(()=>{}));
+    // A page saved in this window (the Futu search box added a product to it): Electron main tells only the others.
+    const savedHere=()=>this.loadPages();
+    window.addEventListener(FUTU_WATCH_PAGE_SAVED,savedHere);
+    this.cleanup.push(()=>window.removeEventListener(FUTU_WATCH_PAGE_SAVED,savedHere));
+    // The catalog named a code: its row shows the name. The names of one answer arrive together: one redraw.
+    let nameRedraw=false;
+    this.cleanup.push(onInstrumentNamesLearned(()=>{if(nameRedraw)return;nameRedraw=true;queueMicrotask(()=>{nameRedraw=false;this.render(moomooQuoteStore.snapshot());});}));
     for(const ledger of US_HOLDINGS_LEDGERS)this.cleanup.push(ledger.subscribe((pages)=>{this.holdingPages.set(ledger.pageIds.us,pages.us);void this.syncProductUniverse();}));
     const columnsChanged=()=>this.render(moomooQuoteStore.snapshot());
     window.addEventListener("realtime-product-columns-changed",columnsChanged);
@@ -166,16 +175,17 @@ export class MoomooProductListComponent{
     // quote read model before emitting, keeping every product-list consumer
     // consistent without component-specific overlays.
     const productByCode=new Map((state.products||[]).map((row)=>[String(row.code||"").toUpperCase(),row]));
-    // A row is rebuilt only when its product row (the store's joined row, the same object while unchanged), its page
-    // item's name or the US session changed.
+    // A row is rebuilt only when its product row (the store's joined row, the same object while unchanged), its name
+    // (the catalog's, futuName) or the US session changed.
     this.rowCache??=new Map();
     const session=currentUsSession();
     const rows=activeItems.map((item)=>{
       const productRow=productByCode.get(item.code);
       const cached=this.rowCache.get(item.code);
-      if(cached&&cached.product===productRow&&cached.name===item.name&&cached.session===session)return cached.row;
+      const name=futuName(item.code);
+      if(cached&&cached.product===productRow&&cached.name===name&&cached.session===session)return cached.row;
       const row=this.realtimeRow({...item,...(productRow||{})},true);
-      this.rowCache.set(item.code,{product:productRow,name:item.name,session,row});
+      this.rowCache.set(item.code,{product:productRow,name,session,row});
       return row;
     });
     if(this.rowCache.size>activeItems.length*4)for(const code of this.rowCache.keys())if(!codes.has(code))this.rowCache.delete(code);

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from service.market.futu.reference import FutuReferencePublisher
+from service.market.futu.trend_backfill import FutuTrendBackfill
 from service.market.futu.callback import FutuThinCallbackAdapter
 from service.market.futu.subscriptions import FutuSubscriptionManager
 from service.market.futu.store import FutuControlStore
@@ -108,6 +109,8 @@ class FutuMarketService:
         )
         # 昨收 outside the US regular session, when Futu pushes no quote rows (reference.py).
         self.reference = FutuReferencePublisher(self.thin_callback.publish_reference)
+        # Today's 分時 before a late join: the trend from before a code joined the plan while running (trend_backfill.py).
+        self.trend_backfill = FutuTrendBackfill(self.thin_callback.publish_minute_backfill)
         self.provider_backend = ProviderMarketBackend(
             provider="futu",
             thin_callback=self.thin_callback,
@@ -390,6 +393,7 @@ class FutuMarketService:
                 "lane_freshness": compact.get("lane_freshness", []),
                 "thin_callback": self.thin_callback.snapshot(),
                 "reference": self.reference.snapshot_status(),
+                "trend_backfill": self.trend_backfill.snapshot_status(),
                 "provider_backend": self.provider_backend.snapshot(),
                 "watchlist_ticker_stream": True,
                 "ignored_unknown_codes": list(self._opend.ignored_unknown_codes),
@@ -452,6 +456,7 @@ class FutuMarketService:
         exactly its instruments; OpenD is subscribed on the next sync, and the report says what is subscribed NOW --
         a received plan is never reported as subscribed. The sync reports again when it moves."""
         self._plan_refused = self.subscription_manager.replace_plan(items)
+        self.trend_backfill.plan_replaced(self.subscription_manager.planned_codes())
         self._wake.set()
         return self.plan_report()
 

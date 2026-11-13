@@ -519,8 +519,10 @@ def test_the_snapshot_behind_the_previous_close_reaches_the_reference_publisher_
     frame = pandas.DataFrame([{"code": "US.AAPL", "name": "Apple", "prev_close_price": 269.5},
                               {"code": "US.TSLA", "name": "Tesla", "prev_close_price": 395.0}])
     bars = pandas.DataFrame([{"code": "CC.BTCUSD", "time_key": "2026-11-10 16:00:00", "close": 73701.88841}])
+    rt = pandas.DataFrame([{"code": "US.AAPL", "time": "2026-11-13 09:31:00", "cur_price": 250.0, "volume": 100, "turnover": 25000.0}])
     read: list[list[dict[str, Any]]] = []
     asked: list[tuple[Any, ...]] = []
+    backfilled: list[tuple[list[str], list[Any]]] = []
 
     class Context:
         def get_market_snapshot(self, _codes: list[str]) -> tuple[int, Any]:
@@ -530,16 +532,25 @@ def test_the_snapshot_behind_the_previous_close_reaches_the_reference_publisher_
             asked.append((code, kwargs))
             return 0, bars, None   # (ret, frame, page key), as the SDK answers
 
+        def get_rt_data(self, _code: str) -> tuple[int, Any]:
+            return 0, rt
+
     def run(snapshot, codes, kline):
         read.append(snapshot(sorted(codes)))
         read.append(kline("CC.BTCUSD", "2026-11-10 15:50:00", "2026-11-10 16:00:00"))
 
+    def trend_run(fetch, codes):
+        backfilled.append((sorted(codes), [fetch(code) for code in sorted(codes)]))
+        return 0
+
     provider = SimpleNamespace(
         pollable_watch_codes=lambda: ([], []),
-        subscription_manager=SimpleNamespace(confirmed_snapshot=lambda: {("US.AAPL", "quote"), ("US.TSLA", "quote")},
-                                             sync=lambda *_a, **_k: {}),
+        subscription_manager=SimpleNamespace(
+            confirmed_snapshot=lambda: {("US.AAPL", "quote"), ("US.TSLA", "quote"), ("US.AAPL", "RT_DATA")},
+            sync=lambda *_a, **_k: {}),
         notify_subscriptions_changed=lambda: None,
         reference=SimpleNamespace(run=run),
+        trend_backfill=SimpleNamespace(run=trend_run),
     )
     sdk = SimpleNamespace(RET_OK=0, KLType=SimpleNamespace(K_1M="K_1M"))
     lifecycle = FutuOpenDLifecycle(provider, state=OpenDConnectionState(context_generation=1, sdk=sdk), lock=threading.RLock(),
@@ -552,6 +563,9 @@ def test_the_snapshot_behind_the_previous_close_reaches_the_reference_publisher_
                     [{"code": "CC.BTCUSD", "time_key": "2026-11-10 16:00:00", "close": 73701.88841}]]
     assert asked == [("CC.BTCUSD", {"start": "2026-11-10 15:50:00", "end": "2026-11-10 16:00:00", "ktype": "K_1M",
                                     "max_count": 20})]
+    # The RT_DATA-subscribed code's today 分時 reaches the trend backfill as get_rt_data rows (US.TSLA has no RT_DATA pair).
+    assert backfilled == [(["US.AAPL"], [[{"code": "US.AAPL", "time": "2026-11-13 09:31:00", "cur_price": 250.0,
+                                           "volume": 100, "turnover": 25000.0}]])]
 
 
 # --- The SDK's file log ---------------------------------------------------------------------------------------------

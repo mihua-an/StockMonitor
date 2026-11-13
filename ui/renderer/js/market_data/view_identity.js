@@ -15,7 +15,7 @@ function normalizeChannels(channels) {
 // binds. Shioaji FUT has no single WAL session (each event's time picks DAY or NIGHT); a FUT spec without one shows
 // the day session: a display default, not a WAL identity. tests/renderer_view_spec_session_contract.mjs checks the
 // Python table.
-const DEFAULT_VIEW_SESSIONS = { "shioaji|STK": "DAY", "shioaji|IDX": "DAY", "shioaji|FUT": "DAY" };
+const DEFAULT_VIEW_SESSIONS = { "shioaji|STK": "DAY", "shioaji|ODD": "DAY", "shioaji|IDX": "DAY", "shioaji|FUT": "DAY" };
 
 function defaultViewSession(source, market) {
   return DEFAULT_VIEW_SESSIONS[`${source}|${market}`] || "FULL";

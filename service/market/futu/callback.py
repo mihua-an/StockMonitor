@@ -311,6 +311,49 @@ class FutuThinCallbackAdapter(ProviderThinCallbackAdapter):
             self._observe(code, kind)
         return None
 
+    def publish_minute_backfill(self, code: str, rows: Any, cutoff_ns: int) -> tuple[int, int]:
+        """Publish a code's get_rt_data 分時 rows as backfill minute bars for the minutes before ``cutoff_ns``.
+
+        The live RT_DATA push only carries the minutes from the subscription on; the earlier part of today's trend is
+        read once with get_rt_data (the same 分時 rows as the push: cur_price, avg_price, volume, turnover, time) and
+        admitted as backfill minute bars (flags.backfill). Rust B keeps a backfill bar strictly before the cut-off,
+        where the live stream takes over (accum.rs). Returns (published, skipped). A 分時 point of a minute that has
+        not traded (is_blank, no price) is skipped, not an error."""
+        code = str(code).strip().upper()
+        market = code.split(".", 1)[0] if "." in code else "US"
+        cutoff = int(cutoff_ns)
+        flags = {"time_label": True, "backfill": True, "backfill_cutoff_ns": cutoff}
+        published = skipped = 0
+        for raw in _rows(rows):
+            row = dict(raw)
+            row.setdefault("code", code)
+            exchange_ns, time_quality = _exchange_time("minute_bar", row, market)
+            if exchange_ns <= 0 or exchange_ns >= cutoff:
+                # At or after the cut-off the live stream owns the minute; a row without a parseable time is left out.
+                skipped += 1
+                continue
+            try:
+                data = self._event_data("minute_bar", row)
+            except (InvalidField, NoPriceYet):
+                # not an error: a 分時 point of a minute that has not traded has no price to draw.
+                skipped += 1
+                continue
+            with self._publish_lock:
+                key = (code, "minute_bar")
+                sequence = self._sequences.get(key, 0) + 1
+                self._sequences[key] = sequence
+                accepted = self._sink.publish(RustLiveEvent(
+                    source="futu", market=market, code=code, generation=max(0, int(self._generation())),
+                    sequence=sequence, event_type="minute_bar", exchange_ts_ns=exchange_ns,
+                    arrival_ns=time.time_ns(), data=data, time_quality=time_quality, flags=dict(flags),
+                ))
+            if accepted:
+                published += 1
+            else:
+                skipped += 1
+                self._record_rejection("minute_bar", "rust_rejected", code)
+        return published, skipped
+
     def publish_reference(self, code: str, trading_date: str, data: Mapping[str, Any]) -> bool:
         """One reference event (昨收, name) for ``code``'s ``trading_date`` partition (service/market/futu/reference.py).
 

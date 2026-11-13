@@ -200,7 +200,8 @@ fn futu_crypto_is_shown_and_analysed_but_never_written_to_the_wal() {
 #[test]
 fn a_stock_off_the_background_list_is_shown_and_analysed_but_never_written_to_the_wal() {
     // User 10-19: a searched stock (or a workspace one) is never stored; one on the list -- product pages, holdings,
-    // the paper ledger -- is. Indices and futures stay stored whatever the list says.
+    // the paper ledger -- is. Indices and futures stay stored whatever the list says. User 11-13: a Shioaji stock is
+    // written while its session runs, listed or not (the materialization sorts it out), so the rule is Futu's.
     let d = Daemon::start("unlisted", &[]);
     let mut c = d.client(CONTROLLER);
     c.send(json!({"type": "background.replace", "payload": {"revision": 4, "items": [
@@ -213,44 +214,47 @@ fn a_stock_off_the_background_list_is_shown_and_analysed_but_never_written_to_th
     let mut p = d.client(SHIOAJI);
     let listed = ingest(&mut p, trade("shioaji", "STK", "2330", "DAY", 1, 1_000_000));
     assert!(listed["storage"] == "wal", "a listed stock is stored: {listed}");
-    let searched = ingest(&mut p, trade("shioaji", "STK", "2454", "DAY", 1, 1_500_000));
-    assert!(searched["accepted"] == true && searched["storage"] == "live_only", "{searched}");
-    assert!(searched["durable_sequence"].is_null(), "{searched}");
+    let looked_at = ingest(&mut p, trade("shioaji", "STK", "2454", "DAY", 1, 1_500_000));
+    assert_eq!(looked_at["storage"], "wal", "a Shioaji stock off the list is written for the day: {looked_at}");
+    let odd = ingest(&mut p, trade("shioaji", "ODD", "2330", "DAY", 1, 1_000_000));
+    assert_eq!(odd["storage"], "wal", "its 盤中零股 too: {odd}");
     let index = ingest(&mut p, trade("shioaji", "IDX", "IX0028", "DAY", 1, 5_000_000));
     assert_eq!(index["storage"], "wal", "an index is stored though it is not on the list: {index}");
     let mut f = d.client(FUTU);
-    let us = ingest(&mut f, trade("futu", "US", "US.TSLA", "FULL", 1, 4_000_000));
-    assert_eq!(us["storage"], "live_only", "a searched Futu stock is not stored either: {us}");
+    let searched = ingest(&mut f, trade("futu", "US", "US.TSLA", "FULL", 1, 4_000_000));
+    assert!(searched["accepted"] == true && searched["storage"] == "live_only", "a searched Futu stock is not stored: {searched}");
+    assert!(searched["durable_sequence"].is_null(), "{searched}");
+    assert_eq!(ingest(&mut f, trade("futu", "US", "US.NVDA", "FULL", 1, 9_000_000))["storage"], "live_only");
     let seen = b.until(|seen| seen.iter().any(|m| m["type"] == "live.batch" && m["payload"]["events"][0]["code"] == "US.TSLA")
         && seen.iter().filter(|m| m["type"] == "durable.batch").flat_map(|m| m["payload"]["events"].as_array().unwrap().clone()).any(|e| e["code"] == "IX0028"));
     let live: Vec<&Value> = seen.iter().filter(|m| m["type"] == "live.batch").flat_map(|m| m["payload"]["events"].as_array().unwrap()).collect();
-    assert!(live.iter().any(|e| e["code"] == "2454"), "B analyses the searched stock live: {seen:?}");
+    assert!(live.iter().any(|e| e["code"] == "US.TSLA"), "B analyses the searched stock live: {seen:?}");
     // The live lane names why it is not stored and by which background revision (B keeps it out of what it writes).
-    let searched_batch = seen.iter().find(|m| m["type"] == "live.batch" && m["payload"]["events"][0]["code"] == "2454").unwrap();
+    let searched_batch = seen.iter().find(|m| m["type"] == "live.batch" && m["payload"]["events"][0]["code"] == "US.TSLA").unwrap();
     assert_eq!(searched_batch["payload"]["storage"], "unlisted", "{searched_batch}");
     assert_eq!(searched_batch["payload"]["storage_revision"], 4, "{searched_batch}");
     let stored: Vec<&Value> = seen.iter().filter(|m| m["type"] == "durable.batch").flat_map(|m| m["payload"]["events"].as_array().unwrap()).collect();
-    assert!(stored.iter().all(|e| e["code"] != "2454" && e["code"] != "US.TSLA") && stored.iter().any(|e| e["code"] == "2330"), "{stored:?}");
+    assert!(stored.iter().all(|e| e["code"] != "US.TSLA" && e["code"] != "US.NVDA") && stored.iter().any(|e| e["code"] == "2454"), "{stored:?}");
     // Shown live.
     let mut v = d.client(VIEWER);
-    v.send(json!({"type": "view.subscribe", "payload": {"source": "shioaji", "market": "STK", "code": "2454", "session": "DAY"}}));
+    v.send(json!({"type": "view.subscribe", "payload": {"source": "futu", "market": "US", "code": "US.TSLA", "session": "FULL"}}));
     let snap = v.await_type("view.snapshot")["payload"].clone();
     assert!(snap["summary"]["current"].as_f64().is_some(), "shown live: {snap}");
     // Added to the product page: stored from then on.
     c.send(json!({"type": "background.replace", "payload": {"revision": 5, "items": [
         {"source": "shioaji", "market": "STK", "code": "2330", "owners": ["watchlist"]},
-        {"source": "shioaji", "market": "STK", "code": "2454", "owners": ["watchlist"]}]}}));
+        {"source": "futu", "market": "US", "code": "US.TSLA", "owners": ["watchlist"]}]}}));
     assert_eq!(c.await_type("background.replace.ack")["payload"]["applied_revision"], 5);
-    let added = ingest(&mut p, trade("shioaji", "STK", "2454", "DAY", 2, 1_510_000));
+    let added = ingest(&mut f, trade("futu", "US", "US.TSLA", "FULL", 2, 4_010_000));
     assert_eq!(added["storage"], "wal", "{added}");
     c.send(json!({"type": "metrics"}));
     let metrics = c.await_type("metrics")["payload"].clone();
     assert_eq!(metrics["ingest"]["unlisted_live_only"], 2, "{metrics}");
     assert_eq!(metrics["hot_states"]["storage_revision"], 5, "{metrics}");
-    assert_eq!(metrics["hot_states"]["live_only_partitions"], 2, "2454 and US.TSLA keep their stored fold apart: {metrics}");
-    // Shown: both prints of 2454, the one from before it was listed too.
+    assert_eq!(metrics["hot_states"]["live_only_partitions"], 2, "US.TSLA and US.NVDA keep their stored fold apart: {metrics}");
+    // Shown: both prints of US.TSLA, the one from before it was listed too.
     let mut v = d.client(VIEWER);
-    v.send(json!({"type": "view.subscribe", "payload": {"source": "shioaji", "market": "STK", "code": "2454", "session": "DAY"}}));
+    v.send(json!({"type": "view.subscribe", "payload": {"source": "futu", "market": "US", "code": "US.TSLA", "session": "FULL"}}));
     let shown = v.await_type("view.snapshot")["payload"]["trades"].as_array().unwrap().len();
     assert_eq!(shown, 2);
     drop(v);
@@ -260,11 +264,11 @@ fn a_stock_off_the_background_list_is_shown_and_analysed_but_never_written_to_th
     let (root, data) = d.shutdown();
     let d = Daemon::start_in(root, data, &[]);
     let mut v = d.client(VIEWER);
-    v.send(json!({"type": "view.subscribe", "payload": {"source": "shioaji", "market": "STK", "code": "2454", "session": "DAY"}}));
+    v.send(json!({"type": "view.subscribe", "payload": {"source": "futu", "market": "US", "code": "US.TSLA", "session": "FULL"}}));
     let snap = v.await_type("view.snapshot")["payload"].clone();
     let prices: Vec<Value> = snap["trades"].as_array().unwrap().iter().map(|t| t["price"].clone()).collect();
     assert_eq!(prices.len(), 1, "only the stored print comes back: {snap}");
-    v.send(json!({"type": "view.subscribe", "payload": {"source": "futu", "market": "US", "code": "US.TSLA", "session": "FULL"}}));
+    v.send(json!({"type": "view.subscribe", "payload": {"source": "futu", "market": "US", "code": "US.NVDA", "session": "FULL"}}));
     let snap = v.await_type("view.snapshot")["payload"].clone();
     assert!(snap["trades"].as_array().is_none_or(|t| t.is_empty()), "a never-listed stock comes back with nothing: {snap}");
 }

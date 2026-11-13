@@ -16,6 +16,10 @@ subscribed whatever is on screen reach A through the background list, each tagge
 * ``sector_index``   -- the 產業指數 (service/market/reference/sector_indexes.py, user 10-19): the indexes of every
                         Shioaji stock the product pages and the two holdings keep, or all of them, or none, as
                         訂閱管理 → 產業指數 says; derived, recomputed with every save.
+* ``odd_lots``       -- the 盤中零股 (market ODD) of every Shioaji stock on the product pages, while 訂閱管理 → 零股 asks
+                        for it (user 11-14), so a stock's odd lots are recorded from the open; derived like the sector
+                        indexes. An instrument only this owner wants is ``spare``: Market Runtime plans it only into
+                        the streams every other demand leaves, and it is not counted against the background share.
 
 What each instrument of the product pages and the two holdings is subscribed with follows its 訂閱偏好
 (config/subscription_preferences.py): its 明細 (trade) and 五檔 (orderbook), and a Shioaji stock's 個股期貨 months
@@ -42,7 +46,9 @@ from service.platform.failure_record import record_failure
 _log = logging.getLogger(__name__)
 
 DOMAIN = "background"
-OWNERS = ("watchlist", "holdings", "paper_holdings", "paper_orders", "market_context", "sector_index")
+OWNERS = ("watchlist", "holdings", "paper_holdings", "paper_orders", "market_context", "sector_index", "odd_lots")
+# Owners whose instruments take only the room left (BackgroundItem::spare in native/market_runtime/src/demand.rs).
+SPARE_OWNERS = frozenset({"odd_lots"})
 # The owners whose instruments follow the 訂閱偏好.
 PREFERRED_OWNERS = ("watchlist", "holdings", "paper_holdings")
 FULL_KINDS = ["quote", "trade", "orderbook"]
@@ -129,10 +135,11 @@ def holdings_items(positions: Iterable[Mapping[str, Any]]) -> list[dict[str, Any
     return [out[k] for k in sorted(out)]
 
 
-def paper_order_items(codes: Iterable[str]) -> list[dict[str, Any]]:
-    """The codes of the working paper orders as Shioaji stocks with their ticks and 五檔."""
-    return [{"source": "shioaji", "market": "STK", "code": str(code).strip().upper(), "kinds": STOCK_KINDS}
-            for code in sorted({str(c).strip().upper() for c in codes if str(c).strip()})]
+def paper_order_items(instruments: Iterable[tuple[str, bool]]) -> list[dict[str, Any]]:
+    """The working paper orders' instruments -- (code, odd lots) -- as Shioaji stocks, or their 盤中零股 (market ODD),
+    with their ticks and 五檔."""
+    keys = {("ODD" if odd else "STK", str(code).strip().upper()) for code, odd in instruments if str(code).strip()}
+    return [{"source": "shioaji", "market": market, "code": code, "kinds": STOCK_KINDS} for market, code in sorted(keys)]
 
 
 def _futures_table():
@@ -202,6 +209,15 @@ def sector_items(items: Iterable[Mapping[str, Any]], prefs: Mapping[str, Any]) -
     return sector_index_items(items)
 
 
+def odd_lot_items(items: Iterable[Mapping[str, Any]], prefs: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """訂閱管理 → 零股: the 盤中零股 of the product pages' Shioaji stocks (none while it is off)."""
+    if not prefs.get("odd_lots"):
+        return []
+    codes = {str(item.get("code") or "").strip().upper() for item in items
+             if _key(item)[:2] == ("shioaji", "STK") and "watchlist" in (item.get("claims") or {})}
+    return [{"source": "shioaji", "market": "ODD", "code": code, "kinds": STOCK_KINDS} for code in sorted(codes) if code]
+
+
 def merge(items: Iterable[Mapping[str, Any]], owner: str, owned: Iterable[Mapping[str, Any]],
           enabled: Any = lambda source: True) -> list[dict[str, Any]]:
     """The list after `owner` holds exactly `owned`: its claim leaves every other instrument, an instrument with no
@@ -225,8 +241,11 @@ def merge(items: Iterable[Mapping[str, Any]], owner: str, owned: Iterable[Mappin
     for key in sorted(claims):
         by_owner = dict(sorted(claims[key].items()))
         wanted = {kind for kinds in by_owner.values() for kind in kinds}
-        merged.append({"source": key[0], "market": key[1], "code": key[2], "kinds": [k for k in FULL_KINDS if k in wanted],
-                       "owners": list(by_owner), "claims": by_owner})
+        item = {"source": key[0], "market": key[1], "code": key[2], "kinds": [k for k in FULL_KINDS if k in wanted],
+                "owners": list(by_owner), "claims": by_owner}
+        if set(by_owner) <= SPARE_OWNERS:
+            item["spare"] = True
+        merged.append(item)
     return merged
 
 
@@ -242,17 +261,18 @@ def compose(current: Iterable[Mapping[str, Any]], owned: Mapping[str, Iterable[M
         elif owner in PREFERRED_OWNERS:
             raw = preferred_items(raw, prefs, table)
         items = merge(items, owner, raw, enabled=enabled)
-    return merge(items, "sector_index", sector_items(items, prefs), enabled=enabled)
+    items = merge(items, "sector_index", sector_items(items, prefs), enabled=enabled)
+    return merge(items, "odd_lots", odd_lot_items(items, prefs), enabled=enabled)
 
 
 def shioaji_streams(items: Iterable[Mapping[str, Any]]) -> int:
-    """The Shioaji streams a list takes: each instrument the streams of its kinds in its market (the same capability
-    the provider registers with A as its stream budget)."""
+    """The Shioaji streams a list takes from its background share: each instrument the streams of its kinds in its
+    market (the same capability the provider registers with A as its stream budget); a spare one takes none of it."""
     from service.market.shared.provider_contract import SHIOAJI_CAPABILITIES, SHIOAJI_LANE_KINDS
 
     costs = SHIOAJI_CAPABILITIES.kinds_by_market(SHIOAJI_LANE_KINDS)
     return sum(sum(costs.get(market, {}).get(kind, 0) for kind in item.get("kinds") or FULL_KINDS)
-               for item in items for (source, market, _code) in [_key(item)] if source == "shioaji")
+               for item in items for (source, market, _code) in [_key(item)] if source == "shioaji" and not item.get("spare"))
 
 
 def futu_streams(items: Iterable[Mapping[str, Any]]) -> int:

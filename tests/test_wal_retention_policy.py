@@ -301,3 +301,14 @@ def test_a_crypto_session_is_sealed_after_its_new_york_day():
     new_york_midnight = datetime(2026, 10, 6, tzinfo=ZoneInfo("America/New_York"))
     assert due is not None and due - new_york_midnight == timedelta(minutes=10)
     assert due > datetime(2026, 10, 6, tzinfo=ZoneInfo("Asia/Taipei")), "not Taipei's day end"
+
+
+def test_an_odd_lot_session_is_never_materialized_and_goes_once_sealed():
+    # User 11-13: 盤中零股 is written for its session and never kept; sealed with the stock session, it holds nothing.
+    rows = [row("shioaji", "ODD", "2026-09-29", "DAY", ns(2026, 9, 29, 9, 0)),
+            row("shioaji", "ODD", "2026-09-30", "DAY", ns(2026, 9, 30, 9, 0), sealed=False)]
+    before, held = wr.retention_before_ns(NOW, [], rows)
+    assert before == ns(2026, 9, 30, 9, 0) and held == ["shioaji:ODD 2026-09-30 DAY shown"]
+    unsealed = [row("shioaji", "ODD", "2026-09-29", "DAY", ns(2026, 9, 29, 9, 0), sealed=False), rows[1]]
+    assert "shioaji:ODD 2026-09-29 DAY not sealed" in wr.retention_before_ns(NOW, [], unsealed)[1]
+    assert ("shioaji", "ODD", "2026-09-29", "DAY") in wr.finished_sessions(NOW, [], rows)

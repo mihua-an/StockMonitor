@@ -16,7 +16,7 @@ const crypto = require("crypto");
 const { terminateProcessTree } = require("../service/platform/js/forced_termination");
 
 const PROVIDERS = { shioaji: ["shioaji"], futu: ["moomoo", "futu"] };
-// The distribution whose installed version is reported (and the installer checks against its pin).
+// The distribution whose installed version is reported (the installer installs the latest, unpinned).
 const DISTRIBUTIONS = { shioaji: "shioaji", futu: "moomoo-api" };
 const MAX_LINES = 200;
 const INSTALL_TIMEOUT_MS = 10 * 60 * 1000;

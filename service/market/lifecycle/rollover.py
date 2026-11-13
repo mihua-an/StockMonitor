@@ -585,6 +585,8 @@ class SessionOrchestrator:
                     return session_completeness
                 return str(evidence.summary("shioaji", market, active.trading_date, "DAY").get("completeness") or "gap_detected")
             targets = [("STK", active.trading_date, "DAY", claim("STK")), ("IDX", active.trading_date, "DAY", claim("IDX"))]
+            # The day's 盤中零股 is never materialized: sealed with the stock session, so the WAL can let it go.
+            evidence.seal("shioaji", "ODD", active.trading_date, "DAY")
         elif active.market.upper() == "FUT":
             # Every FUT session partition (DAY, or a NIGHT dated by its open) whose session is over.
             now = self.now_provider()
@@ -833,10 +835,27 @@ class SessionOrchestrator:
                     except OSError as exc:
                         record_failure(_failure_log, "publishing the settled STK day session", exc)
                         continue
+                if status in _SETTLED_STATUSES:
+                    self._release_held_subscriptions(keys)
                 payload["materialization_status"] = status
                 self._write_finalization_manifest(payload)
                 updated += 1
         return updated
+
+    # The markets whose subscriptions are held for a settled session, by the market of its materialization key: a
+    # stock's 盤中零股 (ODD) is held with the stock session.
+    _HELD_MARKETS = {"STK": ["STK", "ODD"], "IDX": ["IDX"], "FUT": ["FUT"]}
+
+    def _release_held_subscriptions(self, keys: list[Any]) -> None:
+        """A session settled (materialized, or nothing left to materialize): Market Runtime lets go of what it kept
+        subscribed for it (decisions.md 盤中訂閱過的商品不退訂)."""
+        release = getattr(getattr(self._app(), "live_event_sink", None), "release_held", None)
+        if not callable(release):
+            return
+        for key in keys:
+            markets = self._HELD_MARKETS.get(str(key.get("market") or "").upper())
+            if markets:
+                release(markets, str(key.get("trading_date"))[:10], str(key.get("session") or "DAY").upper())
 
     def _intent_path(self, active: ActiveMarketSession) -> Path:
         safe = "".join(

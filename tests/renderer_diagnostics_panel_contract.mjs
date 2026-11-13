@@ -300,6 +300,21 @@ test("The Shioaji connection and the provider acknowledgements come from Health'
   assert.ok(probed.flows.has("futu>market"), "the probe's count moves the link");
 });
 
+// 券商 SDK is user-installed; without it the provider runs but can never connect, so the node says 尚未安裝 SDK
+// with how to install it, not a 未連線 that reads as "logged out" and leaves the user waiting (user 11-13).
+test("a provider whose SDK is not installed says 尚未安裝 SDK, not 未連線", () => {
+  const sdk = (p, installed) => ({ providers: { [p]: { installed } } });
+  const sh = buildDiagnosticsModel({ ...input({ shConnected: false }), providerSdk: sdk("shioaji", false) }).nodes.shioaji;
+  assert.deepEqual([sh.tone, sh.state], ["fail", "尚未安裝 SDK"], "missing SDK is said plainly, not 券商未連線");
+  assert.match(renderDiagnostics(buildDiagnosticsModel({ ...input({ shConnected: false }), providerSdk: sdk("shioaji", false) }), "shioaji"),
+    /設定 → 券商帳號 安裝/, "the node says where to install it");
+  // installed: true leaves the broker-login verdict (券商未連線) untouched; an unread probe (no providerSdk) too.
+  assert.equal(buildDiagnosticsModel({ ...input({ shConnected: false }), providerSdk: sdk("shioaji", true) }).nodes.shioaji.state, "券商未連線");
+  // Futu: 尚未安裝 SDK wins over OpenD 無法連線, and the 重新檢查 Futu 連線 action is dropped (nothing to connect with).
+  const fu = buildDiagnosticsModel({ ...input(), providerSdk: sdk("futu", false) }).nodes.futu;
+  assert.deepEqual([fu.tone, fu.state, fu.action], ["fail", "尚未安裝 SDK", null]);
+});
+
 // Rust B publishes its own model signals to Rust A. That link moves on B's own count of published signals,
 // never on the projection acks of the 分析結果 link beside it; Realtime API only writes the inference config file.
 test("Rust B publishes its own model signals to Rust A", () => {

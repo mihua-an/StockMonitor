@@ -81,24 +81,25 @@ fn an_unlisted_stocks_pages_hold_its_prints_and_a_late_filled_print_in_exchange_
         {"source": "shioaji", "market": "STK", "code": "2330", "owners": ["watchlist"]}]}}));
     c.await_type("background.replace.ack");
     let mut p = daemon.client(SHIOAJI);
+    let mut f = daemon.client(FUTU);
     for seq in 10..=12 {
-        assert_eq!(ingest(&mut p, trade("shioaji", "STK", "2454", "DAY", seq, 1_500_000 + seq as i64))["storage"], "live_only");
+        assert_eq!(ingest(&mut f, trade("futu", "US", "US.TSLA", "FULL", seq, 1_500_000 + seq as i64))["storage"], "live_only");
     }
     let mut v = daemon.client(VIEWER);
-    v.send(json!({"type": "view.subscribe", "payload": {"source": "shioaji", "market": "STK", "code": "2454", "session": "DAY"}}));
+    v.send(json!({"type": "view.subscribe", "payload": {"source": "futu", "market": "US", "code": "US.TSLA", "session": "FULL"}}));
     v.await_type("view.snapshot");
     // The late join's fill: a print older than every one shown, sent after them (the source numbering goes on).
-    let mut filled = trade("shioaji", "STK", "2454", "DAY", 13, 1_400_000);
-    let filled_ts = exchange_ns_for("STK", "DAY", 5);
+    let mut filled = trade("futu", "US", "US.TSLA", "FULL", 13, 1_400_000);
+    let filled_ts = exchange_ns_for("US", "FULL", 5);
     filled["exchange_ts_ns"] = json!(filled_ts);
     filled["data"]["total_volume"] = json!(5);
-    assert_eq!(ingest(&mut p, filled)["storage"], "live_only");
+    assert_eq!(ingest(&mut f, filled)["storage"], "live_only");
     let frames = deltas(&v.drain(800));
     let carried: Vec<String> = frames.iter().filter(|d| d["delta_type"] == "trade.frame")
         .map(|d| d["payload"]["trade"]["exchange_ts_ns"].as_str().unwrap_or("").to_string()).collect();
     assert_eq!(carried, vec![filled_ts.to_string()], "the frame carries the filled print, not the newest again: {frames:?}");
 
-    let request = json!({"market": "STK", "code": "2454", "trading_date": "2026-09-29", "session": "DAY", "page": 1, "page_size": 10});
+    let request = json!({"market": "US", "code": "US.TSLA", "trading_date": "2026-09-29", "session": "FULL", "page": 1, "page_size": 10});
     let first = page(&daemon, request.clone());
     assert_eq!(first["total_rows"], 4, "{first}");
     let times: Vec<String> = first["rows"].as_array().unwrap().iter().map(|r| r["exchange_ts_ns"].as_str().unwrap().to_string()).collect();
@@ -114,10 +115,10 @@ fn an_unlisted_stocks_pages_hold_its_prints_and_a_late_filled_print_in_exchange_
     assert_eq!(frozen_at, stored, "the committed sequence");
     let stored = ingest(&mut p, trade("shioaji", "STK", "2330", "DAY", 2, 1_000_100))["durable_sequence"].as_u64().unwrap();
     await_synced(&mut p, stored);
-    assert_eq!(ingest(&mut p, trade("shioaji", "STK", "2454", "DAY", 14, 1_500_014))["storage"], "live_only");
+    assert_eq!(ingest(&mut f, trade("futu", "US", "US.TSLA", "FULL", 14, 1_500_014))["storage"], "live_only");
     let latest = page(&daemon, request.clone());
     assert_eq!(latest["total_rows"], 5, "{latest}");
-    let frozen = page(&daemon, json!({"market": "STK", "code": "2454", "trading_date": "2026-09-29", "session": "DAY", "page": 1,
+    let frozen = page(&daemon, json!({"market": "US", "code": "US.TSLA", "trading_date": "2026-09-29", "session": "FULL", "page": 1,
                                       "page_size": 10, "snapshot_watermark": frozen_at}));
     assert_eq!(frozen["total_rows"], 4, "a page frozen before the later print does not shift: {frozen}");
     daemon.shutdown();

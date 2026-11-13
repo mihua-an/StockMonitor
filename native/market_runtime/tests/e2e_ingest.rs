@@ -429,7 +429,8 @@ fn a_print_the_broker_resends_is_never_written_to_the_wal() {
 
 #[test]
 fn an_unlisted_stocks_resent_print_reaches_b_only_as_its_loss() {
-    // The same over the live lane: B gets the loss record of an unlisted stock's copy, never the copy.
+    // The same over the live lane: B gets the loss record of a live-only print's copy, never the copy. A Shioaji stock
+    // is on the live lane only as a closed session's prints fetched for a view (`flags.view_only`).
     let d = Daemon::start("resent-unlisted", &[]);
     let mut c = d.client(CONTROLLER);
     c.send(json!({"type": "background.replace", "payload": {"revision": 1, "items": [{"source": "shioaji", "market": "STK", "code": "2330"}]}}));
@@ -438,11 +439,12 @@ fn an_unlisted_stocks_resent_print_reaches_b_only_as_its_loss() {
     b.send(json!({"type": "durable.subscribe", "payload": {"after_sequence": 0}}));
     b.await_type("durable.subscribed");
     let mut p = d.client(SHIOAJI);
-    let first = trade("shioaji", "STK", "2454", "DAY", 1, 1_500_000);
+    let mut first = trade("shioaji", "STK", "2454", "DAY", 1, 1_500_000);
+    first["flags"] = json!({"view_only": true});
     assert_eq!(ingest(&mut p, first.clone())["storage"], "live_only");
     let mut copy = first;
     copy["generation"] = json!(2);   // a reconnect re-sends the last print
-    copy["flags"] = json!({"gap_before": 2});
+    copy["flags"] = json!({"view_only": true, "gap_before": 2});
     let ack = ingest(&mut p, copy);
     assert_eq!(ack["reason"], "RESENT_PRINT", "{ack}");
     let live = |seen: &[Value]| -> Vec<Value> { seen.iter().filter(|m| m["type"] == "live.batch")

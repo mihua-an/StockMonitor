@@ -266,7 +266,7 @@ impl OpeningGroup {
         }
         match (market.to_uppercase().as_str(), session.to_uppercase().as_str()) {
             ("FUT", "NIGHT") => Some(Self::Night),
-            ("STK" | "IDX" | "FUT", "DAY") => Some(Self::Day),
+            ("STK" | "ODD" | "IDX" | "FUT", "DAY") => Some(Self::Day),
             _ => None,
         }
     }
@@ -652,6 +652,10 @@ pub fn family(source: &str, market: &str, session: &str) -> String {
     format!("{}|{}|{}", source.trim().to_lowercase(), market.trim().to_uppercase(), session.trim().to_uppercase())
 }
 
+/// The Shioaji markets whose DAY session opens and rolls together: stocks, their 盤中零股 (ODD: the same stocks' odd-lot
+/// book and prints, a market of its own), indices and the futures day session.
+pub const SHIOAJI_DAY_MARKETS: [&str; 4] = ["STK", "ODD", "IDX", "FUT"];
+
 /// Futu stock markets whose partitions roll (venue-local calendar date, WAL session FULL).
 pub const FUTU_STOCK_MARKETS: [&str; 4] = ["US", "HK", "SH", "SZ"];
 
@@ -663,8 +667,8 @@ pub fn cutoffs(calendar: &TradingCalendar, us: &TradingCalendar, opened: &Opened
     else {
         return out;
     };
-    for (market, session) in [("STK", "DAY"), ("IDX", "DAY"), ("FUT", "DAY")] {
-        out.insert(family("shioaji", market, session), day.clone());
+    for market in SHIOAJI_DAY_MARKETS {
+        out.insert(family("shioaji", market, "DAY"), day.clone());
     }
     out.insert(family("shioaji", "FUT", "NIGHT"), night);
     let weekdays = TradingCalendar::default();
@@ -853,9 +857,66 @@ pub fn stored_per_instrument(source: &str, market: &str) -> bool {
         || (source.eq_ignore_ascii_case("futu") && !market.eq_ignore_ascii_case("CC"))
 }
 
+/// A market whose every event is written to the WAL while its session runs, on the background list or not, and
+/// whose partitions are sorted out only when the session is materialized (user 11-13): Shioaji stocks and their
+/// 盤中零股. A stock looked at during the day keeps its day in the WAL -- a restart resumes it and adding it to the
+/// list later fetches nothing again -- and the materialization keeps only the listed stocks, never the odd lots
+/// ([`kept_at_materialization`]).
+pub fn stored_until_materialized(source: &str, market: &str) -> bool {
+    source.eq_ignore_ascii_case("shioaji") && (market.eq_ignore_ascii_case("STK") || market.eq_ignore_ascii_case(ODD_MARKET))
+}
+
+/// A stock's 盤中零股: its own book and prints, a market of its own beside the stock's whole lots.
+pub const ODD_MARKET: &str = "ODD";
+
+/// A stock's 盤中零股 (the market ODD). Its broker keeps no history of it, so nothing of it is asked for after a
+/// restart, an outage or a late join; and it is not the stock's market -- no analysis, feature or summary folds it,
+/// only 模擬下單's odd-lot matching reads it (decisions.md 模擬零股的成交方式).
+pub fn is_odd_lot(source: &str, market: &str) -> bool {
+    source.eq_ignore_ascii_case("shioaji") && market.eq_ignore_ascii_case(ODD_MARKET)
+}
+
+/// The index futures' contract families (service/market/reference/futures_contracts.py INDEX_FUTURES): 台指期, 小台指.
+pub const INDEX_FUTURES: [&str; 2] = ["TXF", "MXF"];
+
+/// A Shioaji FUT code of an index future: the continuous near month (TXFR1) or a dated month of an index family
+/// (`TXF202612`, `MXF202612`). Every other futures month is a stock future (個股期貨).
+pub fn index_future(code: &str) -> bool {
+    let code = code.to_uppercase();
+    code == "TXFR1" || INDEX_FUTURES.iter().any(|family| code.strip_prefix(family)
+        .is_some_and(|month| month.len() == 6 && month.bytes().all(|b| b.is_ascii_digit())))
+}
+
+/// Whether a Shioaji partition of a closed session goes into the historical store (user 11-13): a stock only when it
+/// is kept at that moment (`kept`: on the background list, or traded by an account ledger), an index and the index
+/// futures always, a stock future (個股期貨) and a 盤中零股 never. Another source's partitions are its retention's to
+/// judge.
+pub fn kept_at_materialization(source: &str, market: &str, code: &str, kept: impl Fn(&str) -> bool) -> bool {
+    if !source.eq_ignore_ascii_case("shioaji") {
+        return true;
+    }
+    match market.to_uppercase().as_str() {
+        "STK" => kept(code),
+        "FUT" => index_future(code),
+        ODD_MARKET => false,
+        _ => true,
+    }
+}
+
 #[cfg(test)]
 mod coverage_tests {
     use super::*;
+
+    #[test]
+    fn a_closed_session_keeps_listed_stocks_indices_and_index_futures_only() {
+        let listed = |code: &str| code == "2330";
+        let kept = |market: &str, code: &str| kept_at_materialization("shioaji", market, code, listed);
+        assert!(kept("STK", "2330") && !kept("STK", "2454"), "a stock only looked at goes");
+        assert!(kept("IDX", "TAIEX") && kept("FUT", "TXFR1") && kept("FUT", "TXF202612") && kept("FUT", "MXF202612"));
+        assert!(!kept("FUT", "CDF202612"), "a stock future never stays");
+        assert!(!kept("ODD", "2330"), "an odd lot never stays, listed stock or not");
+        assert!(kept_at_materialization("futu", "US", "US.TSLA", |_| false), "Futu is its retention's to judge");
+    }
 
     fn ns(date: (i64, i64, i64), minute: i64) -> i64 {
         taipei_ns(date, minute)

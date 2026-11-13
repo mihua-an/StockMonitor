@@ -49,7 +49,9 @@ def test_the_sealed_session_job_carries_its_gap_codes_and_the_partitions_are_sea
     owner._submit_sealed_materialization({"completeness": "complete", "session_key": "STK"},
                                          SimpleNamespace(market="STK", trading_date=DATE))
     assert submitted == [("STK", "complete", ["2330"]), ("IDX", "complete", [])]
-    assert [kind for kind, _ in evidence.commands] == ["evidence.seal", "evidence.seal"]
+    # The day's 盤中零股 is sealed with the stock session and never submitted (it is not kept).
+    assert [(kind, payload.get("market")) for kind, payload in evidence.commands] == [
+        ("evidence.seal", "ODD"), ("evidence.seal", "STK"), ("evidence.seal", "IDX")]
     assert evidence.summary("shioaji", "STK", DATE, "DAY")["sealed"] is True
     requests = {json.loads(p.read_text(encoding="utf-8"))["market"]: json.loads(p.read_text(encoding="utf-8"))
                 for p in (jobs / "pending").glob("*.json")}

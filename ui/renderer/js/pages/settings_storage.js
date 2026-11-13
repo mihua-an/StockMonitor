@@ -26,9 +26,11 @@ const SOURCES = [
 const KEEP_ROWS = [
   { label: "大盤", pills: [["index", "指數"]] },
   { label: "台指", pills: [["txf_near", "近月"], ["txf_far", "遠月"]] },
-  { label: "個股", pills: [["stock", "現貨"], ["stock_futures", "期貨"]] },
+  { label: "個股", pills: [["stock", "現貨"]] },
 ];
 const KEEP_CATEGORIES = KEEP_ROWS.flatMap((row) => row.pills.map(([id]) => id));
+// 個股期貨 is never kept (docs/decisions.md 哪些行情會留在本地): no pill, every save names it not kept.
+const NEVER_KEPT = { stock_futures: false };
 const DAY_OPTIONS = [1, 2, 3, 5, 10, 20, 60, 120, 250];
 const TRAINING_RETENTION_OPTIONS = [20, 60, 120, 250, 500, 1000];
 const TRAINING_WINDOW_OPTIONS = [3, 5, 10, 20, 40, 60, 120, 250];
@@ -72,7 +74,7 @@ function savedDraft() {
       persist: Boolean(sources[id]?.persist),
       retention_days: sources[id]?.retention_days ?? null,
       // Shioaji only; a revision without `keep` keeps every kind.
-      ...(id === "shioaji" ? { keep: Object.fromEntries(KEEP_CATEGORIES.map((c) => [c, sources[id]?.keep?.[c] ?? true])) } : {}),
+      ...(id === "shioaji" ? { keep: { ...Object.fromEntries(KEEP_CATEGORIES.map((c) => [c, sources[id]?.keep?.[c] ?? true])), ...NEVER_KEPT } } : {}),
     }])),
     training: {
       retention_days: valuesOf(training).retention_days ?? null,

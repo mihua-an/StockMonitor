@@ -43,6 +43,7 @@ d.setLane(draft, rTxf, "orderbook", false);
 d.toggleMonth(draft, rTxf, "202612");
 d.setContext(draft, "txf", false);
 d.setSector(draft, { enabled: true, scope: "all" });
+d.setOddLots(draft, true);
 draft.pages = applyPageOps(draft.pages, [{ op: "item.add", page_id: "p1", code: "2454", after_code: "2317" }]);
 // What this window shows of the item it added: the catalog's name from its search. The operation sent carries the
 // code only (a product's name is the catalog's, never written with the pages).
@@ -57,6 +58,7 @@ assert.deepEqual(d.draftOpsOf(draft), [
   { op: "instrument.set", source: "shioaji", market: "FUT", code: "TXF", field: "orderbook", value: false },
   { op: "instrument.month", code: "TXF", month: "202612", on: true },
   { op: "context.set", field: "txf", value: false },
+  { op: "odd_lots.set", value: true },
   { op: "sector.set", enabled: true, scope: "all" },
 ]);
 d.setLane(draft, r2317, "orderbook", true);

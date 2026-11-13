@@ -33,10 +33,21 @@ function fakeCatalog(initial, revision = "r1") {
   assert.deepEqual(catalog.asked, ["6173"], "asked once per code");
   assert.deepEqual(learned, ["6173"]);
   assert.equal(displayInstrumentName("shioaji", "6173", null), "信昌電");
-  // Futu views pass their ticker, a name already: never asked.
-  assert.equal(displayInstrumentName("futu", "US.TSM", null), "US.TSM");
+}
+
+// A Futu code is asked too (the catalog names US.SPCX SpaceX); until it answers, the caller's ticker is shown -- never
+// the market-qualified code. The watch list's stored name is not a name source: a Futu row was "US.SPCX" because of it.
+{
+  _resetInstrumentNamesForTest();
+  const catalog = fakeCatalog({ "US.SPCX": "SpaceX" });
+  const learned = [];
+  onInstrumentNamesLearned((code) => learned.push(code));
+  assert.equal(displayInstrumentName("futu", "US.SPCX", "SPCX"), "SPCX", "the ticker until the catalog answers");
   await tick();
-  assert.deepEqual(catalog.asked, ["6173"]);
+  assert.deepEqual(catalog.asked, ["US.SPCX"]);
+  assert.deepEqual(learned, ["US.SPCX"]);
+  assert.equal(displayInstrumentName("futu", "US.SPCX", "SPCX"), "SpaceX");
+  assert.equal(resolveInstrumentDisplayName("shioaji", "US.SPCX", "x"), "x", "a Futu name is not a Shioaji one");
 }
 
 // The catalog's name wins over a caller's candidate (a page item or a live row), and a candidate never stops the

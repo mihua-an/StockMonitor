@@ -487,7 +487,7 @@ pub const NIGHT_OPEN_MINUTE: i32 = 15 * 60;
 /// The source a market's events come from, for a request that names none.
 pub fn source_for_market(market: &str) -> &'static str {
     match market.to_ascii_uppercase().as_str() {
-        "STK" | "OTC" | "TW" | "IDX" | "INDEX" | "FUT" | "FUTURES" => "shioaji",
+        "STK" | "ODD" | "OTC" | "TW" | "IDX" | "INDEX" | "FUT" | "FUTURES" => "shioaji",
         _ => "futu",
     }
 }

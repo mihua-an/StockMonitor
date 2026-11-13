@@ -36,5 +36,5 @@ assert.match(settings, /\/api\/actual-account\/capital/);
 assert.match(settings, /\/api\/paper-wallet\/capital/);
 // Each ledger's card follows its scope (service/account/capital.py ACTUAL_SCOPE / PAPER_SCOPE).
 assert.match(settings, /id: "actual"[^}]*markets: \[TW, US\], fields: \[LIMIT\]/);
-assert.match(settings, /id: "paper"[^}]*markets: \[TW\], fields: \[PRINCIPAL, LIMIT, FEE\]/);
+assert.match(settings, /id: "paper"[^}]*markets: \[TW\], fields: \[PRINCIPAL, LIMIT, FEE, ODD_LOT\]/);
 console.log("renderer account capital contract passed");

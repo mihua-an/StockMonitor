@@ -40,6 +40,11 @@ export function orderBookVariant({ manual = false, depth = 5, minDepth = null, m
   });
 }
 
+// The 零股／整張 switch: the shared pill switch (core/trend_session_control.js) with one button.
+function oddLotSwitchMarkup() {
+  return '<span class="pill-switch" data-role="odd-lot-switch" hidden><button type="button" class="pill-switch-btn" data-role="odd-lot-toggle" aria-pressed="false">零股</button></span>';
+}
+
 export class OrderBookComponent {
   constructor(options = {}) {
     this.variant = orderBookVariant(options);
@@ -70,15 +75,18 @@ export class OrderBookComponent {
     return Math.max(this.variant.minDepth, Math.min(this.variant.maxDepth, available || this.variant.minDepth));
   }
 
-  mount({ host, context, hydrate }) {
+  mount({ host, context, hydrate, actionsHost = null }) {
     this.host = host; this.context = context;
     this.displayFrameGate = new PresentationRevisionGate();
+    // 零股／整張 (docs/decisions.md 零股行情的顯示) where the page offers it (即時報價: services.oddLot).
+    const oddLot = !this.variant.manual && context?.services?.oddLot ? oddLotSwitchMarkup() : "";
     mountShell(host, genericShell({
       title: this.variant.title, depth: this.variant.depth, showInsideOutside: this.variant.showInsideOutside,
       showPriceVolume: this.variant.showPriceVolume, showDepthTotals: this.variant.showDepthTotals,
-      showExtremeMarkers: this.variant.showExtremeMarkers,
+      showExtremeMarkers: this.variant.showExtremeMarkers, actions: oddLot,
     }), { hydrate });
     this.root = host;
+    this.#mountOddLotSwitch(host, actionsHost);
     // Without its product header (the workspace column's trend titlebar names the product): a variant of the root.
     if (!this.variant.productHeader) host.querySelector('[data-role="orderbook-root"]')?.setAttribute("data-product-header", "hidden");
     // A product row of 價格 and 漲跌 only, where something around the book already names the product.
@@ -111,12 +119,40 @@ export class OrderBookComponent {
     }
   }
 
+  // The switch is found once and (in a slot, whose own tab names this book) moved into the slot's actions box. Its
+  // text is what a press switches to: 零股 while the book is the stock's, 整張 while it is its 盤中零股.
+  #mountOddLotSwitch(host, actionsHost) {
+    const control = host.querySelector('[data-role="odd-lot-switch"]');
+    this.oddLotSwitch = control;
+    if (!control) return;
+    const button = control.querySelector('[data-role="odd-lot-toggle"]');
+    const onClick = () => {
+      Promise.resolve(this.context?.services?.oddLot?.toggle?.())
+        .catch((error) => console.warn("[orderbook: switching 零股／整張] failed", error));
+    };
+    button.addEventListener("click", onClick);
+    this.cleanup.push(() => button.removeEventListener("click", onClick));
+    if (actionsHost) actionsHost.replaceChildren(control);
+  }
+
+  #syncOddLotSwitch(oddLot) {
+    const control = this.oddLotSwitch;
+    if (!control) return;
+    const available = oddLot?.available === true;
+    if (control.hidden !== !available) control.hidden = !available;
+    const button = control.firstElementChild;
+    syncText(button, oddLot?.shown ? "整張" : "零股");
+    const pressed = oddLot?.shown ? "true" : "false";
+    if (button.getAttribute("aria-pressed") !== pressed) button.setAttribute("aria-pressed", pressed);
+  }
+
   update(vm = {}) {
     vm = orderBookReadView(vm);
     if (!vm) return;
     if (this.displayFrameGate && !this.displayFrameGate.accept(vm)) return;
     syncViewLifecycle(this.host, vm);
     this.lastVm = vm || {};
+    this.#syncOddLotSwitch(vm.oddLot);
     const root = this.root; if (!root) return;
     // The card's nodes do not change after mount: looked up once (they were ~16 queries per update).
     const nodes = this.nodes ??= orderbookNodes(root);
@@ -278,6 +314,8 @@ export class OrderBookComponent {
     this.badgeFrame = null;
     this.badges = new BookChangeBadges();
     this.nodes = null;
+    this.oddLotSwitch?.remove();
+    this.oddLotSwitch = null;
     this.lastLevels = null;
     this.emptyMessage = null;
     this.host=null; this.root=null; this.context=null;

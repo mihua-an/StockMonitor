@@ -46,6 +46,9 @@ HARD_CAP_DAYS = 7
 UNFINISHED = {PENDING, RUNNING, FAILED_RETRYABLE}
 # A session-wide materialization in one of these is done: its WAL events duplicate the materialized store.
 MATERIALIZED = {SUCCEEDED, NO_INPUT}
+# Markets written to the WAL for their session and never materialized (decisions.md 哪些行情會留在本地): a stock's
+# 盤中零股. Its owner seals it with the stock session; once sealed nothing more is waited for.
+UNMATERIALIZED_MARKETS = {("shioaji", "ODD")}
 STATUS_SCHEMA = "wal-materialization-status-v1"
 # A session whose window closed this long ago and is still unsealed is a stuck owner, not "the next merge".
 SEAL_OVERDUE_SECONDS = 1800
@@ -156,6 +159,8 @@ def _holds(now: datetime, ledger: list[dict[str, Any]], evidence: list[dict[str,
             why = "shown"
         elif not row.get("sealed"):
             why = "not sealed"
+        elif (source.lower(), market.upper()) in UNMATERIALIZED_MARKETS:
+            why = None
         elif state.get(_session_key(row)) not in MATERIALIZED:
             why = f"materialization {state.get(_session_key(row)) or 'not recorded'}"
         else:
@@ -172,8 +177,9 @@ def finished_sessions(now: datetime, ledger: list[dict[str, Any]], evidence: lis
     row never does -- its owner has not closed it -- nor does a session whose job is still pending or retrying."""
     state = {_session_key(r): str(r.get("state") or "") for r in ledger if not r.get("instrument")}
     final = MATERIALIZED | {FAILED_TERMINAL}
+    unmaterialized = lambda key: (key[0].lower(), key[1].upper()) in UNMATERIALIZED_MARKETS  # noqa: E731
     done = {_session_key(row) for row, why in _holds(now, ledger, evidence, hard_cap_days=hard_cap_days)
-            if why is None and row.get("sealed") and state.get(_session_key(row)) in final}
+            if why is None and row.get("sealed") and (unmaterialized(_session_key(row)) or state.get(_session_key(row)) in final)}
     with_events = {_session_key(row) for row, _ in _holds(now, ledger, evidence, hard_cap_days=hard_cap_days)}
     done |= {_session_key(row) for row in evidence if _session_key(row) not in with_events
              and (row.get("sealed") or row.get("quarantined"))}
@@ -190,7 +196,7 @@ def session_end(source: Any, market: Any, trading_date: Any, session: Any) -> da
     if day is None:
         return None
     src, mkt, sess = str(source).lower(), str(market).upper(), str(session).upper()
-    if src == "shioaji" and mkt in {"STK", "IDX"}:
+    if src == "shioaji" and mkt in {"STK", "ODD", "IDX"}:
         # Sealed after the 14:30 after-hours match, not at the 13:30 close.
         return datetime.combine(day, STK_AFTER_HOURS_END, tzinfo=TAIPEI)
     if src == "shioaji" and mkt == "FUT":

@@ -4,6 +4,7 @@
   "description": "The ONE table of the clock each market's trading date, minutes and trade times are read on (IANA zone names). Read by service/market/shared/session_identity_contract.py (MARKET_TIMEZONES); the renderer's copy (ui/renderer/js/core/market_read_adapters.js) and Rust A's offsets (native/market_runtime/src/event.rs market_offset_seconds) are kept equal to it by tests. CC (crypto) trades around the clock and has no venue day: its day is New York's, like the US stocks it is compared with (user 11-12), and A/B clear its cache at New York 00:00.",
   "markets": {
     "STK": "Asia/Taipei",
+    "ODD": "Asia/Taipei",
     "FUT": "Asia/Taipei",
     "IDX": "Asia/Taipei",
     "OTC": "Asia/Taipei",

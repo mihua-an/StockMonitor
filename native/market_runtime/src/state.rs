@@ -957,6 +957,10 @@ impl Engine {
     /// newest quote.
     pub fn gap_starts(&self, source: &str, market: &str, trading_date: &str, session: &str, listed: &[String]) -> Vec<GapStart> {
         let mut starts: BTreeMap<String, GapStart> = BTreeMap::new();
+        // 盤中零股 has no broker history to fill from.
+        if crate::rollover::is_odd_lot(source, market) {
+            return Vec::new();
+        }
         for (key, state) in &self.states {
             let (i, s) = (&key.instrument, &key.session);
             if !(i.source == source && i.market == market && s.trading_date == trading_date && s.session == session) {

@@ -26,7 +26,8 @@ reported, the rest of the batch applies):
 * ``instrument.set`` source, market, code, field (trade, orderbook, futures, futures_trade, futures_orderbook), value.
   An index future (``shioaji`` / ``FUT`` / ``TXF``, ``MXF``) takes trade and orderbook: those of its months.
 * ``instrument.month`` code (a stock, or an index future), month (YYYYMM), on -- the near month is always on.
-* ``context.set`` field (taiex, txf), value. ``sector.set`` enabled, scope.
+* ``context.set`` field (taiex, txf), value. ``sector.set`` enabled, scope. ``odd_lots.set`` value: the product
+  pages' stocks keep their 盤中零股 subscribed from before the open, as the quota leaves room.
 
 An instrument's preferences go with it: once it is on no product page and in neither holding, its entry is dropped
 (added back, it starts from the defaults).
@@ -219,6 +220,8 @@ def apply_ops(pages: list[dict[str, Any]], prefs: dict[str, Any], ops: Iterable[
                 prefs[field] = value
             else:
                 raise OpRefused(f"context.set: {field!r} is not a 大盤 field")
+        elif kind == "odd_lots.set":
+            prefs["odd_lots"] = _bool(op, "value")
         elif kind == "sector.set":
             enabled, scope = _bool(op, "enabled"), _text(op, "scope")
             if scope not in prefs_schema.SCOPES:
@@ -323,12 +326,17 @@ def quota(items: list[dict[str, Any]], opend: Mapping[str, Any]) -> dict[str, An
     futu_costs = FUTU_CAPABILITIES.kinds_by_market(FUTU_LANE_KINDS)
     shioaji = {"trade": 0, "orderbook": 0, "index": 0, "futures": 0}
     futu = {"base": 0, "trade": 0, "orderbook": 0}
+    # 訂閱管理 → 零股's instruments take only the room left: shown apart, never against the share.
+    spare = {"instruments": 0, "streams": 0}
     for item in items:
         source, market, _code = bd._key(item)
         kinds = item.get("kinds") or bd.FULL_KINDS
-        if source == "shioaji":
+        if source == "shioaji" and item.get("spare"):
+            spare["instruments"] += 1
+            spare["streams"] += sum(costs.get(market, {}).get(kind, 0) for kind in kinds)
+        elif source == "shioaji":
             n = {kind: costs.get(market, {}).get(kind, 0) for kind in kinds}
-            part = {"STK": None, "IDX": "index", "FUT": "futures"}.get(market, "futures")
+            part = {"STK": None, "ODD": None, "IDX": "index", "FUT": "futures"}.get(market, "futures")
             if part is None:
                 shioaji["trade"] += n.get("trade", 0)
                 shioaji["orderbook"] += n.get("orderbook", 0)
@@ -340,7 +348,7 @@ def quota(items: list[dict[str, Any]], opend: Mapping[str, Any]) -> dict[str, An
     settings = broker_connection_settings.shioaji()
     known = bool(opend.get("known"))
     draining = [{"code": str(row.get("code") or ""), "lane": str(row.get("lane") or "")} for row in opend.get("draining") or ()]
-    return {"shioaji": {**shioaji, "used": sum(shioaji.values()), "limit": bd.shioaji_background_capacity(),
+    return {"shioaji": {**shioaji, "used": sum(shioaji.values()), "spare": spare, "limit": bd.shioaji_background_capacity(),
                         "connections": int(settings["connections"]), "per_connection": int(settings["per_connection_limit"])},
             "futu": {**futu, "used": sum(futu.values()), "known": known,
                      "limit": bd.futu_background_capacity(int(opend["streams"])) if known else None,

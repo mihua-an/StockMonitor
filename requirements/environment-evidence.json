@@ -1,5 +1,5 @@
 {
-  "captured_on": "2026-10-06",
+  "captured_on": "2026-11-14",
   "python": "3.14.6",
   "platform": "win32",
   "machine": "AMD64",
@@ -719,7 +719,7 @@
       ]
     },
     "shioaji": {
-      "version": "1.7.2",
+      "version": "1.7.11",
       "requires_dist": [
         "uvloop>=0.18.0 ; sys_platform != 'win32' and extra == 'speed'",
         "pytest>=7.0.0 ; extra == 'test'",

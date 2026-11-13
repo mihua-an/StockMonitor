@@ -1003,3 +1003,19 @@ fn a_void_durable_event_is_passed_by_the_cursor_left_out_of_the_fold_and_names_t
     assert_eq!((cursor, high, trades, skipped), (3, Some(2_000_000), 3, 0), "the control: without the list the print is folded");
     assert_ne!(label, plain, "a checkpoint names the list it was folded under (a start under another one rebuilds)");
 }
+
+#[test]
+fn an_odd_lot_event_is_read_by_the_paper_desk_alone_and_passes_the_cursor() {
+    // decisions.md 模擬零股的成交方式 (user 11-13): 盤中零股 (the market ODD) is no stock's prints -- never analysed,
+    // never a feature -- and the paper desk's odd-lot matching reads it.
+    let shared = test_shared();
+    let mut local = test_local(&shared);
+    let mut odd = accum::tests::trade_at(7, 600, 5, 1_000_000, 37, 1);
+    odd.market = "ODD".into();
+    odd.symbol = "shioaji:ODD:2330".into();
+    let mut touched = Vec::new();
+    apply_event(&shared, &mut local, &odd, engine::Lane::Durable, &mut touched);
+    assert!(touched.is_empty() && local.engine.instruments.is_empty(), "nothing analysed");
+    assert_eq!(local.paper.applied, 7, "the paper desk read it");
+    assert_eq!(local.engine.cursor, 7, "and the durable position moved past it");
+}

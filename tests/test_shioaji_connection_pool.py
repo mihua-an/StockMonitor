@@ -98,8 +98,8 @@ def test_a_higher_setting_moves_the_streams_onto_fewer_connections_and_logs_the_
     assert held(svc) == {1: 4, 2: 2}
     first, second = svc._api, svc.logins[0][0]
     order = []
-    first.subscribe.side_effect = lambda contract, quote_type: order.append(("subscribe 1", contract.code, quote_type))
-    second.unsubscribe.side_effect = lambda contract, quote_type: order.append(("unsubscribe 2", contract.code, quote_type))
+    first.subscribe.side_effect = lambda contract, quote_type, intraday_odd=False: order.append(("subscribe 1", contract.code, quote_type))
+    second.unsubscribe.side_effect = lambda contract, quote_type, intraday_odd=False: order.append(("unsubscribe 2", contract.code, quote_type))
     disconnected = []
     monkeypatch.setattr(svc, "_disconnect", lambda: disconnected.append(True))
     settings(monkeypatch, 3, 8, revision=2)
@@ -107,7 +107,7 @@ def test_a_higher_setting_moves_the_streams_onto_fewer_connections_and_logs_the_
     assert disconnected == [], "more room: applied in place, no new login"
     assert svc.subscription_manager.subscription_limit == 24
     svc.event_sink.set_max_subscriptions.assert_called_with(
-        12, stream_budget={"streams": 24, "kinds_by_market": {"FUT": {"orderbook": 1, "quote": 1, "trade": 1}, "IDX": {"quote": 1}, "STK": {"orderbook": 1, "trade": 1}}})
+        12, stream_budget={"streams": 24, "kinds_by_market": {"FUT": {"orderbook": 1, "quote": 1, "trade": 1}, "IDX": {"quote": 1}, "ODD": {"orderbook": 1, "trade": 1}, "STK": {"orderbook": 1, "trade": 1}}})
     assert held(svc) == {1: 6}, "2454 moved onto the first connection"
     second.logout.assert_called_once()
     assert svc._extra_apis == {}
