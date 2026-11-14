@@ -64,8 +64,8 @@ class ActualAccountSync:
         self.ledger = ledger
         self._sync_lock = threading.RLock()
         self.publisher = None  # Wired by ActualAccountService before exposure.
-        from service.platform.credential_service import KeyringCredentialBackend
-        self._credentials = credential_backend if credential_backend is not None else KeyringCredentialBackend()
+        from service.platform.credential_service import default_credential_backend
+        self._credentials = credential_backend if credential_backend is not None else default_credential_backend()
         self._credential_entry = hashlib.sha256(str(ledger.config_path.resolve()).encode()).hexdigest()
         # One writer of the config and its credential entry at a time: two saves interleaving read the same
         # previous entry, and one deleted the entry the other's config had just switched to.

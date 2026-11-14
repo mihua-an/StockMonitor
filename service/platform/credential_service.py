@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import contextlib
 import json
+import os
+import stat
 import uuid
 import platform
 import re
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol
 import logging
 from service.platform.failure_record import record_failure
@@ -148,6 +152,153 @@ class KeyringCredentialBackend:
             }
 
 
+CREDENTIAL_FILE_ENV = "STOCK_MONITOR_CREDENTIAL_FILE"
+CREDENTIAL_FILE_SCHEMA = "stock-monitor-credentials-v1"
+FILE_BACKEND_NAME = "owner-only-file"
+
+
+def default_credential_file() -> Path:
+    """$STOCK_MONITOR_CREDENTIAL_FILE, else credentials/credentials.json beside AUTH_ROOT: per user, outside the
+    project tree, never packaged."""
+    explicit = str(os.environ.get(CREDENTIAL_FILE_ENV) or "").strip()
+    if explicit:
+        return Path(explicit).expanduser()
+    from service.platform import project_root
+
+    return Path(project_root.AUTH_ROOT).parent / "credentials" / "credentials.json"
+
+
+class FileCredentialBackend:
+    """Unix servers have no Credential Manager: the values live in one JSON file only its owner can open (0600, in a
+    0700 folder), the way OpenSSH keeps a private key. A file or folder that group or others can reach, or that
+    another user owns, is refused rather than read, so a loosened permission is noticed instead of trusted.
+
+    Writes replace the whole file (temporary file created 0600, fsynced, renamed), one writer at a time across
+    processes (flock on a sibling lock file)."""
+
+    backend_name = FILE_BACKEND_NAME
+
+    def __init__(self, path: Path | None = None) -> None:
+        self._explicit = Path(path) if path is not None else None
+        self._lock = threading.Lock()
+
+    def path(self) -> Path:
+        return self._explicit if self._explicit is not None else default_credential_file()
+
+    @staticmethod
+    def _check_private(target: Path, kind: str) -> None:
+        info = target.lstat()
+        if stat.S_ISLNK(info.st_mode):
+            raise CredentialError("insecure_permissions", f"憑證{kind}不可為符號連結：{target}")
+        if info.st_uid != os.getuid():
+            raise CredentialError("insecure_permissions", f"憑證{kind}不屬於目前使用者：{target}")
+        if info.st_mode & 0o077:
+            raise CredentialError("insecure_permissions",
+                                  f"憑證{kind}權限過寬（{oct(info.st_mode & 0o777)}），請改為僅擁有者可存取：{target}")
+
+    def _folder(self) -> Path:
+        folder = self.path().parent
+        try:
+            folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+            self._check_private(folder, "資料夾")
+        except CredentialError:
+            raise
+        except OSError as exc:
+            raise CredentialError("backend_unavailable", f"憑證資料夾無法使用：{type(exc).__name__}") from None
+        return folder
+
+    def _read(self) -> dict[str, dict[str, str]]:
+        self._folder()
+        target = self.path()
+        try:
+            self._check_private(target, "檔案")
+            document = json.loads(target.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return {}
+        except CredentialError:
+            raise
+        except (OSError, ValueError) as exc:
+            raise CredentialError("read_failure", f"讀取憑證檔失敗：{type(exc).__name__}") from None
+        entries = document.get("entries") if isinstance(document, dict) else None
+        if document.get("schema") != CREDENTIAL_FILE_SCHEMA or not isinstance(entries, dict):
+            raise CredentialError("read_failure", "憑證檔格式不正確")
+        return {str(service): {str(user): str(value) for user, value in (users or {}).items()}
+                for service, users in entries.items() if isinstance(users, dict)}
+
+    def _write(self, entries: dict[str, dict[str, str]]) -> None:
+        folder = self._folder()
+        target = self.path()
+        staged = folder / f".{target.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp"
+        data = json.dumps({"schema": CREDENTIAL_FILE_SCHEMA, "entries": entries}, ensure_ascii=False).encode("utf-8")
+        try:
+            fd = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            try:
+                os.write(fd, data)
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+            os.replace(staged, target)
+            dir_fd = os.open(folder, os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError as exc:
+            staged.unlink(missing_ok=True)
+            raise CredentialError("write_failure", f"寫入憑證檔失敗：{type(exc).__name__}") from None
+
+    @contextlib.contextmanager
+    def _exclusive(self):
+        import fcntl
+
+        lock_path = self._folder() / f".{self.path().name}.lock"
+        with self._lock:
+            try:
+                fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+            except OSError as exc:
+                raise CredentialError("backend_unavailable", f"憑證檔鎖定失敗：{type(exc).__name__}") from None
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+                yield
+            finally:
+                os.close(fd)
+
+    def get_password(self, service_name: str, username: str) -> str | None:
+        return self._read().get(service_name, {}).get(username)
+
+    def set_password(self, service_name: str, username: str, password: str) -> None:
+        with self._exclusive():
+            entries = self._read()
+            entries.setdefault(service_name, {})[username] = password
+            self._write(entries)
+
+    def delete_password(self, service_name: str, username: str) -> None:
+        with self._exclusive():
+            entries = self._read()
+            users = entries.get(service_name)
+            if not users or username not in users:
+                return   # not an error: deleting an absent credential is what an idempotent delete wants
+            del users[username]
+            if not users:
+                del entries[service_name]
+            self._write(entries)
+
+    def status(self) -> dict[str, Any]:
+        try:
+            self._read()
+            return {"available": True, "backend": self.backend_name, "implementation": self.__class__.__name__}
+        except CredentialError as exc:
+            record_failure(_failure_log, "opening the credential file", exc)
+            return {"available": False, "backend": self.backend_name, "error_code": exc.code, "message": str(exc)}
+
+
+def default_credential_backend() -> CredentialBackend:
+    """Windows Credential Manager on Windows; the owner-only file elsewhere (a Linux server has no keyring)."""
+    if platform.system().lower() == "windows":
+        return KeyringCredentialBackend()
+    return FileCredentialBackend()
+
+
 class MemoryCredentialBackend:
     """Non-persistent backend for unit tests only."""
 
@@ -179,7 +330,7 @@ class CredentialService:
         service_name: str = DEFAULT_SERVICE_NAME,
         api_key_entry: str = DEFAULT_API_KEY_ENTRY,
     ) -> None:
-        self.backend: CredentialBackend = backend or KeyringCredentialBackend()
+        self.backend: CredentialBackend = backend or default_credential_backend()
         self.service_name = service_name
         self.api_key_entry = api_key_entry
 
