@@ -9,6 +9,7 @@ const path = require("node:path");
 const { resolvePythonExecutable } = require("../../service/platform/js/launch_runtime");
 
 const ROOT = path.join(__dirname, "..", "..");
+const EXE_SUFFIX = process.platform === "win32" ? ".exe" : "";
 
 function required(file, hint) {
   if (!fs.existsSync(file)) throw new Error(`${file} not found: ${hint}`);
@@ -17,7 +18,7 @@ function required(file, hint) {
 
 function marketRuntimeExe() {
   const release = process.env.STOCK_MONITOR_A_RELEASE || path.join(ROOT, "native", "market_runtime", "target", "release");
-  return required(path.join(release, "market_runtime_daemon.exe"),
+  return required(path.join(release, `market_runtime_daemon${EXE_SUFFIX}`),
     "build it with `cargo build --release` in native/market_runtime, or set STOCK_MONITOR_A_RELEASE to <CARGO_TARGET_DIR>\\release");
 }
 

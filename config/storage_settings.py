@@ -20,6 +20,7 @@ in Node: config/js/storage_settings.js.
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path, PureWindowsPath
 from typing import Any
 
@@ -83,9 +84,16 @@ def validate_location(values: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(root, str) or not root.strip():
         return [_problem("HISTORICAL_ROOT", "historical_root must be null (default) or a folder path")]
     text = root.strip()
-    if not (Path(text).is_absolute() or PureWindowsPath(text).is_absolute()):
+    # Windows rules only on Windows: on Unix, PureWindowsPath("/srv/x").anchor is "\\", a "drive" that never exists,
+    # and "Q:\\x" is not an absolute path at all.
+    if os.name == "nt":
+        absolute = Path(text).is_absolute() or PureWindowsPath(text).is_absolute()
+        anchor = Path(PureWindowsPath(text).anchor or Path(text).anchor)
+    else:
+        absolute = Path(text).is_absolute()
+        anchor = Path(Path(text).anchor)
+    if not absolute:
         return [_problem("HISTORICAL_ROOT", "historical_root must be an absolute path", path=text)]
-    anchor = Path(PureWindowsPath(text).anchor or Path(text).anchor)
     if not anchor.exists():
         return [_problem("HISTORICAL_ROOT_DRIVE", f"{anchor} does not exist", path=text)]
     folder = Path(text)

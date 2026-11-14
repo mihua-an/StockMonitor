@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 import threading
 import uuid
 from pathlib import Path
@@ -81,6 +82,8 @@ def job_binary(source: Path, directory: Path | None = None) -> Path:
         with source.open("rb") as src, staged.open("wb") as dst:
             for block in iter(lambda: src.read(1 << 20), b""):
                 dst.write(block)
+        # The copy must stay executable: Windows has no execute bit, but on Unix a byte copy is created 0644.
+        shutil.copymode(source, staged)
         os.replace(staged, target)
     except OSError:
         # not an error: another process made the same copy first (the content is the same) and that one is used; any

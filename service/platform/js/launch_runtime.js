@@ -60,10 +60,15 @@ function getProjectRoot({ isPackaged = false, resourcesPath } = {}) {
   return path.resolve(__dirname, "..", "..", "..");
 }
 
-function resolvePythonExecutable(projectRoot, { env = process.env, spawnSyncImpl } = {}) {
+// Ubuntu ships no `python` command, only `python3`; the Windows installer stages python/python.exe.
+function defaultPythonCommand(platform = process.platform) {
+  return platform === "win32" ? "python" : "python3";
+}
+
+function resolvePythonExecutable(projectRoot, { env = process.env, spawnSyncImpl, platform = process.platform } = {}) {
   const explicit = String(env.STOCK_MONITOR_PYTHON_EXECUTABLE || "").trim();
   const bundled = path.join(projectRoot, "python", "python.exe");
-  const candidate = explicit || (fs.existsSync(bundled) ? bundled : "python");
+  const candidate = explicit || (fs.existsSync(bundled) ? bundled : defaultPythonCommand(platform));
   const spawnSync = spawnSyncImpl || require("child_process").spawnSync;
   const probe = spawnSync(candidate, ["--version"], {
     cwd: projectRoot, windowsHide: true, encoding: "utf8", timeout: 5000,

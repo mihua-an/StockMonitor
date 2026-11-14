@@ -11,7 +11,7 @@ const { PassThrough } = require("stream");
 const { AnalysisRuntimeHost } = require("../health/services/analysis_runtime_host.js");
 
 const root = makeTempDir("analysis-host-");
-const binary = path.join(root, "native", "analysis_runtime", "target", "release", "analysis_runtime.exe");
+const binary = path.join(root, "native", "analysis_runtime", "target", "release", `analysis_runtime${process.platform === "win32" ? ".exe" : ""}`);
 fs.mkdirSync(path.dirname(binary), { recursive: true });
 fs.writeFileSync(binary, "");
 

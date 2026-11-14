@@ -24,7 +24,7 @@ async function freePort() {
 
 async function main() {
   const project = makeTempDir("mr-session-end-");
-  const exe = path.join(project, "native", "market_runtime", "target", "release", "market_runtime_daemon.exe");
+  const exe = path.join(project, "native", "market_runtime", "target", "release", `market_runtime_daemon${process.platform === "win32" ? ".exe" : ""}`);
   fs.mkdirSync(path.dirname(exe), { recursive: true });
   fs.writeFileSync(exe, "");
   const port = await freePort();

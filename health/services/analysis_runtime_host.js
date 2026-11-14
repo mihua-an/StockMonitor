@@ -16,6 +16,8 @@ const { spawnedStorageUser } = require("../startup/storage_users");
 const { spawn } = require("child_process");
 const { childEnv } = require("../../service/platform/js/child_env");
 const readline = require("readline");
+// Cargo names the release executable with the platform suffix: analysis_runtime.exe on Windows, no suffix on Unix.
+const EXE_SUFFIX = process.platform === "win32" ? ".exe" : "";
 
 const START_TIMEOUT_MS = 20000;
 // After hello, until B says `ready`: it connected to Market Runtime (already READY: B requires it) and A confirmed its
@@ -62,8 +64,8 @@ class AnalysisRuntimeHost {
 
   binaryPath() {
     return this.isPackaged
-      ? this.path.join(this.resourcesPath, "native", "analysis_runtime.exe")
-      : this.path.join(this.projectRoot, "native", "analysis_runtime", "target", "release", "analysis_runtime.exe");
+      ? this.path.join(this.resourcesPath, "native", `analysis_runtime${EXE_SUFFIX}`)
+      : this.path.join(this.projectRoot, "native", "analysis_runtime", "target", "release", `analysis_runtime${EXE_SUFFIX}`);
   }
 
   runtimeUrl() {
