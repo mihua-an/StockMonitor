@@ -11,3 +11,7 @@ pyarrow==24.0.0
 fastparquet==2026.5.0
 keyring==25.7.0
 tzdata==2026.2
+# Build backend for broker SDKs published only as source (moomoo-api): the bundled runtime's ._pth makes it ignore
+# PYTHONPATH, so pip's isolated build environment is invisible to it and install_provider_sdk.ps1 builds with
+# --no-build-isolation against this copy.
+setuptools==84.0.0

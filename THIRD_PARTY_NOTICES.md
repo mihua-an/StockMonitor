@@ -56,6 +56,7 @@ Each package's own license file ships in its `.dist-info` directory under `pytho
 | requests | 2.34.2 | Apache-2.0 |
 | scikit-learn | 1.9.0 | BSD-3-Clause |
 | scipy | 1.18.0 | Copyright (c) 2001-2002 Enthought, Inc. 2003, SciPy Developers. |
+| setuptools | 84.0.0 | MIT |
 | six | 1.17.0 | MIT |
 | skl2onnx | 1.20.0 | Apache License v2.0 |
 | starlette | 1.3.1 | BSD-3-Clause |

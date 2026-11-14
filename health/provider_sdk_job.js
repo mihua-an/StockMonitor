@@ -1,8 +1,8 @@
 "use strict";
 
 // 券商 SDK inside the App: the installer never carries Shioaji or moomoo-api; an installed App
-// installs them on request. Health owns it because Health owns the providers: it downloads the exact versions and
-// hashes the App was built with (resources/app-runtime/python/provider_sdk/<provider>.txt) from PyPI with the same
+// installs them on request. Health owns it because Health owns the providers: it downloads the newest release of each
+// package the App lists (resources/app-runtime/python/provider_sdk/<provider>.txt) from PyPI with the same
 // script the docs describe (resources/install_provider_sdk.ps1), into the user's profile -- never the install
 // directory -- and then restarts that provider itself, so the SDK is used at once. Electron only starts the job and
 // reads its progress (it never asks for an individual service; tests/startup_ownership_contract.cjs).

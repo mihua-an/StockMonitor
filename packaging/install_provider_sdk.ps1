@@ -51,6 +51,15 @@ function New-ProviderStage([string]$providerRoot) {
   New-Item -ItemType Directory -Path $stage | Out-Null
   return $stage
 }
+
+# pip for one provider into its version folder; the caller reads $LASTEXITCODE. --no-build-isolation: moomoo-api
+# publishes source archives only, so it is built here, and pip shows an isolated build environment to the build
+# backend through PYTHONPATH, which the bundled runtime ignores (its ._pth file); it is built with the setuptools the
+# runtime carries instead. --no-cache-dir: a wheel some other Python on this machine built earlier must not stand in
+# for building with this one. Which packages must come as wheels is the requirements file's own --only-binary line.
+function Install-ProviderPackages([string]$python, [string]$stage, [string]$requirements) {
+  & $python -m pip install --no-user --disable-pip-version-check --no-cache-dir --no-build-isolation --no-deps --target $stage -r $requirements
+}
 # endregion
 # The App reads this script's output as UTF-8 (Windows PowerShell 5.1 would otherwise write the ANSI code page).
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -90,7 +99,7 @@ foreach ($name in $providers) {
   $stage = New-ProviderStage $providerRoot
   Write-Host "安裝 $name SDK（最新版）到 $stage ..."
   try {
-    & $python -m pip install --no-user --disable-pip-version-check --no-deps --target $stage -r $requirements
+    Install-ProviderPackages $python $stage $requirements
     if ($LASTEXITCODE -ne 0) { throw "$name SDK 安裝失敗（pip exit $LASTEXITCODE）" }
     # Imported from the new folder alone: an install that did not build, or is missing a dependency, never becomes
     # active. Its version is read for the activation line, not matched against a pin (the newest is what we want).
