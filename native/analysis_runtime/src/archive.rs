@@ -99,7 +99,8 @@ impl Archive {
         };
         let bytes = match std::fs::read(&path) {
             Ok(bytes) => bytes,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // A parent that is not a directory holds no file: Windows reports that as NotFound, Unix as NotADirectory.
+            Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory) => {
                 self.index.insert(date.to_string(), HashMap::new());
                 return Ok(());
             }
