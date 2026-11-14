@@ -213,7 +213,7 @@ class FileCredentialBackend:
         try:
             self._check_private(target, "檔案")
             document = json.loads(target.read_text(encoding="utf-8"))
-        except FileNotFoundError:
+        except FileNotFoundError:  # not an error: no file yet means no credential saved yet
             return {}
         except CredentialError:
             raise

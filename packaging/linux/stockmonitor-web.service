@@ -1,0 +1,33 @@
+# StockMonitor web gateway: serves the UI to browsers and forwards to the backend, behind Cloudflare Access.
+# Install: /etc/systemd/system/stockmonitor-web.service, then
+#   systemctl daemon-reload && systemctl enable --now stockmonitor-web
+[Unit]
+Description=StockMonitor web gateway
+After=stockmonitor-health.service
+Wants=stockmonitor-health.service
+
+[Service]
+Type=simple
+User=stockmonitor
+Group=stockmonitor
+WorkingDirectory=/opt/stockmonitor
+EnvironmentFile=/etc/stockmonitor/stockmonitor.env
+Environment=HOME=/var/lib/stockmonitor
+ExecStart=/usr/local/bin/node /opt/stockmonitor/ui/web/gateway.js
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/stockmonitor
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

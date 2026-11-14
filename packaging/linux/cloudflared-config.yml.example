@@ -1,0 +1,11 @@
+# /etc/cloudflared/config.yml -- the tunnel from Cloudflare to the web gateway on this machine.
+# Create the tunnel first (see packaging/linux/README.md): it writes <tunnel-id>.json.
+tunnel: replace-with-tunnel-id
+credentials-file: /etc/cloudflared/replace-with-tunnel-id.json
+
+ingress:
+  # Only the StockMonitor hostname reaches the gateway; Cloudflare Access must protect this hostname.
+  - hostname: stock.mihuastudio.com
+    service: http://127.0.0.1:8080
+  # Anything else is refused.
+  - service: http_status:404

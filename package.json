@@ -15,6 +15,7 @@
     "start": "node scripts/launch_desktop.js",
     "dev": "node scripts/launch_desktop.js",
     "controller": "node health/main.js",
+    "web": "node ui/web/gateway.js",
     "launch": "node scripts/launch_desktop.js",
     "electron-only": "electron .",
     "check": "python scripts/diagnostics/check_offline.py",

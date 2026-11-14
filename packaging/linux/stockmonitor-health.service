@@ -1,0 +1,38 @@
+# StockMonitor backend: Health supervises market_runtime, analysis_runtime, the business APIs and the broker
+# connections. Install: /etc/systemd/system/stockmonitor-health.service, then
+#   systemctl daemon-reload && systemctl enable --now stockmonitor-health
+[Unit]
+Description=StockMonitor backend (Health supervisor)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=stockmonitor
+Group=stockmonitor
+WorkingDirectory=/opt/stockmonitor
+EnvironmentFile=/etc/stockmonitor/stockmonitor.env
+Environment=HOME=/var/lib/stockmonitor
+ExecStart=/usr/local/bin/node /opt/stockmonitor/health/main.js
+# Health stops its services in order on SIGTERM; whatever is left after the timeout is killed with the group.
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=60
+Restart=on-failure
+RestartSec=10
+UMask=0077
+
+# Hardening: the service writes only its own state.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/stockmonitor
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
