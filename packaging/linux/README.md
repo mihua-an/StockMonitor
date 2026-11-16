@@ -122,11 +122,11 @@ journalctl -u stockmonitor-health -n 50 --no-pager | grep "startup:"
 
 ## 5. Cloudflare：網域、Tunnel、Access
 
-以下以 `stock.mihuastudio.com` 為例。
+以下的 `<網域>` 換成你自己的網域，`stock.<網域>` 是看盤網址。
 
-1. **把網域交給 Cloudflare 管理**：在 Cloudflare 新增 `mihuastudio.com`，照指示到網域註冊商把 nameserver 改成 Cloudflare 給的兩個（免費方案即可）。
+1. **把網域交給 Cloudflare 管理**：在 Cloudflare 新增 `<網域>`，照指示到網域註冊商把 nameserver 改成 Cloudflare 給的兩個（免費方案即可）。
 2. **建立 Access 應用程式（先做這步，網址才不會有一段時間沒保護）**：Zero Trust → Access → Applications → Add an application → Self-hosted。
-   - Application domain：`stock.mihuastudio.com`
+   - Application domain：`stock.<網域>`
    - Policy：Action 選 Allow，Include 選 Emails，填你自己的 email（只填你自己）。
    - 建好後打開這個應用程式，記下 **Application Audience (AUD) Tag**。
    - Zero Trust → Settings → Custom Pages 可看到 **team domain**（`<team>.cloudflareaccess.com`）。
@@ -145,7 +145,7 @@ cloudflared tunnel create stockmonitor
 ```
 
 ```bash
-cloudflared tunnel route dns stockmonitor stock.mihuastudio.com
+cloudflared tunnel route dns stockmonitor stock.<網域>
 ```
 
    把 `packaging/linux/cloudflared-config.yml.example` 複製成 `/etc/cloudflared/config.yml`，填入 tunnel ID，並把 `~/.cloudflared/<tunnel-id>.json` 搬到 `/etc/cloudflared/`，然後：
@@ -166,7 +166,7 @@ journalctl -u stockmonitor-web -n 20 --no-pager
 
 應該看到 `gateway on http://127.0.0.1:8080 (access: cloudflare-access)`。
 
-打開 `https://stock.mihuastudio.com`，Cloudflare 會先要你輸入 email、收驗證碼，通過後就是看盤畫面。
+打開 `https://stock.<網域>`，Cloudflare 會先要你輸入 email、收驗證碼，通過後就是看盤畫面。
 
 ## 6. 第一次使用
 

@@ -5,7 +5,7 @@ credentials-file: /etc/cloudflared/replace-with-tunnel-id.json
 
 ingress:
   # Only the StockMonitor hostname reaches the gateway; Cloudflare Access must protect this hostname.
-  - hostname: stock.mihuastudio.com
+  - hostname: replace-with-your-hostname
     service: http://127.0.0.1:8080
   # Anything else is refused.
   - service: http_status:404
