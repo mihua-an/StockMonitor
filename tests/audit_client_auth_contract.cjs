@@ -5,12 +5,22 @@ const { createClientAuthentication } = require("../ui/main/client_auth");
 // Every launch resolves its tokens under STOCK_MONITOR_AUTH_ROOT: keep this test out of the real AUTH_ROOT.
 const authRoot = makeTempDir("client-auth-contract-");
 const env = { STOCK_MONITOR_AUTH_ROOT: authRoot };
+const fsMod = require("node:fs"), pathMod = require("node:path");
+const daemonAuth = require("../service/platform/js/daemon_auth");
+const processRef = { env, cwd: () => process.cwd() };
+const tokenOf = (root) => fsMod.readFileSync(pathMod.join(root, "client_auth_token"), "ascii");
 const calls = [];
 // The token goes to exactly the business API origins in effect (seven services), never to another port or host.
 let origins = ["http://127.0.0.1:8000", "http://127.0.0.1:8006"];
 const auth = createClientAuthentication({ apiOrigins: () => origins, env,
   fetchImpl: async (...args) => { calls.push(args); return { ok: true }; } });
 (async () => {
+  // Electron never mints the token: before Health created it, nothing is attached and no file appears.
+  await auth.fetch("http://127.0.0.1:8000/api/status");
+  assert.equal(calls[0][1].headers.get("Authorization"), null, "no token before Health minted one");
+  assert.equal(fsMod.existsSync(pathMod.join(authRoot, "client_auth_token")), false, "Electron does not create the token");
+  calls.length = 0;
+  daemonAuth.createClientAuthentication({ fs: fsMod, path: pathMod, processRef });   // Health mints it
   await auth.fetch("http://127.0.0.1:8000/api/settings/shioaji/credentials", { method: "DELETE" });
   assert.match(calls[0][1].headers.get("Authorization"), /^Bearer [a-f0-9]{64}$/);
   assert.equal(calls[0][1].redirect, "error");
@@ -37,13 +47,15 @@ const auth = createClientAuthentication({ apiOrigins: () => origins, env,
   origins = ["http://127.0.0.1:28000", "http://127.0.0.1:8006"];
   assert.equal(invoke("http://127.0.0.1:8000/api/status", "trusted-main-frame").Authorization, undefined);
   assert.match(invoke("http://127.0.0.1:28000/api/status", "trusted-main-frame").Authorization, /^Bearer /);
-  const secondEnv = { STOCK_MONITOR_AUTH_ROOT: require("node:path").join(authRoot, "second-launch") };
-  createClientAuthentication({ apiOrigins: () => origins, env: secondEnv });
-  const fsMod = require("node:fs"), pathMod = require("node:path");
-  const tokenOf = (root) => fsMod.readFileSync(pathMod.join(root, "client_auth_token"), "ascii");
-  assert.notEqual(tokenOf(authRoot), tokenOf(secondEnv.STOCK_MONITOR_AUTH_ROOT));
+  // Health's full start renews the token while Electron runs: the next request carries the new one, the old is gone.
+  const before = tokenOf(authRoot);
+  daemonAuth.renewRoleTokens({ fs: fsMod, path: pathMod, processRef });
+  const after = tokenOf(authRoot);
+  assert.notEqual(after, before, "the full start renewed the token");
+  await auth.fetch("http://127.0.0.1:8006/api/config/network");
+  assert.equal(calls.at(-1)[1].headers.get("Authorization"), `Bearer ${after}`, "the request after a renewal carries the new token");
+  assert.equal(invoke("http://127.0.0.1:28000/api/status", "trusted-main-frame").Authorization, `Bearer ${after}`, "renderer requests too");
   // The token is never exported into the environment (every child Electron starts would inherit it).
   assert.equal(env.STOCK_MONITOR_CLIENT_TOKEN, undefined);
-  assert.equal(secondEnv.STOCK_MONITOR_CLIENT_TOKEN, undefined);
-  console.log("A02 client authentication header, scope, frame, redirect and launch rotation checks passed");
+  console.log("A02 client authentication header, scope, frame, redirect and renewal checks passed");
 })().catch((error) => { console.error(error); process.exitCode = 1; });

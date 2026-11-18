@@ -20,10 +20,10 @@ import tempfile
 
 ROOT = PROJECT_ROOT
 SOURCE_DIRS = ("api", "backend", "config", "health", "native", "packaging",
-               "service", "tests", "scripts", "requirements", "ui")
+               "service", "tests", "scripts", "requirements", "ui", ".github")
 SKIP_DIRS = {"node_modules", "target", "dist", "__pycache__", ".pytest_cache", "load"}
 SUFFIXES = {".py", ".js", ".cjs", ".mjs", ".html", ".css", ".json", ".md", ".toml", ".lock", ".rs", ".txt", ".in",
-            ".svg", ".png", ".ico", ".woff", ".woff2", ".ps1", ".nsh"}
+            ".svg", ".png", ".ico", ".woff", ".woff2", ".ps1", ".nsh", ".yml"}
 # Root files the suites read directly. package.json/package-lock.json are build inputs for the
 # packaging contracts,
 # and .gitignore is asserted by tests/test_var_layout.py.

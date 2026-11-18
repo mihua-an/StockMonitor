@@ -3,6 +3,7 @@
 // (here, or by a stock picked on the Shioaji product list). The shell is built once; every change morphs the line and the
 // list (dom_morph), the rows keyed by index code. Names only: the IX codes are not shown.
 import { escapeHtml } from "../../../core/utility.js";
+import { loadStateHtml } from "../../../core/load_state_view.js";
 import { morphInto } from "../../../core/dom_morph.js";
 import { mountShell } from "../../../core/component_shell.js";
 import { industryIndexStore } from "../industry_index_store.js";
@@ -32,8 +33,7 @@ export function currentLineHtml(current = {}) {
 export function listHtml(catalog = {}, current = {}) {
   const items = Array.isArray(catalog.items) ? catalog.items : [];
   if (!items.length) {
-    const text = catalog.error ? `讀取產業指數清單失敗：${catalog.error}` : "讀取產業指數清單中…";
-    return `<div class="industry-index-list-empty${catalog.error ? " error" : ""}" data-morph-key="empty">${escapeHtml(text)}</div>`;
+    return loadStateHtml(catalog.error ? "failed" : "loading", catalog.error || "");
   }
   const currentCode = current.status === "index" ? current.index.code : "";
   return GROUPS.map(([market, label]) => {

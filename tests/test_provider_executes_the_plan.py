@@ -18,7 +18,7 @@ import pytest
 from config.config_revisions import ConfigRevisionStore
 from service.market.futu import service as futu_module
 from service.market.shared.adapter_control import AdapterControlConnection
-from service.market.futu import store as futu_store_module
+from service.market.futu import clock as futu_clock_module
 from service.market.reference import background_demand
 from service.market.shared.provider_contract import FUTU_CAPABILITIES, SHIOAJI_CAPABILITIES
 from service.market.shared.rust_live import RustDaemonEventSink
@@ -210,8 +210,7 @@ class FrozenTime(datetime):
 
 
 def futu_service(tmp_path, monkeypatch):
-    monkeypatch.setattr(futu_module, "datetime", FrozenTime)
-    monkeypatch.setattr(futu_store_module, "datetime", FrozenTime)
+    monkeypatch.setattr(futu_clock_module, "datetime", FrozenTime)
     monkeypatch.setenv("FUTU_SECURITY_MASTER_FILE", str(tmp_path / "security.csv"))
     service = futu_module.FutuMarketService(tmp_path / "market.db")
     service.subscription_manager.observe_quota({"total_used": 0, "remain": 1000, "own_used": 0})  # OpenD's quota, read before a context subscribes

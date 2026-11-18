@@ -9,6 +9,8 @@ globalThis.window = { desktopAPI: { sourceSettings: { enabled_sources: ["shioaji
 globalThis.document = { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [],
   createElement: () => ({ style: {}, dataset: {}, classList: { add() {}, remove() {} }, setAttribute() {}, appendChild() {} }),
   addEventListener() {}, removeEventListener() {} };
+globalThis.requestAnimationFrame = (fn) => setTimeout(fn, 0);
+globalThis.cancelAnimationFrame = (id) => clearTimeout(id);
 globalThis.CustomEvent = class { constructor(type, options) { this.type = type; this.detail = options?.detail; } };
 
 const requests = [];
@@ -74,5 +76,17 @@ component.renderData({ items: live([10]) }, "US.AAPL");
 await settle();
 assert.equal(requests.at(-1).get("logical_code"), "US.AAPL");
 assert.equal(drawn.at(-1).page, 1);
+
+// The same product in another session (a US product from 盤前 to 盤中): the old session's page and count do not stay.
+await component.requestPage({ page: 2 });
+assert.equal(drawn.at(-1).page, 2);
+const countsBefore = requests.filter((query) => query.get("metadata_only") === "true").length;
+component.sessionKey = { trading_date: "2026-10-16", session: "REGULAR" };
+component.renderData({ items: live([20]) }, "US.AAPL");
+await settle();
+assert.equal(drawn.at(-1).page, 1, "a new session starts on its live page");
+const sessionCount = requests.filter((query) => query.get("metadata_only") === "true");
+assert.equal(sessionCount.length, countsBefore + 1, "and reads its own page count");
+assert.equal(sessionCount.at(-1).get("session"), "REGULAR");
 
 console.log("renderer futu trades paging contract passed");

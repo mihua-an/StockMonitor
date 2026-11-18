@@ -43,7 +43,8 @@ assert.match(bootstrapSource, /spawn\(execPath, \[healthMainPath\]/, "Health run
 assert.match(bootstrapSource, /detached: true/, "Health outlives Electron: not in libuv's kill-on-close job");
 assert.match(bootstrapSource, /child\.unref\(\)/, "Electron does not wait on Health");
 assert.match(bootstrapSource, /ELECTRON_RUN_AS_NODE: "1"/);
-assert.match(bootstrapSource, /PLANNED_RESTART_EXIT = 75/, "exit 75 is Health's planned (bootstrap) restart");
+assert.equal(require("../service/platform/js/health_endpoint.js").PLANNED_RESTART_EXIT, 75, "exit 75 is Health's planned (bootstrap) restart");
+assert.match(bootstrapSource, /code === PLANNED_RESTART_EXIT/, "the bootstrap restarts Health at once on it");
 assert.match(bootstrapSource, /attached to the running Health/, "a verified running Health is attached to, never duplicated");
 assert.match(bootstrapSource, /record\.pid === expectedPid\(\)/, "only the record of the Health this bootstrap owns names its address");
 assert.match(bootstrapSource, /Authorization: `Bearer \$\{token\}`/, "readiness is an authenticated health check");

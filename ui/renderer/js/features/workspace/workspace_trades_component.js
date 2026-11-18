@@ -1,19 +1,15 @@
 import { tradesReadView } from "../../core/market_read_model.js";
 import { buildTradeRow, emptyTradeRow, patchTradeRow, tradeRowModel } from "../../core/trade_rows.js";
 import { syncViewLifecycle } from "../../core/view_lifecycle.js";
+import { emptyStateRowHtml } from "../../core/load_state_view.js";
 import { ROW_WASH_MS, washRow } from "../../core/row_wash.js";
 import { RowSnapController } from "../../core/row_snap.js";
+import { tradeRowKey } from "../../core/trade_row_order.js";
 
 const WORKSPACE_TRADE_LIMIT = 100;
 // New prints get the main 成交明細's row wash.
 const HIGHLIGHT_MS = ROW_WASH_MS;
 
-// A row is its print's durable sequence (as tradeRowKey in trade_row_order.js); `sequence` is not one number space.
-function rowIdentity(row = {}) {
-  const durable = Number(row?.ingestSequence ?? row?.ingest_sequence);
-  if (Number.isFinite(durable) && durable > 0) return `seq:${durable}`;
-  return [row?.time ?? row?.datetime ?? row?.timestamp ?? "", row?.price ?? "", row?.volume ?? ""].join("|");
-}
 
 export class WorkspaceTradesComponent {
   constructor() {
@@ -35,7 +31,7 @@ export class WorkspaceTradesComponent {
     this.context = context;
     host.innerHTML = `<div class="workspace-trades-root">
       <div class="workspace-trades-scroll">
-        <table class="tick-table workspace-trades-table lined-rows"><tbody data-role="workspace-trades-body"><tr><td colspan="3" class="empty">等待即時成交</td></tr></tbody></table>
+        <table class="tick-table workspace-trades-table lined-rows"><tbody data-role="workspace-trades-body">${emptyStateRowHtml(3, "等待即時成交")}</tbody></table>
       </div>
     </div>`;
     // Whole rows only, as the main 成交明細: the leftover height is shared among the rows and a wheel detent moves one.
@@ -66,7 +62,7 @@ export class WorkspaceTradesComponent {
     this.emptyText = null;
     // Only rows arriving on top of an already-rendered list flash; the first page and a symbol change do not.
     const now = performance.now();
-    const ids = rows.map(rowIdentity);
+    const ids = rows.map(tradeRowKey);
     const symbol = String(vm?.logicalCode ?? "");
     if (symbol !== this.symbol) { this.symbol = symbol; this.renderedIds.clear(); this.highlightStartedAt.clear(); }
     if (this.renderedIds.size) {

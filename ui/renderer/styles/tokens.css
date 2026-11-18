@@ -36,6 +36,8 @@
   --z-portal-menu: 610;
   --z-toast: 620;
   --z-startup-overlay: 1000;
+  /* 完整關閉's overlay: above everything any window can show. */
+  --z-shutdown-overlay: 2147483647;
   --focus-ring-color: #5ec6e6;
   --focus-ring-width: 2px;
   --focus-ring-offset: 1px;
@@ -109,7 +111,6 @@
   --blue-300x-9: #9fb6d7;
   --blue-400: #60a5fa;
   --blue-400-a28: rgba(96, 165, 250, 0.28);
-  --blue-400-a95: rgba(96, 165, 250, 0.95);
   --blue-400x-2: #3b9cff;
   --blue-400x-a16: rgba(59, 156, 255, 0.16);
   --blue-500: #3b82f6;

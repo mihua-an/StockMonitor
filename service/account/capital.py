@@ -18,6 +18,8 @@ the day's buys and its sell-first (short) part, in 價金; a buy that covers a s
 """
 from __future__ import annotations
 
+import logging
+import threading
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -25,9 +27,12 @@ from functools import lru_cache
 from typing import Any, Iterable
 from zoneinfo import ZoneInfo
 
-from config.market_holidays import tw_is_trading_day
+from config.market_holidays import tw_is_trading_day, us_trading_day
 from service.account.account_types import invalid_account_input
 from service.account.accounting_core import TW_FEE_RATE, TW_LIST_FEE_RATE, AccountingCore
+from service.platform.failure_record import record_failure
+
+_failure_log = logging.getLogger(__name__)
 
 
 ZERO = Decimal("0")
@@ -61,84 +66,49 @@ PAPER_SCOPE = CapitalScope(("台股",), SETTING_FIELDS + ("fee_discount", "odd_l
 # ---------------------------------------------------------------------------------------------------------------
 # Trading days
 # ---------------------------------------------------------------------------------------------------------------
-def _observed(day: date) -> date:
-    """A fixed-date NYSE holiday on a weekend is observed on the Friday before / Monday after."""
-    if day.weekday() == 5:
-        return day - timedelta(days=1)
-    if day.weekday() == 6:
-        return day + timedelta(days=1)
-    return day
-
-
-def _nth_weekday(year: int, month: int, weekday: int, n: int) -> date:
-    first = date(year, month, 1)
-    return first + timedelta(days=(weekday - first.weekday()) % 7 + 7 * (n - 1))
-
-
-def _last_weekday(year: int, month: int, weekday: int) -> date:
-    last = (date(year, month + 1, 1) if month < 12 else date(year + 1, 1, 1)) - timedelta(days=1)
-    return last - timedelta(days=(last.weekday() - weekday) % 7)
-
-
-def _easter(year: int) -> date:
-    """Gregorian Easter Sunday (anonymous algorithm)."""
-    a, b, c = year % 19, year // 100, year % 100
-    d, e = b // 4, b % 4
-    f = (b + 8) // 25
-    g = (b - f + 1) // 3
-    h = (19 * a + b - d - g + 15) % 30
-    i, k = c // 4, c % 4
-    l = (32 + 2 * e + 2 * i - h - k) % 7  # noqa: E741 -- the algorithm's own name
-    m = (a + 11 * h + 22 * l) // 451
-    month = (h + l - 7 * m + 114) // 31
-    return date(year, month, (h + l - 7 * m + 114) % 31 + 1)
-
-
-# Full-day NYSE closures outside its recurring rules (national days of mourning, Hurricane Sandy). A new one is
-# added here when the exchange announces it.
-NYSE_SPECIAL_CLOSURES = frozenset({
-    date(2012, 10, 29), date(2012, 10, 30),   # Hurricane Sandy
-    date(2018, 12, 5),                        # President George H. W. Bush
-    date(2025, 1, 9),                         # President Jimmy Carter
-})
-
-
-@lru_cache(maxsize=16)
-def nyse_holidays(year: int) -> frozenset[date]:
-    """The NYSE's full-day closures of `year` by its published rules (New Year's Day falling on a Saturday is not
-    observed on the Friday before)."""
-    days = {
-        date(year, 1, 1) if date(year, 1, 1).weekday() != 5 else None,
-        _observed(date(year, 1, 1)) if date(year, 1, 1).weekday() == 6 else None,
-        _nth_weekday(year, 1, 0, 3),            # Martin Luther King Jr. Day
-        _nth_weekday(year, 2, 0, 3),            # Washington's Birthday
-        _easter(year) - timedelta(days=2),      # Good Friday
-        _last_weekday(year, 5, 0),              # Memorial Day
-        _observed(date(year, 6, 19)) if year >= 2022 else None,  # Juneteenth
-        _observed(date(year, 7, 4)),            # Independence Day
-        _nth_weekday(year, 9, 0, 1),            # Labor Day
-        _nth_weekday(year, 11, 3, 4),           # Thanksgiving
-        _observed(date(year, 12, 25)),          # Christmas
-    }
-    return frozenset({day for day in days if day is not None} | {day for day in NYSE_SPECIAL_CLOSURES if day.year == year})
+class CalendarNotCovered(LookupError):
+    """The market's trading days of a year that config/market_holidays.json does not list (and OpenD's window does not
+    reach): which days settle is not known, and no weekday rule stands in for it."""
 
 
 def is_trading_day(market: str, day: date) -> bool:
-    if day.weekday() >= 5:
-        return False
+    """台股: the Taiwan rule (tw_is_trading_day). 美股: the NYSE days of config/market_holidays.json with OpenD's
+    calendar over them (us_trading_day); CalendarNotCovered for a year neither covers."""
     if market == "美股":
-        return day not in nyse_holidays(day.year)
+        known = us_trading_day(day)
+        if known is None:
+            raise CalendarNotCovered(f"the NYSE trading days of {day.year} are not in config/market_holidays.json")
+        return known
     return tw_is_trading_day(day)
 
 
-def settlement_date(market: str, trade_date: str) -> str:
-    """The date a trade of `trade_date` settles on: T+2 (台股) / T+1 (美股) trading days."""
+_uncovered: set[tuple[str, int]] = set()
+_uncovered_lock = threading.Lock()
+
+
+def _record_uncovered(market: str, year: int, trade_date: str, exc: CalendarNotCovered) -> None:
+    """One failure record per market and year the calendar does not cover (every trade of it hits the same gap)."""
+    with _uncovered_lock:
+        if (market, year) in _uncovered:
+            return
+        _uncovered.add((market, year))
+    record_failure(_failure_log, f"finding the {market} settlement date of a {trade_date} trade", exc)
+
+
+def settlement_date(market: str, trade_date: str) -> str | None:
+    """The date a trade of `trade_date` settles on: T+2 (台股) / T+1 (美股) trading days. None when the market's
+    calendar does not cover the days after it (recorded once per market and year): the trade stays 待交割 with an
+    unknown date until the holidays file lists that year (scripts/tooling/update_market_holidays.py)."""
     day = date.fromisoformat(str(trade_date)[:10])
     remaining = SETTLEMENT_DAYS.get(market, 2)
-    while remaining:
-        day += timedelta(days=1)
-        if is_trading_day(market, day):
-            remaining -= 1
+    try:
+        while remaining:
+            day += timedelta(days=1)
+            if is_trading_day(market, day):
+                remaining -= 1
+    except CalendarNotCovered as exc:
+        _record_uncovered(market, day.year, trade_date, exc)
+        return None
     return day.isoformat()
 
 
@@ -308,8 +278,8 @@ def capital_view(legs: Iterable[dict[str, Any]], trades: list[CapitalTrade], set
     once everything has settled. `legs` are order_legs rows (trade_id, trade_date, trade_time, source_order, market,
     code, action, qty, gross_amount, fee, tax) in trade order; a trade's legs make one trade row. This is the one
     settlement projection: the 帳務 cards and the 模擬下單 desk's 交割款 (PaperOrderDesk.funds) select from it."""
-    pending: dict[str, dict[str, Decimal]] = {market: {} for market in scope.markets}
-    pending_trades: dict[str, dict[str, dict[str, dict[str, Any]]]] = {market: {} for market in scope.markets}
+    pending: dict[str, dict[str | None, Decimal]] = {market: {} for market in scope.markets}
+    pending_trades: dict[str, dict[str | None, dict[str, dict[str, Any]]]] = {market: {} for market in scope.markets}
     settled: dict[str, Decimal] = {market: ZERO for market in scope.markets}
     today_cash: dict[str, Decimal] = {market: ZERO for market in scope.markets}
     due_today: dict[str, Decimal] = {market: ZERO for market in scope.markets}
@@ -325,7 +295,7 @@ def capital_view(legs: Iterable[dict[str, Any]], trades: list[CapitalTrade], set
             today_cash[market] += cash
         if due == today[market]:
             due_today[market] += cash
-        if due <= today[market]:
+        if due is not None and due <= today[market]:
             settled[market] += cash
         else:
             pending[market][due] = pending[market].get(due, ZERO) + cash
@@ -340,31 +310,33 @@ def capital_view(legs: Iterable[dict[str, Any]], trades: list[CapitalTrade], set
     for market in scope.markets:
         limit = Decimal(settings[market]["daily_limit"])
         money = ("qty", "gross_amount", "fee", "tax", "cash")
-        due_rows = [{"settlement_date": due, "amount": _number(amount),
-                     "trades": [{**trade, **{field: _number(trade[field]) for field in money}}
+        due_rows = [{"settlement_date": due, "amount": plain_number(amount),
+                     "trades": [{**trade, **{field: plain_number(trade[field]) for field in money}}
                                 for trade in pending_trades[market][due].values()]}
-                    for due, amount in sorted(pending[market].items())]
+                    for due, amount in sorted(pending[market].items(), key=lambda item: (item[0] is None, item[0] or ""))]
         pending_total = sum(pending[market].values(), ZERO)
         used = used_limit(trades, market, today[market], outcomes)
         view = out[market] = {
             "today": today[market],
             "pending": due_rows,
-            "pending_total": _number(pending_total),
-            "daily_limit": _number(limit),
-            "used_today": _number(used),
-            "remaining_today": _number(limit - used) if limit > 0 else None,
+            "pending_total": plain_number(pending_total),
+            "daily_limit": plain_number(limit),
+            "used_today": plain_number(used),
+            "remaining_today": plain_number(limit - used) if limit > 0 else None,
             "settlement_days": SETTLEMENT_DAYS[market],
-            "today_cash": _number(today_cash[market]),
-            "due_today": _number(due_today[market]),
+            "today_cash": plain_number(today_cash[market]),
+            "due_today": plain_number(due_today[market]),
         }
         if "initial_principal" in scope.fields:
             principal = Decimal(settings[market]["initial_principal"])
-            view.update(initial_principal=_number(principal), principal=_number(principal + settled[market]),
-                        principal_after_settlement=_number(principal + settled[market] + pending_total))
+            view.update(initial_principal=plain_number(principal), principal=plain_number(principal + settled[market]),
+                        principal_after_settlement=plain_number(principal + settled[market] + pending_total))
     return out
 
 
-def _number(value: Decimal) -> int | float:
+def plain_number(value: Decimal | float) -> int | float:
+    """An amount as JSON shows it: a whole number as an int, else a float (the exact decimal value, not the float's)."""
+    value = Decimal(str(value))
     return int(value) if value == value.to_integral_value() else float(value)
 
 

@@ -7,11 +7,11 @@
 // page's single global selection. Each column reads its own view's state (the store's) through its own
 // context and data source, which is what gives per-symbol isolation: two columns never read each other's data.
 import { StockOrderBookAdapter } from "../../core/orderbook_adapters.js";
-import { compareTradeRowsNewestFirst, tradeRowKey } from "../../core/trade_row_order.js";
 import { resolveInstrumentDisplayName } from "../../core/instrument_names.js";
 import { projectBenchmarkSeries } from "../../core/trend_overlay.js";
 import { createRealtimeTradeDetailController, TRADE_DETAIL_PAGE_SIZE } from "../../market_data/trade_detail_controller.js";
-import { isSimtradeTick, tickVolume, tickTime, canonicalTradeSide, canonicalDisplayFrame, normalizeDaemonPriceVolume } from "../../market_data/realtime_market_math.js";
+import { tickVolume, tickTime, canonicalTradeSide, canonicalDisplayFrame, normalizeDaemonPriceVolume } from "../../market_data/realtime_market_math.js";
+import { mergeFirstPage } from "../../market_data/trade_detail/tape_rows.js";
 import { positiveNumberOrNull, numberOrNull } from "../../core/numbers.js";
 import { withMarketRead } from "../../core/market_read_adapters.js";
 import { INDEX_FUTURE_PRODUCTS, stockCanonicalViewSpec } from "../../market_data/stock_view_spec.js";
@@ -235,21 +235,17 @@ export class WorkspaceColumn {
     // modified), not on every summary or freshness redraw.
     let mapped = this.tickRows?.pageRows === pagerState.rows && this.tickRows?.trades === trades ? this.tickRows.mapped : null;
     if (!mapped) {
-      const merged = new Map(pagerState.rows.map((row) => [tradeRowKey(row), row]));
-      for (const row of trades) {
-        if (isSimtradeTick(row)) continue;
-        const key = tradeRowKey(row);
-        merged.set(key, { ...(merged.get(key) || {}), ...row });
-      }
-      const rows = [...merged.values()]
-        .sort(compareTradeRowsNewestFirst)
-        .slice(0, TRADE_DETAIL_PAGE_SIZE);
+      const rows = mergeFirstPage(pagerState.rows, trades, { limit: TRADE_DETAIL_PAGE_SIZE });
       mapped = rows.map((tick) => ({
         time: tickTime(tick),
         price: numberOrNull(tick?.price ?? tick?.current ?? tick?.close),
         volume: Number(tickVolume(tick) || 0),
         tradeSide: canonicalTradeSide(tick),
         ingestSequence: tick?.ingest_sequence ?? tick?.ingestSequence ?? null,
+        // The print's identity fields: the workspace tape keys its rows with tradeRowKey.
+        durable_sequence: tick?.durable_sequence ?? tick?.ingest_sequence ?? null,
+        exchange_ts_ns: tick?.exchange_ts_ns ?? null,
+        trade_id: tick?.trade_id ?? null,
       }));
       this.tickRows = { pageRows: pagerState.rows, trades, mapped };
     }

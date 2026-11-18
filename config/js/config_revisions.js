@@ -20,7 +20,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { processAliveFast, processCreatedMsAsync } = require("../../service/platform/js/process_utils.js");
-const { writeJsonAtomic } = require("../../service/platform/js/atomic_files.js");
+const { writeJsonAtomic, readJsonObject } = require("../../service/platform/js/atomic_files.js");
 const { secretPaths } = require("./secret_scrub.js");
 
 const REVISION_SCHEMA = "stock-monitor-config-revision-v1";
@@ -142,11 +142,9 @@ function makeClaim(claim) {
   }
 }
 
+// The lock's owner record, or null when no lock is held (absent) or it cannot be read (warned).
 function readLock(file) {
-  try {
-    const owner = JSON.parse(fs.readFileSync(file, "utf8"));
-    return isObject(owner) ? owner : null;
-  } catch (error) { /* absent is not an error: no lock held */ if (error?.code !== "ENOENT") console.warn("[reading the config lock] failed", error); return null; }
+  return readJsonObject(file, { fsImpl: fs, label: "the config lock" });
 }
 
 function recordTakeover(domain, lockPath, owner, trigger, outcome, result) {

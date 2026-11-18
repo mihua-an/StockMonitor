@@ -429,7 +429,9 @@ class _Channel:
         self._file = None
         self._sock = None
         if os.name == "nt":
-            self._file = open(path, "r+b", buffering=0)  # noqa: SIM115 -- closed by close()
+            from service.platform.pipe_client import open_pipe
+            # Identification-level only, and refused unless Health's pipe is served by this Windows user.
+            self._file = open_pipe(path)
         else:
             self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             self._sock.connect(path)

@@ -35,7 +35,7 @@ async function scenario(base) {
   const history = async ({ code, resolution, before }) => {
     asked.push({ code, resolution, before });
     const held = [...older.filter((bar) => code === "2330"), ...local.get(code)].filter((bar) => bar.trading_date < before);
-    if (resolution === "minute") return { ok: true, segments: [[[540, 810]]], days: [], next_before: null, horizons: { "1": day(11), "3": day(11), "5": day(5), "15": day(1), "30": day(0), "60": day(0) } };
+    if (resolution === "minute") return { ok: true, days: [], next_before: null, horizons: { "1": day(11), "3": day(11), "5": day(5), "15": day(1), "30": day(0), "60": day(0) } };
     return { ok: true, bars: held, next_before: null };
   };
   let answer = { state: "RUNNING" }, status = { state: "RUNNING" };
@@ -44,7 +44,7 @@ async function scenario(base) {
     watchPages: async () => ({ ok: true, pages: [{ id: "a", market: "tw", codes: ["2330", "2344"],
       items: [{ code: "2330", name: "台積電" }, { code: "2344", name: "華邦電" }] }] }),
     onKeyChange: () => () => {},
-    subscribe: (code, fn) => { fn({ trend: [], day: { open: 10, high: 12, low: 9, close: 11, volume: 5, fixed_k: {} } }); return () => {}; },
+    subscribe: (code, fn) => { fn({ trend: [], day: { open: 1230, high: 1240.25, low: 1220, close: 1234.5, volume: 5, fixed_k: {} } }); return () => {}; },
     subscribeQuote: () => () => {},
     quoteRead: (code) => ({ identity: { code }, revision: {}, channels: { summary: { data: { code, label: null } }, quote: { data: { lastPrice: 110, prevClose: 100, dayHigh: 112, dayLow: 99, openPrice: 101 } } } }),
     older: { request: async (code, before) => { requests.push({ code, before }); return answer; }, status: async () => status },
@@ -63,6 +63,14 @@ async function scenario(base) {
   if (!host.querySelector(".product-quote-code-input")) fail("no code box");
   const picks = [...host.querySelectorAll('[data-role="ta-timeframe"] [data-pick]')].map((node) => node.dataset.pick).join();
   if (picks !== "D,W,M,1,3,5,15,30,60") fail(`the timeframe row: ${picks}`);
+  // The timeframes are 技術分析's expand picker (user 11-16): only the current one shows until the pointer is over it.
+  const picker = host.querySelector('[data-role="ta-timeframe"]');
+  if (!picker.classList.contains("expand-picker")) fail(`the timeframe row is not the shared picker: ${picker.className}`);
+  const shown = [...picker.querySelectorAll("[data-pick]")].filter((node) => node.getBoundingClientRect().width > 1).map((node) => node.dataset.pick);
+  if (shown.join() !== "D") fail(`a closed picker shows only the current timeframe: ${shown}`);
+  // 開高低收 with two decimals however large the price (auction_price.priceText, as the chart's own marks).
+  const ohlc = host.querySelector('[data-role="ta-ohlcv"]').textContent;
+  if (!ohlc.includes("1234.50") || !ohlc.includes("1240.25")) fail(`the readout of a bar above 1000: ${ohlc}`);
   if (chart.sma.length) fail("this window draws no moving averages");
   if (chart.bars.some((bar) => bar.average != null)) fail("技術分析 draws no 均價 (decisions.md)");
   const readout = () => host.querySelector('[data-role="ta-ohlcv"]').textContent;

@@ -83,7 +83,8 @@ class RemediationLedger {
       admit: (event) => this.admit(event), refuse: (reason, event) => this.refuse(reason, event),
       durableLines: () => this.writerPart.durableLines });
     this.writerPart = new LedgerWriter({ ...shared, sessionDir, writer, eventSchema: this.registry.event_schema, rotateBytes,
-      maxQueueLines, onDurable: () => this.ingress.durable(), onLossReported: (loss) => this.reportWriterLoss(loss) });
+      maxQueueLines, onDurable: () => this.durable(), onLossReported: (loss) => this.reportWriterLoss(loss) });
+    this.durableWaiters = new Set();  // admitBatch() calls waiting for their lines to be fsync'd
     this.recovery = new LedgerRecovery({ ...shared, logsRoot, checkpointPath: this.checkpointPath, eventSchema: this.registry.event_schema });
     this.summary = new SummaryIndex({ ...shared, summaryDir, registry: this.registry, flush: () => this.flush(),
       isClosed: () => this.closed });
@@ -147,6 +148,39 @@ class RemediationLedger {
     this.checkDay();
     this.observe(event);
     return { line };
+  }
+
+  // After each fsync: the pipe's connections and admitBatch() learn how far the file is durable.
+  durable() {
+    this.ingress.durable();
+    for (const wake of [...this.durableWaiters]) wake();
+  }
+
+  // Events handed in over Health's control API (Electron main: Node cannot open the pipe at identification level or
+  // check who serves it). Admitted in order like pipe frames; resolves the count of leading events that are settled
+  // -- refused, a duplicate, or written and fsync'd -- once all are, or at `timeoutMs` with what is settled by then.
+  // An event the write queue could not take ends the batch there: it and the rest are not settled, and are resent.
+  admitBatch(events, timeoutMs) {
+    const lines = [];
+    for (const event of events) {
+      const admitted = this.admit(event);
+      if (admitted.dropped) break;
+      lines.push(admitted.line || 0);
+    }
+    const settledCount = () => {
+      const durableLines = this.writerPart.durableLines;
+      const firstPending = lines.findIndex((line) => line > durableLines);
+      return firstPending < 0 ? lines.length : firstPending;
+    };
+    if (settledCount() === lines.length) return Promise.resolve(lines.length);
+    return new Promise((resolve) => {
+      const done = () => { clearTimeout(timer); this.durableWaiters.delete(wake); resolve(settledCount()); };
+      const wake = () => { if (settledCount() === lines.length) done(); };
+      const timer = setTimeout(done, timeoutMs);
+      timer.unref?.();
+      this.durableWaiters.add(wake);
+      this.kick();
+    });
   }
 
   observe(event) {

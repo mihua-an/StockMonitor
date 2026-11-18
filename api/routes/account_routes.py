@@ -255,11 +255,9 @@ def create_actual_account_router(
 
     @router.post("/api/actual-account/config")
     def save_actual_account_config(req: ActualAccountConfigRequest):
-        previous = account_sync.get_config()
-        token = req.gas_token.strip() if req.gas_token.strip() else str(previous.get("gas_token") or "")
         value = account_sync.save_config(
             gas_url=req.gas_url,
-            gas_token=token,
+            gas_token=req.gas_token,
             auto_sync_on_page_open=req.auto_sync_on_page_open,
             google_form_prefill_url=req.google_form_prefill_url,
             google_form_param_trade_date=req.google_form_param_trade_date,

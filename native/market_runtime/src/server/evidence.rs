@@ -120,8 +120,11 @@ fn partition_of(source: &str, p: &Value) -> Result<PartitionId, String> {
     if crate::event::parse_calendar_date(&trading_date).is_none() {
         return Err(format!("trading_date {trading_date:?} is no date"));
     }
-    Ok(PartitionId { source: source.to_lowercase(), market: text("market")?.to_uppercase(), trading_date,
-        session: text("session")?.to_uppercase() })
+    // The identity names the partition's evidence file (crate::evidence::Ledger): each part one path component.
+    let component = |field: &str| text(field).and_then(|value| if crate::replay::component_ok(value) { Ok(value.to_uppercase()) } else {
+        Err(format!("{field} {value:?} is no partition name"))
+    });
+    Ok(PartitionId { source: source.to_lowercase(), market: component("market")?, trading_date, session: component("session")? })
 }
 
 /// `ingest.hello {instance, fills_gaps}`: the provider process this connection's events come from. A new process is a
@@ -382,4 +385,19 @@ pub(crate) fn cmd_prune(stream: &mut FrameWriter, hub: &Hub, session: &Session, 
         }
     }
     write_json(stream, &json!({"type": "evidence.prune.ack", "request_id": request_id, "payload": {"removed": removed}}))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_partition_named_by_a_provider_is_path_components_only() {
+        let named = |market: &str, session: &str| partition_of("shioaji", &json!({"market": market, "trading_date": "2026-09-29", "session": session}));
+        assert_eq!(named("stk", "day").unwrap(), PartitionId { source: "shioaji".into(), market: "STK".into(),
+            trading_date: "2026-09-29".into(), session: "DAY".into() });
+        for (market, session) in [("../STK", "DAY"), ("STK", "DAY/.."), ("S\\TK", "DAY"), ("STK", "..")] {
+            assert!(named(market, session).is_err(), "{market} {session}");
+        }
+    }
 }

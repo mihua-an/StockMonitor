@@ -44,23 +44,18 @@ function bounded(value, depth = 0, budget = { left: 20000 }) {
 const object = (v) => record(v) && bounded(v);
 const optionalObject = (v) => v === undefined || object(v);
 
+// The trade alone: main reads where the form is and how its fields map from the saved settings (trade_form.js).
 function form(v) {
   const fields = ["trade_date", "market", "action", "code", "trade_info", "trade_time"];
-  if (!keys(v, ["prefill_url", "mapping", "trade"]) || !string(v.prefill_url, 16384)
-      || !keys(v.mapping, fields) || !fields.every((k) => string(v.mapping[k]) && v.mapping[k].trim())
-      || !keys(v.trade, [...fields, "trade_id"])) return false;
+  if (!keys(v, ["trade"]) || !keys(v.trade, [...fields, "trade_id"])) return false;
   const t = v.trade;
-  if (!fields.every((k) => string(t[k], k === "trade_info" ? 8192 : 128))
-      || !/^\d{4}-\d{2}-\d{2}$/.test(t.trade_date)
-      || new Date(`${t.trade_date}T00:00:00Z`).toISOString().slice(0, 10) !== t.trade_date
-      || !["台股", "美股"].includes(t.market) || !["買進", "賣出"].includes(t.action)
-      || !symbol(t.code) || !t.trade_info.trim()
-      || !/^(?:|(?:[01]\d|2[0-3]):?[0-5]\d)$/.test(t.trade_time)
-      || !(t.trade_id == null || string(t.trade_id))) return false;
-  const url = new URL(v.prefill_url);
-  return url.protocol === "https:" && !url.username && !url.password && !url.port
-    && ((["docs.google.com", "forms.google.com"].includes(url.hostname) && url.pathname.startsWith("/forms/"))
-      || (url.hostname === "forms.gle" && /^\/[A-Za-z0-9_-]+$/.test(url.pathname)));
+  return fields.every((k) => string(t[k], k === "trade_info" ? 8192 : 128))
+    && /^\d{4}-\d{2}-\d{2}$/.test(t.trade_date)
+    && new Date(`${t.trade_date}T00:00:00Z`).toISOString().slice(0, 10) === t.trade_date
+    && ["台股", "美股"].includes(t.market) && ["買進", "賣出"].includes(t.action)
+    && symbol(t.code) && Boolean(t.trade_info.trim())
+    && /^(?:|(?:[01]\d|2[0-3]):?[0-5]\d)$/.test(t.trade_time)
+    && (t.trade_id == null || string(t.trade_id));
 }
 
 // A detached view: which component, in which context, following the selection or pinned to one symbol. Every field

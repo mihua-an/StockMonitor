@@ -73,6 +73,15 @@ class MarketSessionCalendar:
         day = self._weekday_forward(current, -1)
         return day, self.source_of(day)
 
+    def upcoming_trading_date(self, stamp: datetime) -> date:
+        """The futures trading date being traded at `stamp` (local time), or the next to open: that day's until
+        15:00, when the night that belongs to the next trading date opens, then the next trading date. It never
+        goes back (unlike trading_date_for_timestamp on a non-trading daytime): a contract month whose last trading
+        day is before it has expired."""
+        if stamp.time() >= time(15, 0):
+            return self.next_trading_date(stamp.date() + timedelta(days=1), inclusive=True)[0]
+        return self.next_trading_date(stamp.date(), inclusive=True)[0]
+
     def trading_date_for_timestamp(self, stamp: datetime) -> tuple[date, str]:
         clock = stamp.time()
         if clock >= time(15, 0):

@@ -113,6 +113,8 @@ async function setup(base, settingsHtml) {
         choices: { defaults: { shioaji: { connections: 3, per_connection_limit: 200 } }, shioaji: { connections: { min: 1, max: 4 }, per_connection_limit: { options: [100, 200, 500] } } } });
     }
     if (p === "/api/shioaji/status") return json({ ok: true, shioaji_connected: window.__shioajiLink.connected, subscription_connections: { open: [{ connection: 1, streams: 168, room: 200 }] }, active_subscription_count: 168 });
+    // A refused save answers as api does for an ActualAccountError: 422 with the reason in `error`.
+    if (p === "/api/actual-account/config" && method === "POST") return json({ ok: false, error: "GAS Web App URL 已變更，請重新輸入 GAS Token", classification: "INVALID_INPUT" }, 422);
     if (p === "/api/actual-account/config") return json({ ok: true, gas_url: "https://script.google.com/macros/s/AKfy/exec", has_token: true, auto_sync_on_page_open: true });
     if (p === "/api/actual-account/status") return json({ ok: true, last_sync_success_at: "2026-11-01T09:12:00" });
     if (p === "/api/actual-account/bridge/status") return json({ ok: true, mobile_publish: { last_publish_at: "2026-11-01T09:12:00+08:00" } });
@@ -317,6 +319,15 @@ async function checks() {
   if (capsules.length !== 2 || capsules[0].bottom > capsules[1].top) fail(`one capsule under the other (${JSON.stringify(capsules)})`);
   if (publishNote.textContent || rebuildNote.textContent) fail("a success leaves its note empty");
   window.__rebuildOk = false;
+  // A refused save shows the server's reason (a URL outside Google, a changed URL without its token), not a generic
+  // failure: the settings say what to fix.
+  $("actualAccountSettingsEditBtn").click();
+  $("actualAccountSettingsGasUrl").value = "https://script.google.com/macros/s/OTHER/exec";
+  $("actualAccountSettingsSaveBtn").click();
+  await wait(100);
+  const editMessage = $("actualAccountSettingsEditMessage");
+  if (editMessage.textContent !== "GAS Web App URL 已變更，請重新輸入 GAS Token") fail(`a refused save says why (${editMessage.textContent})`);
+  $("actualAccountSettingsCancelBtn")?.click();
   const notes = syncNote.parentElement;
   if (notes.nextElementSibling !== $("actualAccountSettingsRebuildBtn") || notes.querySelectorAll(".settings-actions-note").length !== 4) fail("the notes are left of the buttons");
   const lines = [rebuildNote, syncNote].map((n) => n.getBoundingClientRect());
@@ -524,15 +535,22 @@ async function capture(win, dir, name) {
 
 app.whenReady().then(async () => {
   const win = new BrowserWindow({ show: false, width: 1280, height: 900, webPreferences: { sandbox: false, backgroundThrottling: false } });
-  await win.loadURL(pathToFileURL(path.join(__dirname, "fixtures", "renderer_ui_geometry.html")).href);
   const renderer = path.join(__dirname, "..", "ui", "renderer");
   const base = pathToFileURL(renderer + path.sep).href;
   const settingsHtml = fs.readFileSync(path.join(renderer, "pages", "settings.html"), "utf8");
-  try {
+  // A fresh page over fresh fake services: the checks and the screenshots each get their own, so clicking through
+  // the page for a picture never changes what the checks expect to have been sent.
+  async function loadSettings() {
+    await win.loadURL(pathToFileURL(path.join(__dirname, "fixtures", "renderer_ui_geometry.html")).href);
     await win.webContents.executeJavaScript(`document.body.style.height = "100vh"; document.getElementById("pageContainer").style.height = "100vh";`);
     await win.webContents.executeJavaScript(`(${setup.toString()})(${JSON.stringify(base)}, ${JSON.stringify(settingsHtml)})`);
+  }
+  try {
+    await loadSettings();
+    await win.webContents.executeJavaScript(`(${checks.toString()})()`);
     const shots = process.env.SETTINGS_UI_SHOTS;
     if (shots) {
+      await loadSettings();
       fs.mkdirSync(shots, { recursive: true });
       await new Promise((resolve) => setTimeout(resolve, 2500));
       for (const section of ["display", "broker", "subscription", "account", "capital", "storage", "system"]) {
@@ -554,7 +572,6 @@ app.whenReady().then(async () => {
       await win.webContents.executeJavaScript(`window.__confirmAnswer = true; document.getElementById("systemPortsEditToggle").click(); window.__reduce = false`);
       await new Promise((resolve) => setTimeout(resolve, 600));
     }
-    await win.webContents.executeJavaScript(`(${checks.toString()})()`);
     console.log("settings ui contract passed");
     app.exit(0);
   } catch (error) {

@@ -11,15 +11,15 @@ from tests.support.actual_sync import make_sync
 
 
 def _ok_reply(body='{"ok": true, "raw_revision": 7}', status=200):
-    request = SimpleNamespace(method='POST', url='https://example.invalid/exec')
-    return SimpleNamespace(status_code=status, history=[], request=request, url='https://example.invalid/exec',
+    request = SimpleNamespace(method='POST', url='https://script.google.com/macros/s/FAKE/exec')
+    return SimpleNamespace(status_code=status, history=[], request=request, url='https://script.google.com/macros/s/FAKE/exec',
                            raise_for_status=lambda: None, text=body)
 
 
 def _gas(tmp_path, monkeypatch, replies):
     """A configured sync whose GAS answers ``replies`` in order (an exception is raised); returns (sync, sent)."""
     sync = make_sync(tmp_path)
-    sync.save_config('https://example.invalid/exec', 'FAKE-no-retry')
+    sync.save_config('https://script.google.com/macros/s/FAKE/exec', 'FAKE-no-retry')
     meta: dict[str, str] = {}
     sync.ledger._set_meta_many = lambda values, caller=None: meta.update(values)
     sync.ledger._get_meta = lambda key: meta.get(key, '')

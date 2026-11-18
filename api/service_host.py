@@ -7,6 +7,8 @@ the same shell:
 * ``/api/service/identity|metrics|drain|stop`` -- management endpoints on the service's own port (no extra
   monitoring port), authorized by the service-management credential Health holds (never the renderer's token);
 * business routes behind the per-launch client token (``ClientAuthenticationMiddleware``);
+* every request, management paths included, refused unless its Host is an IP literal or localhost
+  (``DirectHostMiddleware``, the DNS-rebinding check the provider daemons share);
 * request metrics per route group (rate, in-flight, errors, latency percentiles) -- counters and gauges, never
   invented percentages;
 * a drain gate: new business requests get 503 while in-flight ones finish, then resources close.
@@ -31,7 +33,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import JSONResponse
 
-from api.client_auth import ClientAuthenticationMiddleware
+from api.client_auth import ClientAuthenticationMiddleware, DirectHostMiddleware
 from api.source_gate import SourceAdmissionMiddleware
 from config.observability_contract import histogram_summary, metric, service_metrics_document
 import logging
@@ -353,7 +355,9 @@ def create_service_app(service_id: str, resources_factory: Callable[[FastAPI, Se
     from service.platform.http.errors import register_error_handlers
     from service.platform.http.safe_json_response import SafeJSONResponse
 
-    app = FastAPI(title=f"StockMonitor {service_id}", lifespan=lifespan, default_response_class=SafeJSONResponse)
+    # No generated docs or schema: nothing reads them, and they were served without the client token.
+    app = FastAPI(title=f"StockMonitor {service_id}", lifespan=lifespan, default_response_class=SafeJSONResponse,
+                  docs_url=None, redoc_url=None, openapi_url=None)
     register_error_handlers(app)
     app.state.service_host = host
     app.state.resources = None
@@ -366,6 +370,8 @@ def create_service_app(service_id: str, resources_factory: Callable[[FastAPI, Se
 
     app.add_middleware(CORSMiddleware, allow_origins=list(CORS_ALLOWED_ORIGINS), allow_credentials=False,
                        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["Content-Type", "Authorization"])
+    # Outermost: a rebound hostname reaches no other layer.
+    app.add_middleware(DirectHostMiddleware)
 
     @app.get("/api/service/identity")
     def service_identity():

@@ -81,9 +81,10 @@ assert.deepEqual(presentation.getRealtimeQuoteColumnConfig(HOLDINGS_COLUMN_PROFI
 assert.deepEqual(presentation.getRealtimeQuoteColumnConfig(PRODUCT_COLUMN_PROFILE), ordinaryBefore, "the ordinary pages keep their columns");
 
 // --- SSE parsing across chunk boundaries; only positions.changed frames; heartbeats ignored
-const first = holdingsModule.parsePositionsChangeEvents('event: positions.changed\ndata: {"revision": 0}\n\n: heartbeat\n\nevent: positions.cha');
+const { parseSseEvents } = await import("../ui/renderer/js/core/paper_orders_store.js");
+const first = parseSseEvents('event: positions.changed\ndata: {"revision": 0}\n\n: heartbeat\n\nevent: positions.cha', "positions.changed");
 assert.deepEqual(first.events, [{ revision: 0 }]);
-const second = holdingsModule.parsePositionsChangeEvents(`${first.rest}nged\r\ndata: {"revision": 3, "count": 2}\r\n\r\n`);
+const second = parseSseEvents(`${first.rest}nged\r\ndata: {"revision": 3, "count": 2}\r\n\r\n`, "positions.changed");
 assert.deepEqual(second.events, [{ revision: 3, count: 2 }]);
 assert.equal(second.rest, "");
 

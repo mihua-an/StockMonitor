@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import logging
+import re
 import threading
 import time
 import urllib.parse
@@ -41,6 +42,37 @@ RAW_TRADES_READ_BUDGET_S = 180
 # /api/actual-account/sync; its default 20 s request deadline ended every slow Apps Script sync as "自動同步失敗" while
 # the server was still running it.
 SYNC_DEADLINE_S = round(4 * _gas_request_bound_s(False) + RAW_TRADES_READ_BUDGET_S + _gas_request_bound_s(True))
+
+
+# The only places the account settings may point at. The GAS URL receives the token in every request and the form URL
+# receives every new trade, so a value written by a compromised page must not be able to redirect either: an Apps
+# Script deployment (personal, or under a Workspace domain) and a Google Form's prefilled link (or its forms.gle
+# short link, which Electron main follows once and checks again).
+_GAS_URL = re.compile(r"https://script\.google\.com/(?:a/macros/[A-Za-z0-9.-]+|macros)/s/[A-Za-z0-9_-]+/exec")
+_FORM_PATH = re.compile(r"/forms/d/(?:e/)?[A-Za-z0-9_-]+/viewform")
+_FORM_SHORT_PATH = re.compile(r"/[A-Za-z0-9_-]+")
+
+
+def gas_url_problem(url: str) -> str | None:
+    """Why ``url`` is not an Apps Script /exec deployment URL, or None when it is."""
+    if _GAS_URL.fullmatch(url):
+        return None
+    return ("GAS Web App URL 必須是 Apps Script 部署網址：https://script.google.com/macros/s/<部署 ID>/exec"
+            "（Google Workspace 帳號為 https://script.google.com/a/macros/<網域>/s/<部署 ID>/exec），不可帶參數")
+
+
+def form_prefill_url_problem(url: str) -> str | None:
+    """Why ``url`` is not a Google Form prefilled link (docs.google.com/forms/d/.../viewform?entry...) or a forms.gle
+    short link, or None when it is."""
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme == "https" and not parsed.username and not parsed.password and parsed.port is None \
+            and not parsed.fragment:
+        if parsed.hostname == "docs.google.com" and _FORM_PATH.fullmatch(parsed.path):
+            return None
+        if parsed.hostname == "forms.gle" and _FORM_SHORT_PATH.fullmatch(parsed.path) and not parsed.query:
+            return None
+    return ("Google Form 預填連結必須是 https://docs.google.com/forms/d/<表單 ID>/viewform?... 的預填連結"
+            "（或 https://forms.gle/<代碼> 短網址）")
 
 
 def _redact(text: str, secret: str | None) -> str:
@@ -174,13 +206,25 @@ class ActualAccountSync:
         google_form_param_trade_info: str = "",
         google_form_param_trade_time: str = "",
     ) -> dict[str, Any]:
+        """An empty ``gas_token`` keeps the stored token only while the URL stays the same: the token belongs to the
+        deployment it was entered for, so a changed URL needs the token entered again (an emptied URL drops it)."""
         gas_url = str(gas_url or "").strip()
         gas_token = str(gas_token or "").strip()
+        google_form_prefill_url = str(google_form_prefill_url or "").strip()
+        if gas_url and (problem := gas_url_problem(gas_url)):
+            raise invalid_account_input(problem)
+        if google_form_prefill_url and (problem := form_prefill_url_problem(google_form_prefill_url)):
+            raise invalid_account_input(problem)
+        if not gas_token and gas_url:
+            previous = self.get_config()
+            if str(previous.get("gas_url") or "").strip() != gas_url:
+                raise invalid_account_input("GAS Web App URL 已變更，請重新輸入 GAS Token")
+            gas_token = str(previous.get("gas_token") or "")
         value = {
             "gas_url": gas_url,
             "gas_token": gas_token,
             "auto_sync_on_page_open": bool(auto_sync_on_page_open),
-            "google_form_prefill_url": str(google_form_prefill_url or "").strip(),
+            "google_form_prefill_url": google_form_prefill_url,
             "google_form_param_trade_date": str(google_form_param_trade_date or "").strip(),
             "google_form_param_market": str(google_form_param_market or "").strip(),
             "google_form_param_action": str(google_form_param_action or "").strip(),
@@ -212,23 +256,11 @@ class ActualAccountSync:
         if not url:
             raise ActualAccountError("尚未設定 GAS Web App URL", classification="NOT_CONFIGURED", status_code=409)
 
-        # Apps Script Web App 正式部署應使用 /exec。使用者若誤貼 /dev，
-        # 直接轉為 /exec；保留 query，但 fragment 不需要送到伺服器。
-        parsed = urllib.parse.urlsplit(url)
-        path = parsed.path.rstrip("/")
-        if path.endswith("/dev"):
-            path = path[:-4] + "/exec"
-        normalized_url = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, path, parsed.query, ""))
-
-        # HTTPS only: the request carries the GAS token, and plain http would send it in clear text.
-        if parsed.scheme != "https" or not parsed.netloc:
-            raise ActualAccountError("GAS Web App URL 必須是 https:// 開頭的完整網址（例如 https://script.google.com/.../exec）",
-                                     classification="NOT_CONFIGURED", status_code=409)
-        # No credential in the URL either: a token pasted into the URL would be sent in every request line.
-        url_keys = {key.lower() for key, _ in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)}
-        if parsed.username or parsed.password or url_keys & {"token", "key", "secret", "password", "access_token"}:
-            raise ActualAccountError("GAS Web App URL 不可包含 token 或密碼；請把 token 填在「GAS Token」欄位",
-                                     classification="NOT_CONFIGURED", status_code=409)
+        # The token goes only to an Apps Script deployment: a file written before save_config checked the URL (or
+        # edited by hand) is refused here by the same rule, before anything is sent.
+        if problem := gas_url_problem(url):
+            raise ActualAccountError(f"{problem}；請在設定頁重新儲存 GAS 設定", classification="NOT_CONFIGURED",
+                                     status_code=409)
 
         method_name = "POST"
         headers = {
@@ -259,7 +291,7 @@ class ActualAccountSync:
                 parts.append(f"{int(item.status_code)} {host}")
             return " → ".join(parts)
 
-        text, last_error, last_response = self._gas_send(method_name, normalized_url, payload, action, token, headers,
+        text, last_error, last_response = self._gas_send(method_name, url, payload, action, token, headers,
                                                          write)
 
         if last_error is not None:
@@ -296,8 +328,10 @@ class ActualAccountSync:
                 cause = f"；原因：HTTP {last_error.response.status_code}"
             else:
                 cause = f"；原因：{type(last_error).__name__}"
-            logger.warning("[GAS] %s %s failed: %s%s", method_name, action,
-                           _redact(type(last_error).__name__ + ": " + str(last_error), token), suffix)
+            # The exception type and host only: a transport error's text carries the deployment URL (and Google's
+            # redirect URL with its user_content_key), which must not reach a log file.
+            logger.warning("[GAS] %s %s failed: %s to %s%s", method_name, action, type(last_error).__name__,
+                           urllib.parse.urlsplit(url).hostname, suffix)
             raise ActualAccountError(f"GAS 連線失敗{cause}{suffix}。{outcome}") from None
 
         try:
@@ -645,7 +679,7 @@ class ActualAccountSync:
             raise
 
 
-    def _gas_send(self, method_name, normalized_url, payload, action, token, headers, write):
+    def _gas_send(self, method_name, url, payload, action, token, headers, write):
         """The GAS request, sent once; returns (text, error, response). A transport failure or an HTTP error status
         comes back as ``error`` for the caller to state; anything this code recognises is raised as it is found."""
         import requests
@@ -662,7 +696,7 @@ class ActualAccountSync:
                     body["token"] = token
                 response = session.request(
                     method_name,
-                    normalized_url,
+                    url,
                     json=body,
                     headers={**headers, "Content-Type": "application/json; charset=utf-8"},
                     # A publish rewrites whole sheets (~200 KB, thousands of rows): Apps Script takes longer

@@ -5,10 +5,9 @@ The steps are read from .github/workflows/ci.yml each time, so this follows the 
 `-eo pipefail` GitHub uses. What it changes on purpose:
 
   - the setup steps (`uses:` actions and the dependency installs named in SETUP_STEPS) are skipped: this checkout
-    already has its Python packages and node_modules, and reinstalling them would change the machine;
-  - a `python -m pip install <pinned tools>` line inside a step (the CI's ruff pin) installs into
-    var/temp/ci_tools/ instead of the user's Python, and that folder's bin/ goes first on PATH for the step, so the
-    lint runs with the exact version CI uses;
+    already has its Python packages and node_modules, and reinstalling them would change the machine. Instead the
+    installed Python packages are checked against the locks CI installs (scripts/tooling/lock_dependencies.py
+    --check-profile), so the tests and the lint (ruff is in requirements/test.lock) run with CI's exact versions;
   - every step runs even after one fails (CI stops at the first), so one local run lists every failure at once;
   - every Electron process gets the CI machine (scripts/tooling/ci_machine.cjs through NODE_OPTIONS): reduced motion
     and a 1024x768 screen, as GitHub's runner has. Without it a UI test that depends on this machine's large screen or
@@ -29,10 +28,8 @@ Exit 0 only when every step that ran passed.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import os
 import re
-import shutil
 import subprocess
 import sys
 import time
@@ -43,10 +40,11 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
-TOOLS_DIR = ROOT / "var" / "temp" / "ci_tools"
 CI_MACHINE = ROOT / "scripts" / "tooling" / "ci_machine.cjs"
-SETUP_STEPS = ("Python dependencies (hash-checked locks)", "Node dependencies")
-PIP_INSTALL = re.compile(r"^(\s*)python -m pip install (?!.*(?:-r |--require-hashes))(.+?)\s*$")
+LOCK_TOOL = ROOT / "scripts" / "tooling" / "lock_dependencies.py"
+PYTHON_SETUP_STEP = "Python dependencies (hash-checked locks)"
+SETUP_STEPS = (PYTHON_SETUP_STEP, "Node dependencies")
+LOCK_FILE = re.compile(r"-r\s+requirements/([a-z_]+)\.lock\b")
 
 
 @dataclass
@@ -73,31 +71,23 @@ def load_steps(workflow: Path = WORKFLOW) -> tuple[list[Step], list[str]]:
     return steps, skipped
 
 
-def rewrite_pip_installs(script: str) -> tuple[str, list[str]]:
-    """Take the tool installs (`python -m pip install ruff==X`) out of a step: they are installed into
-    var/temp/ci_tools/ instead. Lock installs (-r, --require-hashes) are left alone."""
-    packages: list[str] = []
-    lines = []
-    for line in script.splitlines():
-        match = PIP_INSTALL.match(line)
-        if match:
-            packages.extend(match.group(2).split())
-            lines.append(f"{match.group(1)}: # {line.strip()} -> var/temp/ci_tools")
-        else:
-            lines.append(line)
-    return "\n".join(lines) + "\n", packages
+def installed_lock_profiles(workflow: Path = WORKFLOW) -> list[str]:
+    """The requirements/<profile>.lock files the workflow's Python setup step installs."""
+    data = yaml.safe_load(workflow.read_text(encoding="utf-8"))
+    for job in data["jobs"].values():
+        for raw in job["steps"]:
+            if raw.get("name") == PYTHON_SETUP_STEP:
+                return LOCK_FILE.findall(raw["run"])
+    raise SystemExit(f"{workflow} has no step named {PYTHON_SETUP_STEP!r}")
 
 
-def tool_bin(packages: list[str]) -> Path:
-    """A folder holding exactly these pinned packages (installed once, reused), whose bin/ has their commands."""
-    key = hashlib.sha256(" ".join(sorted(packages)).encode()).hexdigest()[:12]
-    target = TOOLS_DIR / key
-    if not (target / ".installed").is_file():
-        shutil.rmtree(target, ignore_errors=True)
-        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--disable-pip-version-check",
-                        "--target", str(target), *packages], check=True)
-        (target / ".installed").write_text(" ".join(packages), encoding="utf-8")
-    return target / "bin"
+def check_installed_locks(profiles: list[str]) -> bool:
+    """This Python has exactly the pins of the locks CI installs (offline: lock_dependencies.py --check-profile)."""
+    ok = True
+    for profile in profiles:
+        result = subprocess.run([sys.executable, str(LOCK_TOOL), "--check-profile", profile])
+        ok = ok and result.returncode == 0
+    return ok
 
 
 def find_bash() -> str:
@@ -126,12 +116,9 @@ def step_env(step: Step) -> dict[str, str]:
 
 
 def run_step(step: Step, bash: str) -> bool:
-    script, packages = rewrite_pip_installs(step.script)
-    env = step_env(step)
-    if packages:
-        env["PATH"] = str(tool_bin(packages)) + os.pathsep + env["PATH"]
     cwd = ROOT / step.working_directory if step.working_directory else ROOT
-    return subprocess.run([bash, "--noprofile", "--norc", "-eo", "pipefail", "-c", script], cwd=cwd, env=env).returncode == 0
+    return subprocess.run([bash, "--noprofile", "--norc", "-eo", "pipefail", "-c", step.script], cwd=cwd,
+                          env=step_env(step)).returncode == 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -159,6 +146,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     bash = find_bash()
     results: list[tuple[str, bool, float]] = []
+    profiles = installed_lock_profiles()
+    check_name = f"installed Python packages = {', '.join(f'{p}.lock' for p in profiles)}"
+    print(f"\n===== {check_name} =====", flush=True)
+    started = time.monotonic()
+    results.append((check_name, check_installed_locks(profiles), time.monotonic() - started))
+    print(f"----- {check_name}: {'PASS' if results[-1][1] else 'FAIL'}", flush=True)
     for step in steps:
         print(f"\n===== {step.name} =====", flush=True)
         started = time.monotonic()
@@ -171,7 +164,7 @@ def main(argv: list[str] | None = None) -> int:
     print("\n===== summary =====")
     for name, ok, seconds in results:
         print(f"  {'PASS' if ok else 'FAIL'}  {name}  ({seconds:.0f}s)")
-    not_run = len(steps) - len(results)
+    not_run = len(steps) + 1 - len(results)
     if not_run:
         print(f"  ({not_run} step(s) not run after --fail-fast)")
     failed = [name for name, ok, _ in results if not ok]

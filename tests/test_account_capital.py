@@ -3,7 +3,7 @@ Taiwan lot rules and daily limit, the actual ledger reporting without refusing, 
 台股＋美股, 每日交易額度 only; paper: 台股 only, 起始本金＋每日交易額度)."""
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -27,9 +27,34 @@ def test_settlement_dates_skip_weekends_and_holidays():
     assert capital.settlement_date("台股", "2026-10-16") == "2026-10-20"   # Fri -> Tue
     assert capital.settlement_date("美股", "2026-11-25") == "2026-11-27"   # Thanksgiving skipped
     assert capital.settlement_date("美股", "2026-07-02") == "2026-07-06"   # Jul 3 observed holiday, weekend
-    assert date(2026, 4, 3) in capital.nyse_holidays(2026)                 # Good Friday
-    assert date(2027, 12, 31) not in capital.nyse_holidays(2027)           # New Year's on a Saturday is not observed
-    assert capital.settlement_date("美股", "2025-01-08") == "2025-01-10"   # the 2025-01-09 day of mourning
+    assert capital.settlement_date("美股", "2026-04-02") == "2026-04-06"   # Good Friday, weekend
+    assert capital.settlement_date("美股", "2027-12-30") == "2027-12-31"   # New Year's on a Saturday is not observed
+
+
+def test_us_settlement_follows_the_one_us_calendar_and_an_uncovered_year_is_unknown(tmp_path, monkeypatch, caplog):
+    """美股 trading days are config.market_holidays.us_trading_day's: OpenD's calendar inside its window (a closure
+    announced after the holidays file was written), the holidays file outside it. A year neither covers has no
+    settlement date (recorded), never a weekday guess; the trade stays 待交割."""
+    import json
+    import logging
+    from config import market_holidays
+
+    window = tmp_path / "us_trading_calendar.json"
+    window.write_text(json.dumps({"schema": market_holidays.US_CALENDAR_SCHEMA, "from": "2026-11-16", "to": "2026-11-20",
+                                  "days": [{"date": d, "kind": "WHOLE"} for d in ("2026-11-16", "2026-11-18", "2026-11-19", "2026-11-20")]}),
+                      encoding="utf-8")
+    monkeypatch.setattr(market_holidays, "us_calendar_path", lambda: window)
+    assert capital.settlement_date("美股", "2026-11-16") == "2026-11-18", "OpenD's unannounced closure on 11-17"
+    with caplog.at_level(logging.WARNING):
+        assert capital.settlement_date("美股", "2029-03-14") is None
+    assert any("美股 settlement date" in record.getMessage() for record in caplog.records)
+    legs = [{"trade_id": "U1", "trade_date": "2029-03-14", "trade_time": "10:00", "source_order": 1, "market": "美股",
+             "code": "AAPL", "action": "買進", "qty": "1", "gross_amount": "100", "fee": "0", "tax": "0"}]
+    view = capital.capital_view(legs, [], {"台股": {"daily_limit": "0"}, "美股": {"daily_limit": "0"}}, capital.ACTUAL_SCOPE,
+                                now=datetime(2029, 3, 20, 12, tzinfo=ZoneInfo("America/New_York")))
+    assert view["美股"]["pending"] == [{"settlement_date": None, "amount": -100, "trades": [
+        {"trade_id": "U1", "date": "2029-03-14", "time": "10:00", "code": "AAPL", "action": "買進",
+         "qty": 1, "gross_amount": 100, "fee": 0, "tax": 0, "cash": -100}]}]
 
 
 def test_principal_changes_only_on_settlement(tmp_path):

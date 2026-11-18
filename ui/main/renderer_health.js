@@ -1,8 +1,7 @@
 "use strict";
 
 const { createPerformanceWindowRecorder } = require("./performance_window_recorder");
-const { createSinkHealth, lossLine } = require("../../service/platform/js/sink_health");
-const { rotateIfLarger } = require("../../service/platform/js/atomic_files");
+const { createSinkHealth, createAppendWriter } = require("../../service/platform/js/sink_health");
 const { scrubText, scrubValue } = require("../../config/js/secret_scrub");
 
 // Main owns process liveness; the renderer owns its low-frequency telemetry.
@@ -23,69 +22,25 @@ const ERROR_LOG_MAX_BYTES = 8 * 1024 * 1024;
 
 function createErrorLogWriter(fs, file, { now = Date.now, perMinute = ERROR_LINES_PER_MINUTE, maxBytes = ERROR_LOG_MAX_BYTES } = {}) {
   let windowStart = 0, inWindow = 0;
-  let pending = [], writing = null;
-  // Never breaks the UI, never pretends: a failed append is counted with its error, and the first append
-  // that succeeds again starts with a loss marker.
-  const health = createSinkHealth(`error_log:${file}`, { now });
-  // Rotation is its own result: a log that cannot be rotated keeps growing although every append succeeds,
-  // so its failures are counted and stated in the sink's health, apart from the appends.
-  const rotation = { failures: 0, last_error: null };
-  async function rotateIfLarge() {
-    const { pruneFailures } = await rotateIfLarger(file, maxBytes, { fsImpl: fs, now });
-    if (pruneFailures.length) {
-      const first = pruneFailures[0];
-      const error = Object.assign(new Error(`removing ${pruneFailures.length} old rotated log(s) failed: ${first.name}: ${first.message}`), { code: first.code });
-      throw error;
+  // Past the rate limit a line is a dropped record of this sink: counted in its health, and stated by the
+  // loss marker the next write -- or the close -- carries, never only a local count that a close lost.
+  function admit() {
+    const at = now();
+    if (at - windowStart >= 60_000) {
+      windowStart = at; inWindow = 0;
     }
+    if (inWindow >= perMinute) return "rate_limited";
+    inWindow += 1;
+    return null;
   }
-  const snapshot = () => ({ ...health.snapshot(), rotation: { ...rotation } });
-  async function drain() {
-    while (pending.length || health.lossMarker()) {
-      const lines = pending;
-      pending = [];
-      const marker = health.lossMarker();
-      const data = (marker ? lossLine(marker, `[${new Date(now()).toISOString()}] [RENDERER]`) : "") + lines.join("");
-      try {
-        await rotateIfLarge();
-      } catch (error) {
-        rotation.failures += 1;
-        const message = String(error?.message || error).slice(0, 300);
-        // Attempted before every append: logged when its reason changes, and counted in the sink's health.
-        // not an error: the same reason again repeats the one already logged
-        if (message !== rotation.last_error?.message) console.warn(`[renderer error log ${file}] rotation failed: ${message}`);
-        rotation.last_error = { at: new Date(now()).toISOString(), code: error?.code || null, message };
-      }
-      try {
-        await fs.promises.appendFile(file, data, "utf8");
-        health.succeeded();
-        health.markerWritten(marker);
-      } catch (error) {
-        health.failed(error, lines.length);
-        break;
-      }
-    }
-  }
-  function flush() {
-    if (!writing) writing = drain().finally(() => { writing = null; });
-    return writing.then(() => snapshot());
-  }
-  return {
-    write(line) {
-      const at = now();
-      if (at - windowStart >= 60_000) {
-        windowStart = at; inWindow = 0;
-      }
-      // Past the rate limit a line is a dropped record of this sink: counted in its health, and stated by the
-      // loss marker the next write -- or the close -- carries, never only a local count that a close lost.
-      if (inWindow >= perMinute) { health.dropped(1, "rate_limited"); return false; }
-      inWindow += 1;
-      pending.push(line);
-      if (!writing) setImmediate(flush);
-      return true;
-    },
-    flush,
-    health: () => snapshot(),
-  };
+  return createAppendWriter(fs, file, {
+    name: `error_log:${file}`,
+    label: `renderer error log ${file}`,
+    limit: maxBytes,
+    now,
+    admit,
+    markerPrefix: () => `[${new Date(now()).toISOString()}] [RENDERER]`,
+  });
 }
 
 function createRendererHealthRegistry({ fs, path, outputDir, electronPid,

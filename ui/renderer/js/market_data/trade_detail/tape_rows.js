@@ -2,7 +2,7 @@
 // are listed, which carry the 大單 badge and what one row holds. The pages differ only in where the prints come from.
 import { canonicalTradeSide, isSimtradeTick, tickTime, tickVolume } from "../realtime_market_math.js";
 import { numberOrNull, positiveNumberOrNull } from "../../core/numbers.js";
-import { tradeRowSequence } from "../../core/trade_row_order.js";
+import { compareTradeRowsNewestFirst, tradeRowKey, tradeRowSequence } from "../../core/trade_row_order.js";
 
 function tapePrice(tick) {
   return tick?.price ?? tick?.current ?? tick?.close;
@@ -14,28 +14,32 @@ export function isTapePrint(tick) {
   return !isSimtradeTick(tick) && positiveNumberOrNull(tapePrice(tick)) != null && Number(tickVolume(tick) || 0) > 0;
 }
 
-// One print's identity, the same on Market Runtime's trade rows and Rust B's large-order rows: a stored print is its
-// durable_sequence (unique in the stream); a print that is never stored (durable_sequence 0, the live lane) is its
-// exchange time with the source trade id. The source trade id alone is not unique: Shioaji reuses it within a
-// session (1802 on 11-06: ids 7350/7353 of 09:46's 499-lot prints came back on 1-lot and 5-lot prints at 10:42).
-// exchange_ts_ns is compared as the string both rows carry (a nanosecond count is beyond a JS number's precision).
-function printIdentity(row) {
-  const durable = Number(row?.durable_sequence || 0);
-  if (Number.isFinite(durable) && durable > 0) return `d:${durable}`;
-  const ts = row?.exchange_ts_ns == null ? "" : String(row.exchange_ts_ns);
-  return ts ? `l:${ts}|${row?.trade_id ?? ""}` : null;
+/**
+ * 成交明細's page 1: the stored newest page and the live view's prints, one row per print (tradeRowKey), newest first,
+ * at most `limit`. A live row wins field by field over the stored one (the newest fields at once, the stored identity
+ * kept). Only listed prints (isTapePrint); `keep(row)` narrows both further (the TXF display window).
+ */
+export function mergeFirstPage(pageRows, liveRows, { limit, keep = () => true } = {}) {
+  const merged = new Map();
+  for (const row of pageRows || []) if (isTapePrint(row) && keep(row)) merged.set(tradeRowKey(row), row);
+  for (const row of liveRows || []) {
+    if (!isTapePrint(row) || !keep(row)) continue;
+    const key = tradeRowKey(row);
+    merged.set(key, { ...(merged.get(key) || {}), ...row });
+  }
+  return [...merged.values()].sort(compareTradeRowsNewestFirst).slice(0, limit);
 }
 
-// Rust B lists the large prints of a view's tradeflow; a tape row carries the badge when it is one of them.
+// Rust B lists the large prints of a view's tradeflow; a tape row carries the badge when it is one of them. Both
+// sides are keyed by tradeRowKey, the one print identity (the source trade id alone is not unique: Shioaji reuses it
+// within a session -- 1802 on 11-06: ids 7350/7353 of 09:46's 499-lot prints came back on 1-lot and 5-lot prints).
 export function largePrintMatcher(flow) {
   const rows = Array.isArray(flow?.largeOrders) ? flow.largeOrders : [];
-  const large = new Set(rows.map(printIdentity).filter(Boolean));
-  return (tick) => {
-    const identity = printIdentity(tick);
-    return identity != null && large.has(identity);
-  };
+  const large = new Set(rows.map(tradeRowKey));
+  return (tick) => large.has(tradeRowKey(tick));
 }
 
+// One listed row. It keeps the print's identity fields, so the tape keys it with tradeRowKey like the view does.
 export function tapeRow(tick, isLarge) {
   return {
     time: tickTime(tick),
@@ -43,6 +47,9 @@ export function tapeRow(tick, isLarge) {
     change: numberOrNull(tick?.change), change_pct: numberOrNull(tick?.change_pct), total_volume: numberOrNull(tick?.total_volume),
     isLarge: Boolean(isLarge),
     ingestSequence: tradeRowSequence(tick),
+    durable_sequence: tick?.durable_sequence ?? tick?.ingest_sequence ?? null,
+    exchange_ts_ns: tick?.exchange_ts_ns ?? null,
+    trade_id: tick?.trade_id ?? null,
   };
 }
 

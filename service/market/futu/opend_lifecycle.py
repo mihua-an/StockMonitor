@@ -5,7 +5,6 @@ import socket
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Any, Protocol
 from service.market.shared.rust_live import sdk_payload
 from service.platform.api_call_log import api_call
@@ -13,6 +12,7 @@ from service.platform.remediation import Recovery
 from service.market.shared.broker_operation_log import broker_operation, batch_broker_operations
 import logging
 from service.platform.failure_record import record_failure
+from service.market.futu.clock import utc_now
 
 _failure_log = logging.getLogger(__name__)
 
@@ -20,10 +20,6 @@ _failure_log = logging.getLogger(__name__)
 def _frame_rows(frame: Any) -> list[dict[str, Any]]:
     """The rows of a ``get_market_snapshot`` / ``request_history_kline`` answer, which the SDK gives as a DataFrame."""
     return [sdk_payload(row) for row in frame.to_dict("records")]
-
-
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
 def _opend_port_reachable(host: str, port: int, *, timeout: float = 1.0) -> bool:
@@ -276,7 +272,7 @@ class FutuOpenDLifecycle:
             with self._lock:
                 state = o.operation_state.setdefault(name, {"failures": 0})
                 state.update({"ok": False, "pending": False, "current_error": error,
-                              "last_failure": {"error": error, "at": _utc_now(), "recovered_at": None},
+                              "last_failure": {"error": error, "at": utc_now(), "recovered_at": None},
                               "failures": int(state.get("failures") or 0) + 1})
                 s.last_error = f"{name}: {exc}"[:500]
             return False
@@ -285,7 +281,7 @@ class FutuOpenDLifecycle:
             if state is not None and not state.get("ok", True):
                 state.update({"ok": True, "pending": False, "current_error": None})
                 if isinstance(state.get("last_failure"), dict):
-                    state["last_failure"]["recovered_at"] = _utc_now()
+                    state["last_failure"]["recovered_at"] = utc_now()
                 if s.last_error.startswith(f"{name}: "):
                     s.last_error = ""   # that step's failure was the provider's current error; it is over
         return True
@@ -329,7 +325,7 @@ class FutuOpenDLifecycle:
                         s.context = context
                         s.connected = True
                         s.last_error = ""
-                        s.last_connected_at = _utc_now()
+                        s.last_connected_at = utc_now()
                         o.subscription_manager.reset_session()
                         s.context_generation = next_generation
                     o.reset_lane_activity()
@@ -364,7 +360,7 @@ class FutuOpenDLifecycle:
                         if o.trading_calendar.due():
                             self.run_operation("us_trading_calendar", lambda: o.trading_calendar.refresh(context))
                         with self._lock:
-                            s.last_poll_at = _utc_now()
+                            s.last_poll_at = utc_now()
                             s.poll_count += 1
                             s.last_cycle_ms = round((time.perf_counter() - started) * 1000.0, 2)
                             generation = s.context_generation

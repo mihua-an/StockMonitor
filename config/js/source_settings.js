@@ -6,22 +6,9 @@ const { parseFlag } = require("./flags");
 // Source selection only (AGENTS.md section 3) -- the Node twin of config/source_settings.py. Shared by
 // ui/main (UI/IPC source-enabled checks) and health/ (whether to start the Shioaji/Futu providers at all).
 //
-// A bare `path.resolve(__dirname, "../../config/...")` resolves relative to
-// THIS file's own location (config/js/), not the caller's -- so it is
-// unaffected by which directory depth ui/main/ vs health/ happen to sit at.
-// In dev that relative resolution reaches the real checkout, but a packaged
-// build archives ui/main's and health's *.js separately from
-// config/ (see package.json's build.extraResources) -- resolve the
-// packaged resources path explicitly instead of assuming a relative layout,
-// matching service/platform/js/launch_runtime.js's own packaged-vs-dev branching.
-function resolveSourceSettingsPath() {
-  const resourcesPath = process.resourcesPath || String(process.env.STOCK_MONITOR_RESOURCES_PATH || "").trim();
-  if (resourcesPath) {
-    const packaged = path.join(resourcesPath, "app-runtime", "config", "source_settings.json");
-    if (fs.existsSync(packaged)) return packaged;
-  }
-  return path.resolve(__dirname, "..", "..", "config", "source_settings.json");
-}
+// The file next to this module (config/js/../source_settings.json): the same in a checkout and inside the packaged
+// app, whose build.files carries config/*.json with config/js.
+const SOURCE_SETTINGS_FILE = path.resolve(__dirname, "..", "source_settings.json");
 
 const SUPPORTED_CONTRACT_VERSIONS = [1];
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -59,7 +46,7 @@ function deepFreeze(value) {
 // The loaded settings are one immutable snapshot: every consumer (Electron main, the renderer through preload, Health)
 // reads the file's values, never a copy another module rewrote.
 function loadSourceSettings(env = process.env) {
-  const file = resolveSourceSettingsPath();
+  const file = SOURCE_SETTINGS_FILE;
   const settings = JSON.parse(fs.readFileSync(file, "utf8"));
   const problems = sourceSettingsProblems(settings);
   if (problems.length) throw new Error(`${file} is invalid: ${problems.join("; ")}`);

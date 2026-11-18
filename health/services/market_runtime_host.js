@@ -13,7 +13,7 @@
 // line goes to `onSessionEnding`, and Health runs its full shutdown (docs/system-architecture/04 section 2.1).
 
 const { probeTcpPort } = require("../../service/platform/js/daemon_connection");
-const { TRIGGERS, killChildAndRecord } = require("../../service/platform/js/forced_termination");
+const { TRIGGERS, killChildAndRecord, childExited } = require("../../service/platform/js/forced_termination");
 const { createLogSink } = require("./log_sink");
 const { spawnedStorageUser } = require("../startup/storage_users");
 const net = require("net");
@@ -22,7 +22,8 @@ const readline = require("readline");
 const EXE_SUFFIX = process.platform === "win32" ? ".exe" : "";
 const { spawn } = require("child_process");
 const { childEnv } = require("../../service/platform/js/child_env");
-const { dataChild } = require("../../config/js/system_contract.js");
+const { baseUrl } = require("../../config/js/network_config");
+const { dataChildPath } = require("../../config/js/system_contract.js");
 
 // A listens at once and, while it scans and replays its WAL, answers `health` with status "recovering" and its
 // progress. A fixed start timeout cannot tell a long recovery from a hang: at 90 s it killed a full
@@ -87,13 +88,12 @@ class MarketRuntimeHost {
       : this.path.join(this.projectRoot, "native", "market_runtime", "target", "release", `market_runtime_daemon${EXE_SUFFIX}`);
   }
 
-  dataDir() { return this.path.join(this.dataRoot, dataChild("market_runtime")); }
+  dataDir() { return dataChildPath(this.dataRoot, "market_runtime"); }
 
   control(type, payload = {}, timeoutMs = 1500, replyType = type) {
-    const { host, port } = this.endpoint;
     return new Promise((resolve, reject) => {
       // The credential goes in a header, never in the URL.
-      const ws = new WebSocket(`ws://${host}:${port}/live`, { headers: { Authorization: `Bearer ${this.controllerToken}` } });
+      const ws = new WebSocket(`${baseUrl(this.effective, "market_runtime")}/live`, { headers: { Authorization: `Bearer ${this.controllerToken}` } });
       let settled = false;
       const finish = (error, value) => {
         if (settled) return;
@@ -146,7 +146,7 @@ class MarketRuntimeHost {
     return {
       service_id: "market_runtime", alive: verified, occupied, verified, identity_verified: verified,
       instance_id: health?.instance_id || null, pid: health?.pid || this.child?.pid || null,
-      owned: Boolean(this.child && this.child.exitCode === null),
+      owned: Boolean(this.child && !childExited(this.child)),
       // As the process reports them: absent stays absent, never defaulted.
       config_revision: health?.config_revision, bound_host: health?.host, bound_port: health?.port,
       status: health?.status || null, runtime_epoch: health?.runtime_epoch ?? null, durable_stream_id: health?.durable_stream_id || null,
@@ -174,7 +174,7 @@ class MarketRuntimeHost {
     // The start fails only once the child it spawned has exited (or is known not to have, and is then kept from a
     // replacement): never returned to the caller with the old A still cleaning the data root.
     const fail = async (message) => {
-      if (child && child.exitCode === null && !child.signalCode) {
+      if (child && !childExited(child)) {
         const exited = await killChildAndRecord(child, this.remediation, { component: "market_runtime_host", serviceId: "market_runtime",
           trigger: TRIGGERS.START_FAILED, reason: message, graceMs: null });
         if (!exited) {
@@ -186,7 +186,7 @@ class MarketRuntimeHost {
     };
     for (;;) {
       if (child?.spawnError) throw new Error(`market_runtime could not be started: ${child.spawnError.message || child.spawnError}`);
-      if (child && child.exitCode !== null) throw new Error(`market_runtime exited with code ${child.exitCode} during start`);
+      if (child && childExited(child)) throw new Error(`market_runtime exited with ${child.signalCode || `code ${child.exitCode}`} during start`);
       // Until A binds, the knock answers in at most its 200 ms; the WebSocket health would wait out its timeout.
       const health = (await this.portPresent()) ? await this.health(800) : null;
       const now = Date.now();
@@ -213,7 +213,7 @@ class MarketRuntimeHost {
   async ensure({ report = null } = {}) {
     // A child that was ended but never proven gone holds the same data root: no replacement starts beside it.
     if (this.unexited) {
-      if (this.unexited.exitCode !== null || this.unexited.signalCode) this.unexited = null;
+      if (childExited(this.unexited)) this.unexited = null;
       else throw new Error(`market_runtime pid ${this.unexited.pid} was ended but has not exited; no replacement is started beside it`);
     }
     const probe = await this.supervisorProbe();
@@ -238,15 +238,15 @@ class MarketRuntimeHost {
       "--historical-dir", this.historicalDir(),
       // A's rollover cutoffs, the one thing it writes for the historical store's retention (B's manager reads them,
       // native/market_runtime/src/historical_store.rs).
-      "--rollover-cutoffs", this.path.join(this.dataRoot, ...dataChild("rollover_cutoffs").split("/")),
+      "--rollover-cutoffs", dataChildPath(this.dataRoot, "rollover_cutoffs"),
       // Trading days for the session rollover at each pre-open (native/market_runtime/src/rollover.rs).
       "--market-holidays", this.path.join(this.projectRoot, "config", "market_holidays.json"),
       // The sessions that opened on their first print and the closures A observed; A writes it, B and Python read it.
-      "--market-sessions", this.path.join(this.dataRoot, ...dataChild("market_sessions").split("/")),
+      "--market-sessions", dataChildPath(this.dataRoot, "market_sessions"),
       // The US exchange calendar the Futu provider writes from OpenD: US trading days for the Futu rollover.
-      "--us-trading-calendar", this.path.join(this.dataRoot, ...dataChild("us_trading_calendar").split("/")),
+      "--us-trading-calendar", dataChildPath(this.dataRoot, "us_trading_calendar"),
       // The durable events the user decided are void (native/market_runtime/src/voided.rs): left out of A's state.
-      "--voided-events", this.path.join(this.dataRoot, ...dataChild("voided_events").split("/"))];
+      "--voided-events", dataChildPath(this.dataRoot, "voided_events")];
     if (this.evidenceRoot) args.push("--evidence-root", this.evidenceRoot);
     if (this.effective.revision !== null && this.effective.revision !== undefined) args.push("--config-revision", String(this.effective.revision));
     const child = this.spawn(binary, args, { cwd: this.projectRoot, stdio: ["ignore", "pipe", "pipe"], windowsHide: true, env: this.env() });
@@ -322,7 +322,7 @@ class MarketRuntimeHost {
     const clean = receipt.clean === true;
     const deadline = Date.now() + STOP_TIMEOUT_MS;
     while (Date.now() < deadline) {
-      if (this.child && this.child.exitCode !== null) this.child = null;
+      if (this.child && childExited(this.child)) this.child = null;
       if (!(await portOpen(this.endpoint.host, this.endpoint.port, 150)) && !this.child) {
         return { ok: clean, reason, committed: receipt.committed ?? null, released: true, receipt,
           ...(clean ? {} : { error: `market_runtime stop not clean: ${JSON.stringify({ wal_flushed: receipt.wal_flushed, wal_failed: receipt.wal_failed, checkpoint: receipt.checkpoint?.error || null })}` }) };

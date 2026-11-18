@@ -52,12 +52,6 @@ const SELF_SERVICES = Object.freeze(TOPOLOGY.selfServices);
 const CLIENTS = Object.freeze(TOPOLOGY.clients);
 const START_ORDER = Object.freeze(TOPOLOGY.startOrder);
 
-// A bound host as written in a revision and as a listener reports it: "localhost" is the IPv4 loopback it resolves to.
-function normalHost(value) {
-  const text = String(value ?? "").trim().toLowerCase().replace(/^\[|\]$/g, "");
-  return text === "localhost" ? "127.0.0.1" : text;
-}
-
 // A port that nothing answers on (no connection within `timeoutMs`).
 async function portFree(host, port, timeoutMs = 300) {
   return !(await probeTcpPort(net, port, timeoutMs, host));
@@ -361,8 +355,9 @@ class NetworkOperations {
     if (probe.bound_port === undefined || Number(probe.bound_port) !== Number(expected.port)) {
       return `bound port ${probe.bound_port} != ${expected.port}`;
     }
-    // The address too: a listener on 0.0.0.0 with the right port is exposed beyond the loopback asked for.
-    if (probe.bound_host === undefined || probe.bound_host === null || normalHost(probe.bound_host) !== normalHost(expected.host)) {
+    // The address too: a listener on 0.0.0.0 with the right port is exposed beyond the loopback asked for. Both
+    // sides are the manifest's loopback host as the revision names it, so they compare as written.
+    if (probe.bound_host !== expected.host) {
       return `bound host ${probe.bound_host} != ${expected.host}`;
     }
     return null;

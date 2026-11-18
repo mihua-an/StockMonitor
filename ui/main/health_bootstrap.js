@@ -29,8 +29,9 @@ const { resolveVarPaths } = require("../../config/js/var_paths.js");
 const { readControllerToken } = require("../../service/platform/js/daemon_auth.js");
 const { fetchJson } = require("../../service/platform/js/fetch_timeout.js");
 const { rotateIfLarger } = require("../../service/platform/js/atomic_files.js");
-const { waitChildExit } = require("../../service/platform/js/forced_termination.js");
+const { TRIGGERS, killChildAndRecord, childExited, waitChildExit } = require("../../service/platform/js/forced_termination.js");
 const { createShutdownHandoffStore } = require("../../service/platform/js/shutdown_handoff.js");
+const { createHealthEndpointStore, PLANNED_RESTART_EXIT } = require("../../service/platform/js/health_endpoint.js");
 const { PROTOCOL } = require("./controller_client.js");
 const { childEnv } = require("../../service/platform/js/child_env.js");
 
@@ -38,7 +39,6 @@ const RESTART_MAX_ATTEMPTS = 5;
 const RESTART_BACKOFF_MS = 2000;
 const EXIT_GRACE_MS = 3000;
 const HEALTH_LOG_ROTATE_BYTES = 8 * 1024 * 1024;
-const PLANNED_RESTART_EXIT = 75;
 // Bounds the whole start-all of an attached Health: every stage, A's longest recovery and the daemons' own retry
 // windows included (config/js/startup_budget.js, the limits Health itself enforces).
 const { START_ALL_TIMEOUT_MS } = require("../../config/js/startup_budget.js");
@@ -69,7 +69,8 @@ function createHealthBootstrap({
 }) {
   const healthMainPath = resolveHealthMainPath({ isPackaged, resourcesPath, uiMainDir, path: pathApi });
   const varPaths = resolveVarPaths({ env });
-  const recordPath = pathApi.join(varPaths.config, "bootstrap", "health_endpoint.json");
+  const endpointRecord = createHealthEndpointStore(varPaths.config);
+  const recordPath = endpointRecord.file;
   const logPath = pathApi.join(varPaths.logs, "health.log");
   let child = null;
   let shuttingDown = false;
@@ -121,25 +122,8 @@ function createHealthBootstrap({
     try { operation?.finish(outcome, { detail }); } catch (error) { console.warn("[BOOTSTRAP finish restart remediation record] failed", error); }
   }
 
-  // Health's endpoint record, or null when there is none (no Health has written one, or the last one removed it on
-  // exit). Health writes it atomically, so a record that cannot be read or does not match its schema is damage, not
-  // absence: that throws, and is never read as "no Health running" (which would spawn a second one).
-  function readRecord() {
-    let text;
-    try { text = fs.readFileSync(recordPath, "utf8"); } catch (error) {
-      if (error?.code === "ENOENT") return null;   // not an error: no Health has written a record, or the last one removed it
-      throw new Error(`the Health endpoint record ${recordPath} cannot be read: ${error?.message || error}`);
-    }
-    let record;
-    try { record = JSON.parse(text); } catch (error) {
-      throw new Error(`the Health endpoint record ${recordPath} is not valid JSON: ${error?.message || error}`);
-    }
-    const valid = record && typeof record === "object" && record.schema === "stock-monitor-health-endpoint-v1"
-      && Number.isInteger(record.pid) && record.pid > 0 && typeof record.host === "string" && record.host
-      && Number.isInteger(record.port) && record.port > 0 && record.port < 65536;
-    if (!valid) throw new Error(`the Health endpoint record ${recordPath} does not match stock-monitor-health-endpoint-v1`);
-    return record;
-  }
+  // Health's endpoint record (service/platform/js/health_endpoint.js): null when there is none, throws on damage.
+  const readRecord = () => endpointRecord.read();
 
   // While a known Health process is polled, a damaged record leaves the configured address in place and is reported
   // once per distinct failure; the startup path (start) refuses to continue on one instead.
@@ -229,7 +213,7 @@ function createHealthBootstrap({
         if (target && target === child && !expectedAttempt && knownInstance) expectedAttempt = { instance: knownInstance, generation: 1 };
         return true;
       }
-      if (target && target.exitCode !== null) return false;
+      if (target && childExited(target)) return false;
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
     return false;
@@ -246,7 +230,7 @@ function createHealthBootstrap({
       if (state.ours) last = state;
       if (state.ours && !state.stopping && state.phase === "moving_storage") deadline = Date.now() + timeoutMs;
       if (state.ours && !state.stopping && state.phase === "ready") return { ready: true, ...state };
-      if (target && target.exitCode !== null) break;
+      if (target && childExited(target)) break;
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
     return { ready: false, phase: last.phase, instance: last.instance };
@@ -275,27 +259,28 @@ function createHealthBootstrap({
 
   // A restarted Health that is not usable -- it never answered healthy, or answered but never reached ready -- is not
   // one to keep: that exact process is asked to shut down (only when it is the one answering at its address) and
-  // waited for; one that does not answer, refuses, or does not exit is terminated. Its exit goes through the exit
-  // handler -- the next, budgeted, restart.
+  // waited for; one that does not answer, refuses, or does not exit is terminated, and that termination is one
+  // `health.forced_termination` record. Its exit goes through the exit handler -- the next, budgeted, restart.
   async function endCandidate(next, why) {
-    if (!next || next.exitCode !== null || next.signalCode) return;
+    if (!next || childExited(next)) return;
     logger.error?.(`[BOOTSTRAP] Health pid=${next.pid} ${why}; ending it so the restart budget decides`);
-    const terminate = (reason) => {
+    const terminate = async (reason) => {
       logger.error?.(`[BOOTSTRAP] ${reason}; terminating Health pid=${next.pid}`);
-      try { next.kill(); } catch (killError) { logger.error?.(`[BOOTSTRAP] terminating the unusable Health failed: ${killError?.message || killError}`); }
+      await killChildAndRecord(next, remediation, { component: "health_bootstrap", serviceId: "health",
+        trigger: TRIGGERS.START_FAILED, reason: `${why}; ${reason}` });
     };
-    if (!(await probe(800, next.pid)).ours) { terminate("it does not answer as itself"); return; }
+    if (!(await probe(800, next.pid)).ours) { await terminate("it does not answer as itself"); return; }
     const token = readControllerToken({ fs, path: pathApi, processRef: process });
     try {
       const { response } = await fetchJson(fetch, `${baseUrlOf(next.pid)}/control/shutdown`, { method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ scope: "full" }) }, SHUTDOWN_REQUEST_MS);
-      if (!response.ok) { terminate(`it refused the shutdown (HTTP ${response.status})`); return; }
+      if (!response.ok) { await terminate(`it refused the shutdown (HTTP ${response.status})`); return; }
     } catch (error) {
       // not an error: recorded -- terminate() logs the reason before it ends the process
-      terminate(`could not ask it to shut down: ${error?.name === "AbortError" ? `no answer within ${SHUTDOWN_REQUEST_MS} ms` : error?.message || error}`);
+      await terminate(`could not ask it to shut down: ${error?.name === "AbortError" ? `no answer within ${SHUTDOWN_REQUEST_MS} ms` : error?.message || error}`);
       return;
     }
-    if (!(await waitChildExit(next, UNREADY_EXIT_MS))) terminate(`it did not exit within ${UNREADY_EXIT_MS} ms of its shutdown`);
+    if (!(await waitChildExit(next, UNREADY_EXIT_MS))) await terminate(`it did not exit within ${UNREADY_EXIT_MS} ms of its shutdown`);
   }
 
   // The one recovery path of every restart, planned or after a crash: spawn the candidate, wait until it answers
@@ -342,9 +327,9 @@ function createHealthBootstrap({
   }
 
   // Health starts from an allowlisted environment, not Electron's whole one. It is the role
-  // credentials' minter, so it alone also receives the token-file overrides.
+  // credentials' minter, so it alone also receives the token-file overrides and the market_runtime token directory.
   function healthEnv() {
-    const grant = Object.fromEntries(Object.entries(env).filter(([name]) => /^STOCK_MONITOR_[A-Z_]+_TOKEN_FILE$/i.test(name)));
+    const grant = Object.fromEntries(Object.entries(env).filter(([name]) => /^STOCK_MONITOR_(?:[A-Z_]+_TOKEN_FILE|RUNTIME_CREDENTIAL_DIR)$/i.test(name)));
     return childEnv(env, { ...grant, ELECTRON_RUN_AS_NODE: "1", ...(isPackaged ? { STOCK_MONITOR_RESOURCES_PATH: resourcesPath } : {}) });
   }
 

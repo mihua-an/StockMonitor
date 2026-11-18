@@ -23,6 +23,7 @@ PLACEHOLDER = "shioaji:FUT:TXFR1:2026-10-20:NIGHT"
 def _app(contract: dict[str, str]) -> SimpleNamespace:
     broker = SimpleNamespace(
         status=lambda: {"txf": {"target_code": contract["code"]}},
+        txf_contract_for=lambda _trading_date: contract["code"],
         mark_market_session_transition=Mock(), set_market_session_event_listener=Mock())
     return SimpleNamespace(broker_service=broker)
 

@@ -22,7 +22,7 @@ const { ConfigRevisionStore } = require("../config/js/config_revisions.js");
 const { Supervisor, RESTART_BUDGET, restartSummary } = require("../health/supervisor.js");
 const { NetworkOperations } = require("../health/operations.js");
 
-const manifest = networkConfig.loadManifest(networkConfig.manifestPath(process.env));
+const manifest = networkConfig.loadManifest();
 const BASE = 39000 + Math.floor(Math.random() * 400) * 2;
 
 function freeLayout(offset = 0) {

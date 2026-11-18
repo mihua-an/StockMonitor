@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { WorkspaceStore, WORKSPACE_MAX_SYMBOLS, isFutuWorkspaceCode } from '../ui/renderer/js/features/workspace/workspace_store.js';
+import { equityTradingDateOf } from '../ui/renderer/js/market_data/equity_trading_date.js';
 
 class Node {
   dataset = {}; children = []; listeners = {}; classList = { toggle() {}, add() {}, remove() {} };
@@ -22,7 +23,7 @@ const mounted = [];
 class Column { constructor(options) { Object.assign(this, options); mounted.push(this); } dispose() {} setSession(session) { this.tradingDate = session.tradingDate; this.futuresPartition = session.futuresPartition; } refreshFreshness() { this.refreshed = true; } refreshTrend() {} }
 class Dock { mount() {} demand() { return []; } markAddedChanged() {} sessionChanged() { this.sessions = (this.sessions || 0) + 1; } }
 const context = vm.createContext({
-  WorkspaceStore, WORKSPACE_MAX_SYMBOLS, isFutuWorkspaceCode,
+  WorkspaceStore, WORKSPACE_MAX_SYMBOLS, isFutuWorkspaceCode, equityTradingDateOf,
   MarketDataGateway: class {}, WorkspaceProductDock: Dock, createTechnicalWindowService: () => ({}),
   futuresLivePartitionOf: () => ({ trading_date: '2026-09-19', session: 'DAY' }), shioajiMarketOf: () => 'STK',
   realtimeContext: { dataSource: { setResolver() {}, subscribe() {} } }, startMonitorEventTape() {}, getLiveMonitorEvents: () => [],

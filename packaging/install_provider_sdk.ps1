@@ -57,8 +57,12 @@ function New-ProviderStage([string]$providerRoot) {
 # backend through PYTHONPATH, which the bundled runtime ignores (its ._pth file); it is built with the setuptools the
 # runtime carries instead. --no-cache-dir: a wheel some other Python on this machine built earlier must not stand in
 # for building with this one. Which packages must come as wheels is the requirements file's own --only-binary line.
+# No pip configuration but this command line, and only PyPI: pip always reads the machine-wide
+# %ProgramData%\pip\pip.ini (any local account can create it, even with --isolated) unless PIP_CONFIG_FILE is exactly
+# os.devnull ("nul" on Windows); --isolated also drops PIP_* environment variables such as PIP_EXTRA_INDEX_URL.
 function Install-ProviderPackages([string]$python, [string]$stage, [string]$requirements) {
-  & $python -m pip install --no-user --disable-pip-version-check --no-cache-dir --no-build-isolation --no-deps --target $stage -r $requirements
+  $env:PIP_CONFIG_FILE = "nul"
+  & $python -m pip install --isolated --index-url https://pypi.org/simple --no-user --disable-pip-version-check --no-cache-dir --no-build-isolation --no-deps --target $stage -r $requirements
 }
 # endregion
 # The App reads this script's output as UTF-8 (Windows PowerShell 5.1 would otherwise write the ANSI code page).

@@ -90,11 +90,3 @@
   white-space: nowrap;
 }
 
-.industry-index-list-empty {
-  padding: 12px 4px;
-  color: var(--gray-400);
-}
-
-.industry-index-list-empty.error {
-  color: var(--price-up-color);
-}

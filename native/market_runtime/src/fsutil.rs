@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
@@ -45,6 +45,20 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
         }
     }
     written
+}
+
+/// The entries of `dir`, sorted by path: none when `dir` does not exist (nothing was written there yet). Any other
+/// error -- listing `dir` or reading one of its entries -- is returned for the caller to record; it never reads as
+/// an empty directory. The one directory listing of Rust A and Rust B.
+pub fn list_dir(dir: &Path) -> io::Result<Vec<PathBuf>> {
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()), // not an error: nothing written there yet
+        Err(e) => return Err(e),
+    };
+    let mut paths = entries.map(|entry| entry.map(|e| e.path())).collect::<io::Result<Vec<_>>>()?;
+    paths.sort();
+    Ok(paths)
 }
 
 /// A failed atomic write that the caller keeps running after: counted per target and logged once per distinct
@@ -122,6 +136,18 @@ mod tests {
         let text = String::from_utf8(fs::read(&*target).unwrap()).unwrap();
         assert!(text.starts_with("writer ") && text.ends_with("round 49"), "one whole write won: {text}");
         assert_eq!(fs::read_dir(&dir).unwrap().count(), 1, "no temp file left");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_listing_is_sorted_empty_when_absent_and_an_error_otherwise() {
+        let dir = std::env::temp_dir().join(format!("fsutil-list-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("b")).unwrap();
+        fs::write(dir.join("a.json"), b"{}").unwrap();
+        assert_eq!(list_dir(&dir).unwrap(), vec![dir.join("a.json"), dir.join("b")]);
+        assert!(list_dir(&dir.join("absent")).unwrap().is_empty(), "nothing there yet is empty");
+        assert!(list_dir(&dir.join("a.json")).is_err(), "a file is no directory: an error, never empty");
         let _ = fs::remove_dir_all(&dir);
     }
 

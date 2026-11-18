@@ -21,14 +21,13 @@ from __future__ import annotations
 
 import json
 import logging
-import subprocess
 from pathlib import Path
 from typing import Any, Iterator
 
 import pandas as pd
 
 from service.market.history.rust_historical_store_reader import default_historical_root, partition_dir
-from service.platform.native_binaries import analysis_runtime_job_binary
+from service.platform.native_binaries import NativeJobError, analysis_runtime_job_binary, run_job
 
 logger = logging.getLogger(__name__)
 
@@ -168,15 +167,13 @@ class HistoricalStore:
             record_failure(logger, "verifying historical partitions", FileNotFoundError(f"analysis_runtime not found: {verifier}"))
             return {}
         try:
-            done = subprocess.run([str(verifier), "--verify-partitions", *dirs], capture_output=True, text=True,
-                                  encoding="utf-8", timeout=VERIFY_TIMEOUT_SECONDS)
-            payload = json.loads(done.stdout)
-        except (OSError, subprocess.SubprocessError, ValueError) as exc:
+            payload = run_job(["--verify-partitions", *dirs], VERIFY_TIMEOUT_SECONDS, binary=verifier)
+        except NativeJobError as exc:
             record_failure(logger, "verifying historical partitions", exc)
             return {}
-        if done.returncode != 0 or not payload.get("ok"):
+        if not payload.get("ok"):
             record_failure(logger, "verifying historical partitions",
-                           RuntimeError(f"analysis_runtime --verify-partitions exited {done.returncode}: {(done.stderr or '')[-300:]}"))
+                           RuntimeError(f"analysis_runtime --verify-partitions: {payload.get('error')}"))
             return {}
         return {str(item.get("dir")): item for item in payload.get("partitions") or [] if isinstance(item, dict)}
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from threading import Lock, RLock, Thread
 from typing import Any
 
@@ -11,6 +11,16 @@ from service.market.reference.security_master_service import SecurityMasterServi
 from service.market.storage.market_storage_layout import process_market_layout
 
 logger = logging.getLogger(__name__)
+
+
+def contract_day(now: datetime) -> str:
+    """The day the contract tables are written for: the futures trading date being traded or next to open
+    (MarketSessionCalendar.upcoming_trading_date). It moves on at 15:00, when the night of the next trading date
+    opens, so a month whose last trading day was today leaves the futures contract table then -- its near month and
+    every month list move on with the night, not at the next calendar day."""
+    from service.market.lifecycle.calendar import MarketSessionCalendar
+
+    return MarketSessionCalendar().upcoming_trading_date(now).isoformat()
 
 
 class MarketMaintenanceCoordinator:
@@ -35,12 +45,12 @@ class MarketMaintenanceCoordinator:
     def refresh_connected(self, api: Any, *, day: str | None = None) -> dict[str, Any]:
         """Rewrite the security master from the broker's contracts now (an explicit refresh, the daily one)."""
         with self._write_lock:
-            return self._refresh(api, day or datetime.now().strftime("%Y-%m-%d"))
+            return self._refresh(api, day or contract_day(datetime.now()))
 
     def ensure_current(self, api: Any, *, day: str | None = None) -> dict[str, Any]:
         """The security master is today's: written once per day, whoever asks first (the login, the desktop's
         start). A caller that comes while it is being written waits for that write instead of starting a second."""
-        day = day or datetime.now().strftime("%Y-%m-%d")
+        day = day or contract_day(datetime.now())
         with self._write_lock:
             with self._lock:
                 current = self._current_day == day
@@ -54,7 +64,7 @@ class MarketMaintenanceCoordinator:
 
         # The futures contract table first: the master's write notice (security_master_feed) is what brings the
         # background list's futures months up to date, and it must read today's table.
-        futures = futures_contracts.update_from_api(api)
+        futures = futures_contracts.update_from_api(api, today=date.fromisoformat(day))
         result = SecurityMasterService(process_market_layout().shioaji_security_master, api_provider=lambda: api).update_master(api)
         result = {**result, "futures_contracts": futures}
         if not futures.get("ok"):
@@ -67,7 +77,7 @@ class MarketMaintenanceCoordinator:
         return result
 
     def schedule_daily(self, *, now: datetime, connected: bool, api: Any | None) -> dict[str, Any]:
-        day = now.strftime("%Y-%m-%d")
+        day = contract_day(now)
         if not connected:
             return {"scheduled": False, "reason": "shioaji_not_connected", "day": day}
         with self._lock:

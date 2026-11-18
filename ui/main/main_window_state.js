@@ -2,7 +2,7 @@
 
 const fs = require("fs");
 const { clamp } = require("./numbers");
-const { writeJsonAtomic } = require("../../service/platform/js/atomic_files");
+const { writeJsonAtomic, readJsonObject } = require("../../service/platform/js/atomic_files");
 
 // The main window's geometry: its sizes, the adaptive UI scale, where it opens and its saved state.
 
@@ -77,17 +77,9 @@ function minimumSizeFor(mode) {
   return NORMAL_MIN_WINDOW_SIZE;
 }
 
+// The saved window state, or {} when none is saved yet or it cannot be read (warned).
 function readWindowState(file) {
-  try {
-    const raw = fs.readFileSync(file, "utf8");
-    const value = JSON.parse(raw);
-    if (!value || typeof value !== "object") return {};
-    return value;
-  } catch (error) {
-    // absent is not an error: no window state saved yet
-    if (error?.code !== "ENOENT") console.warn("[WINDOW STATE] reading the saved window state failed", error);
-    return {};
-  }
+  return readJsonObject(file, { fsImpl: fs, label: "the saved window state" }) || {};
 }
 
 // `window`: the window whose bounds are saved.

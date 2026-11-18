@@ -61,7 +61,7 @@ async function reachable(port, deadline) {
   const daemon = spawn(binary, ["--port", String(port), "--data-dir", path.join(dir, "a"), "--credentials", credentials, "--rollover", "off"],
     { stdio: "ignore", windowsHide: true });
   const host = new MarketRuntimeHost({ fs, path, projectRoot: ROOT, dataRoot: dir, configRoot: dir, logDir: dir, credentialsFile: credentials,
-    controllerToken: tokens.controller, effective: { services: { market_runtime: { host: "127.0.0.1", port } } } });
+    controllerToken: tokens.controller, effective: { services: { market_runtime: { host: "127.0.0.1", port, protocol: "ws" } } } });
   try {
     assert.ok(await reachable(port, Date.now() + 15000), "market_runtime did not start");
     // 1. Health's controller client, exactly as Health uses it.
@@ -72,7 +72,7 @@ async function reachable(port, deadline) {
     }
     assert.equal(health?.type, "health", "Health's Node WebSocket client is answered");
     const wrong = await new MarketRuntimeHost({ fs, path, projectRoot: ROOT, dataRoot: dir, configRoot: dir, logDir: dir, credentialsFile: credentials,
-      controllerToken: tokens.viewer, effective: { services: { market_runtime: { host: "127.0.0.1", port } } } }).control("metrics", {}, 1500)
+      controllerToken: tokens.viewer, effective: { services: { market_runtime: { host: "127.0.0.1", port, protocol: "ws" } } } }).control("metrics", {}, 1500)
       .then((reply) => reply, (error) => ({ refused: String(error?.message || error) }));
     assert.ok(wrong.refused || wrong.type === "error", "a viewer credential cannot run a controller command");
 

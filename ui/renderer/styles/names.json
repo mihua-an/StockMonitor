@@ -47,7 +47,7 @@
     "pages/history.css": ["history"],
     "pages/account.css": ["account", "finance", "stock-col"],
     "pages/account-replay.css": ["pair-replay", "account-stock-inline-replay-row", "account-daytrade-row-replay", "account-daytrade-replay-host"],
-    "pages/account-trade-editor.css": ["account-trade-modal", "account-trade-add-fill-btn", "account-trade-fill-row", "account-trade-fill-rows", "account-trade-fills", "account-trade-form", "account-trade-remove-fill-btn", "account-trade-submit-btn", "account-trade-time-field"],
+    "pages/account-trade-editor.css": ["account-trade-modal", "account-trade-actions", "account-trade-add-fill-btn", "account-trade-fill-row", "account-trade-fill-rows", "account-trade-fills", "account-trade-form", "account-trade-remove-fill-btn", "account-trade-submit-btn", "account-trade-time-field"],
     "pages/account-mobile-cards.css": ["mobile"],
     "pages/account-order-history.css": ["account-orders"],
     "pages/data-center.css": ["dc", "data-center", "lane"],

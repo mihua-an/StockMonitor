@@ -16,6 +16,7 @@ import { shioajiMarketOf } from "./js/market_data/futures_symbol.js";
 import { getLiveMonitorEvents, startMonitorEventTape } from "./js/features/realtime/live_monitor_events.js";
 import { createTechnicalWindowService } from "./js/features/realtime/technical_window_service.js";
 import { futuresLivePartitionOf } from "./js/features/realtime/txf_session_identity.js";
+import { equityTradingDateOf } from "./js/market_data/equity_trading_date.js";
 import { WorkspaceStore, WORKSPACE_MAX_SYMBOLS, isFutuWorkspaceCode } from "./js/features/workspace/workspace_store.js";
 import { createWorkspaceBenchmarkSource } from "./js/features/workspace/workspace_benchmark_source.js";
 import { WorkspaceColumn } from "./js/features/workspace/workspace_column_runtime.js";
@@ -300,8 +301,8 @@ async function init() {
   // between 日盤 and 夜盤 too. Futu columns follow Market Runtime's own partition already.
   startRealtimeStream();
   subscribeRealtimeSession((session) => {
-    const next = String(session?.equity?.trading_date || "").slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) {
+    const next = equityTradingDateOf(session);
+    if (!next) {
       console.warn("[WORKSPACE] Market Runtime's session has no trading date", session);
       return;
     }

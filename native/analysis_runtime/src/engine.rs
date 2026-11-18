@@ -13,6 +13,7 @@ use market_runtime::demand::{LIVE_NEVER_STORED, LIVE_UNLISTED};
 use market_runtime::event::{checked_shift_date, is_session_partitioned, partition_local_minute, MarketEvent, Payload, CLOCK_CODE, COVERAGE_SUBSCRIBED,
     LOSS_CONTROL};
 use market_runtime::rollover::{clear_family, family, stored_per_instrument};
+use market_runtime::projection::BlockKind;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -89,7 +90,8 @@ pub struct LiveOverlay {
 /// One partition's projection items (`Engine::collect`).
 pub struct Collected {
     pub id: InstrumentId,
-    pub items: Vec<Value>,
+    /// Each projection item with the block it is of (its `block` field names it on the wire).
+    pub items: Vec<(BlockKind, Value)>,
     /// Published to Market Runtime: the overlay's partition where there is one, else the stored one.
     pub shown: bool,
     /// From the stored fold: its rule events are archived. An overlay's never are.
@@ -727,7 +729,7 @@ impl Projecting<'_> {
     /// One layer's items, one list per partition. `beneath`: the stored folds under an overlay, where a partition's
     /// previous partition is found when the overlay holds none.
     fn layer(&self, instruments: &mut BTreeMap<InstrumentId, Instrument>, scopes: &BTreeMap<ScopeId, Scope>,
-             beneath: Option<&BTreeMap<InstrumentId, Instrument>>) -> Vec<(InstrumentId, Vec<Value>)> {
+             beneath: Option<&BTreeMap<InstrumentId, Instrument>>) -> Vec<(InstrumentId, Vec<(BlockKind, Value)>)> {
         let (cal, rules, full, watermark) = (self.cal, self.rules, self.full, self.watermark);
         let ids: Vec<InstrumentId> = instruments.iter().filter(|(_, i)| full || i.projection.dirty.any()).map(|(k, _)| k.clone()).collect();
         let mut out = Vec::new();
@@ -772,23 +774,23 @@ impl Projecting<'_> {
             let dirty_prices = std::mem::take(&mut inst.projection.dirty.prices);
             let minutes: BTreeSet<i32> = if full { inst.minutes.keys().copied().collect() } else { dirty_minutes };
             // `data` goes in by move: json! would copy it whole (to_value), and a block is as large as the session.
-            let item = |block: &str, revision: u64, completeness: Value, data: Value| {
-                let mut item = json!({"identity": identity, "block": block, "input_watermark": watermark, "revision": revision,
+            let item = |block: BlockKind, revision: u64, completeness: Value, data: Value| {
+                let mut item = json!({"identity": identity, "block": block.name(), "input_watermark": watermark, "revision": revision,
                     "config_version": config_version, "completeness": completeness, "as_of": t.to_string()});
                 item["data"] = data;
-                item
+                (block, item)
             };
             if !minutes.is_empty() {
                 inst.projection.revisions.minutes += 1;
                 let completeness = if inst.minutes.values().any(|m| m.quality.name() == "MISSING") { "PARTIAL" } else { "COMPLETE" };
                 let mut data = json!({"replace": full});
                 data["minutes"] = Value::Array(inst.minutes_wire(cal, rules, &minutes));
-                items.push(item("minutes", inst.projection.revisions.minutes, json!(completeness), data));
+                items.push(item(BlockKind::Minutes, inst.projection.revisions.minutes, json!(completeness), data));
             }
             if (full || inst.projection.dirty.windows) && !windows.is_null() {
                 inst.projection.revisions.windows += 1;
                 let completeness = completeness(&windows);
-                items.push(item("windows", inst.projection.revisions.windows, completeness, windows));
+                items.push(item(BlockKind::Windows, inst.projection.revisions.windows, completeness, windows));
             }
             if (full || inst.projection.dirty.day) && t > 0 {
                 inst.projection.revisions.day += 1;
@@ -801,7 +803,7 @@ impl Projecting<'_> {
                     inst.projection.dirty.day_whole = false;
                 }
                 let completeness = if day["volume_complete"] == true { "COMPLETE" } else { "PARTIAL" };
-                items.push(item("day", inst.projection.revisions.day, json!(completeness), day));
+                items.push(item(BlockKind::Day, inst.projection.revisions.day, json!(completeness), day));
             }
             if (full || inst.projection.dirty.flow) && t > 0 {
                 inst.projection.revisions.flow += 1;
@@ -817,7 +819,7 @@ impl Projecting<'_> {
                     inst.projection.dirty.flow_whole = false;
                 }
                 let completeness = flow["availability"].clone();
-                items.push(item("flow", inst.projection.revisions.flow, completeness, flow));
+                items.push(item(BlockKind::Flow, inst.projection.revisions.flow, completeness, flow));
             }
             if full || !inst.projection.dirty.events.is_empty() {
                 let replace = full || inst.projection.dirty.events.contains("*");
@@ -827,7 +829,7 @@ impl Projecting<'_> {
                 inst.projection.revisions.events += 1;
                 let mut data = json!({"replace": replace});
                 data["events"] = Value::Array(changed);
-                items.push(item("events", inst.projection.revisions.events, json!("COMPLETE"), data));
+                items.push(item(BlockKind::Events, inst.projection.revisions.events, json!("COMPLETE"), data));
             }
             inst.projection.dirty.windows = false;
             inst.projection.dirty.day = false;
@@ -1012,12 +1014,13 @@ mod tests {
         let mut engine = Engine::new(cal, flow_rules());
         engine.apply(&trade_at(1, 600, 5, 1_000_000, 1, 1));
         let items = engine.collect(false, 1, None);
-        let blocks: Vec<&str> = items[0].items.iter().map(|i| i["block"].as_str().unwrap()).collect();
-        assert!(blocks.contains(&"minutes") && blocks.contains(&"windows") && blocks.contains(&"day") && blocks.contains(&"flow"));
-        assert!(items[0].items.iter().all(|i| i["input_watermark"] == 1 && i["identity"]["code"] == "2330"));
+        let blocks: Vec<BlockKind> = items[0].items.iter().map(|(block, _)| *block).collect();
+        assert_eq!(blocks, [BlockKind::Minutes, BlockKind::Windows, BlockKind::Day, BlockKind::Flow]);
+        assert!(items[0].items.iter().all(|(block, i)| i["block"] == block.name()), "the wire names the item's block");
+        assert!(items[0].items.iter().all(|(_, i)| i["input_watermark"] == 1 && i["identity"]["code"] == "2330"));
         assert!(engine.collect(false, 1, None).is_empty(), "nothing dirty, nothing sent");
         let full = engine.collect(true, 1, None);
-        let minutes = full[0].items.iter().find(|i| i["block"] == "minutes").unwrap();
+        let (_, minutes) = full[0].items.iter().find(|(block, _)| *block == BlockKind::Minutes).unwrap();
         assert_eq!(minutes["data"]["replace"], true);
     }
 
@@ -1031,7 +1034,7 @@ mod tests {
         for (seq, minute) in [(1, 600), (2, 601), (3, 602), (4, 603)] {
             engine.apply(&trade_at(seq, minute, 5, 1_000_000 + seq as i64 * 10_000, 1, 1));
         }
-        let block = |items: &[Collected], name: &str| items[0].items.iter().find(|i| i["block"] == name).map(|i| i["data"].clone());
+        let block = |items: &[Collected], name: &str| items[0].items.iter().find(|(block, _)| block.name() == name).map(|(_, i)| i["data"].clone());
         let first = engine.collect(false, 4, None);
         let (day, flow) = (block(&first, "day").unwrap(), block(&first, "flow").unwrap());
         assert_eq!((day["replace"].clone(), flow["replace"].clone()), (json!(true), json!(true)), "the first item of a frame is whole");

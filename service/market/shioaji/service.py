@@ -6,7 +6,7 @@ import logging
 import time
 from threading import Event, RLock
 from service.market.storage.market_storage_layout import process_market_layout
-from datetime import time as dt_time, datetime
+from datetime import datetime
 from typing import Any
 
 
@@ -21,6 +21,8 @@ from service.market.shioaji.history_repository import ShioajiHistoricalRepositor
 from service.market.shioaji.maintenance import MarketMaintenanceCoordinator
 from service.market.shioaji.history_download import KBarDownloadManager
 from service.platform.failure_record import record_failure
+from config.market_holidays import tw_is_trading_day
+from service.market.shared.session_identity_contract import market_zone, partition_end
 
 _failure_log = logging.getLogger(__name__)
 
@@ -172,7 +174,13 @@ class ShioajiMarketService:
 
         Model training is not here at all: it is a job Health starts after the close.
         """
-        if now.weekday() >= 5 or now.time() < dt_time(13, 50):
+        # After the day's stock session can receive nothing more (its 14:30 盤後定價, config/trading_sessions.json), on
+        # a trading day only (the official calendar and observed closures).
+        if not tw_is_trading_day(now.date()):
+            return None
+        # The daemon's clock is the PC's local time, which is Taipei's.
+        at = now if now.tzinfo else now.replace(tzinfo=market_zone("STK"))
+        if at < partition_end("shioaji", "STK", now.date().isoformat(), "DAY"):
             return None
         date_text = now.strftime("%Y-%m-%d")
         kbar_maintenance = None

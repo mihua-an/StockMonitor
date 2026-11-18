@@ -4,8 +4,10 @@ the broker's own contract list -- never a hand-kept list.
 
 * Which stocks have 個股期貨: a category whose ``underlying_code`` is that stock (a stock may have several, e.g. a
   standard and a mini contract: listed largest ``unit`` first, the first is the one a stock's 期貨 subscribes).
-* A category's months: its rows, earliest first; the first is the near month (近月). An expired month is not written,
-  so the near month moves on by itself at the first refresh after an expiry.
+* A category's months: its rows, earliest first; the first is the near month (近月). An expired month is not written:
+  the table is written for the futures trading date being traded or next to open (maintenance.contract_day), so at
+  15:00 of an expiry day -- the night of the next trading date -- the refresh drops the expired month and the near
+  month moves on.
 * A month is named by its symbol (``TXF202612``, ``CDF202612``): that is the code Market Runtime, the background list
   and the WAL partitions know it by; ``code`` is the broker's own contract code (``TXFL6``), which the provider
   subscribes with and its callbacks carry.

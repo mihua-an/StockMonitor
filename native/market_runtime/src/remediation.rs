@@ -585,6 +585,78 @@ mod pipe_peek {
     }
 }
 
+/// Who serves a connected Windows named pipe: its server process must run as this process's Windows user.
+#[cfg(windows)]
+pub(crate) mod pipe_peer {
+    use std::ffi::c_void;
+    use std::os::windows::io::AsRawHandle;
+
+    /// SECURITY_IDENTIFICATION for OpenOptionsExt::security_qos_flags (std adds SECURITY_SQOS_PRESENT).
+    pub const SECURITY_IDENTIFICATION: u32 = 0x0001_0000;
+    const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+    const TOKEN_QUERY: u32 = 0x0008;
+    const TOKEN_USER_CLASS: i32 = 1;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetNamedPipeServerProcessId(pipe: *mut c_void, pid: *mut u32) -> i32;
+        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut c_void;
+        fn GetCurrentProcess() -> *mut c_void;
+        fn CloseHandle(handle: *mut c_void) -> i32;
+    }
+    #[link(name = "advapi32")]
+    extern "system" {
+        fn OpenProcessToken(process: *mut c_void, access: u32, token: *mut *mut c_void) -> i32;
+        fn GetTokenInformation(token: *mut c_void, class: i32, info: *mut c_void, size: u32, needed: *mut u32) -> i32;
+        fn EqualSid(a: *mut c_void, b: *mut c_void) -> i32;
+    }
+
+    /// The TOKEN_USER buffer of `process`'s token (its first field points at the user SID inside the same buffer).
+    /// usize-aligned so the leading pointer field can be read in place.
+    fn token_user(process: *mut c_void) -> std::io::Result<Vec<usize>> {
+        let mut token = std::ptr::null_mut();
+        // SAFETY: `process` is a live process handle; `token` receives a handle closed below.
+        if unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut token) } == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        let mut needed = 0u32;
+        // SAFETY: a null buffer of size 0 only asks for the size needed.
+        unsafe { GetTokenInformation(token, TOKEN_USER_CLASS, std::ptr::null_mut(), 0, &mut needed) };
+        let mut buffer = vec![0usize; (needed as usize).div_ceil(std::mem::size_of::<usize>())];
+        // SAFETY: the buffer holds at least `needed` bytes.
+        let ok = unsafe { GetTokenInformation(token, TOKEN_USER_CLASS, buffer.as_mut_ptr().cast(), needed, &mut needed) };
+        let error = std::io::Error::last_os_error();
+        // SAFETY: closing the token handle opened above.
+        unsafe { CloseHandle(token) };
+        if ok == 0 { Err(error) } else { Ok(buffer) }
+    }
+
+    /// Ok when the server end of `pipe` runs as this Windows user; PermissionDenied otherwise, including when the
+    /// server's owner cannot be read (another user's process, or one that has exited).
+    pub fn require_same_user(pipe: &std::fs::File) -> std::io::Result<()> {
+        let refused = |why: String| std::io::Error::new(std::io::ErrorKind::PermissionDenied, why);
+        let mut pid = 0u32;
+        // SAFETY: the handle is the open pipe's own.
+        if unsafe { GetNamedPipeServerProcessId(pipe.as_raw_handle() as *mut _, &mut pid) } == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        // SAFETY: OpenProcess returns null on failure; a non-null handle is closed below.
+        let server = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        if server.is_null() {
+            return Err(refused(format!("the remediation pipe's server (pid {pid}) is not this Windows user's process")));
+        }
+        let server_user = token_user(server);
+        // SAFETY: closing the process handle opened above.
+        unsafe { CloseHandle(server) };
+        let server_user = server_user.map_err(|e| refused(format!("the remediation pipe server's owner cannot be read (pid {pid}): {e}")))?;
+        // SAFETY: GetCurrentProcess is a pseudo handle that needs no closing.
+        let own_user = token_user(unsafe { GetCurrentProcess() })?;
+        // SAFETY: each buffer's first word is the PSID into that same buffer, alive for this call.
+        let same = unsafe { EqualSid(server_user[0] as *mut c_void, own_user[0] as *mut c_void) } != 0;
+        if same { Ok(()) } else { Err(refused(format!("the remediation pipe is served by another Windows user (pid {pid})"))) }
+    }
+}
+
 /// The connection to Health's ledger pipe: a Windows named pipe opened as a file, or a Unix socket elsewhere. A
 /// synchronous Windows pipe read cannot time out, so a read with a deadline first polls PeekNamedPipe.
 struct Channel {
@@ -596,8 +668,17 @@ struct Channel {
 
 impl Channel {
     fn open(path: &str) -> io::Result<Self> {
+        // Identification level only (whoever serves the name can never act as this process), and refused before
+        // anything is written unless the server runs as this Windows user: while Health is not running, another
+        // user could have created the same pipe name.
         #[cfg(windows)]
-        let io = std::fs::OpenOptions::new().read(true).write(true).open(path)?;
+        let io = {
+            use std::os::windows::fs::OpenOptionsExt;
+            let file = std::fs::OpenOptions::new().read(true).write(true)
+                .security_qos_flags(pipe_peer::SECURITY_IDENTIFICATION).open(path)?;
+            pipe_peer::require_same_user(&file)?;
+            file
+        };
         #[cfg(not(windows))]
         let io = std::os::unix::net::UnixStream::connect(path)?;
         Ok(Channel { io })
@@ -836,5 +917,59 @@ mod tests {
         assert_ne!(a, b);
         assert_eq!(a.len(), 36);
         assert_eq!(&a[14..15], "4");
+    }
+
+    /// The ledger pipe is opened at identification level and only to a server of this Windows user: a server of
+    /// this user is reached, and impersonating the client yields an identification token, never one that can act.
+    #[cfg(windows)]
+    #[test]
+    fn pipe_client_reaches_a_same_user_server_at_identification_level_only() {
+        use std::ffi::c_void;
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn CreateNamedPipeW(name: *const u16, open: u32, mode: u32, max: u32, out: u32, inp: u32, timeout: u32,
+                security: *mut c_void) -> *mut c_void;
+            fn ConnectNamedPipe(pipe: *mut c_void, overlapped: *mut c_void) -> i32;
+            fn ReadFile(h: *mut c_void, buf: *mut c_void, n: u32, read: *mut u32, overlapped: *mut c_void) -> i32;
+            fn GetCurrentThread() -> *mut c_void;
+            fn CloseHandle(h: *mut c_void) -> i32;
+        }
+        #[link(name = "advapi32")]
+        extern "system" {
+            fn ImpersonateNamedPipeClient(pipe: *mut c_void) -> i32;
+            fn OpenThreadToken(thread: *mut c_void, access: u32, as_self: i32, token: *mut *mut c_void) -> i32;
+            fn GetTokenInformation(token: *mut c_void, class: i32, info: *mut c_void, size: u32, needed: *mut u32) -> i32;
+            fn RevertToSelf() -> i32;
+        }
+        let name = format!(r"\\.\pipe\stock-monitor-test-{}", new_id());
+        let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+        // SAFETY: a duplex byte pipe with one instance; the handle moves to the server thread, which closes it.
+        let server = unsafe { CreateNamedPipeW(wide.as_ptr(), 3, 0, 1, 4096, 4096, 0, std::ptr::null_mut()) } as usize;
+        let level = std::thread::spawn(move || {
+            let pipe = server as *mut c_void;
+            let mut buf = [0u8; 4];
+            let mut read = 0u32;
+            let mut level = -1i32;
+            // SAFETY: test-only Win32 calls on the pipe created above and this thread's own token.
+            unsafe {
+                ConnectNamedPipe(pipe, std::ptr::null_mut());
+                ReadFile(pipe, buf.as_mut_ptr().cast(), 4, &mut read, std::ptr::null_mut());
+                if ImpersonateNamedPipeClient(pipe) != 0 {
+                    let mut token = std::ptr::null_mut();
+                    if OpenThreadToken(GetCurrentThread(), 8, 1, &mut token) != 0 {
+                        let mut needed = 0u32;
+                        GetTokenInformation(token, 9, (&mut level as *mut i32).cast(), 4, &mut needed);
+                        CloseHandle(token);
+                    }
+                    RevertToSelf();
+                }
+                CloseHandle(pipe);
+            }
+            level
+        });
+        let mut channel = Channel::open(&name).expect("a pipe served by this user opens");
+        channel.send(b"ping").unwrap();
+        // 1 = SecurityIdentification; a plain open would allow 2 = SecurityImpersonation.
+        assert_eq!(level.join().unwrap(), 1);
     }
 }

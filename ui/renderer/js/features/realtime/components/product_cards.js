@@ -3,9 +3,9 @@
 // hand over the same rows they give the table.
 import { displayQuote, priceText } from "../../../core/auction_price.js";
 import { expandPickerHtml } from "../../../core/components/expand_picker.js";
+import { formatQuoteChange, quoteMoveClass } from "../../../core/components/product_quote_header.js";
 import { morphInto } from "../../../core/dom_morph.js";
 import { productReadView } from "../../../core/market_read_model.js";
-import { signedValueClass } from "../../../core/market_color_policy.js";
 import { numberOrNull } from "../../../core/numbers.js";
 import { stockCardInnerMarkup } from "../../../core/stock_card.js";
 import { escapeHtml } from "../../../core/utility.js";
@@ -46,8 +46,9 @@ function cardInner(row) {
     // compared with the official limits (Market Runtime's, carried on the row).
     price: current, limitUp: item?.limit_up ?? null, limitDown: item?.limit_down ?? null,
     priceText: shownPrice,
-    changeText: change === null || changePct === null ? "--" : `${Math.abs(change).toFixed(2)}(${Math.abs(changePct).toFixed(2)}%)`,
-    moveClass: signedValueClass(change),
+    // 漲跌 and its colour as every product header writes them: the sign of the change as shown (2 decimals).
+    changeText: formatQuoteChange(change, changePct),
+    moveClass: quoteMoveClass(change),
     titleExtra: row?.side_picker ? expandPickerHtml({ ...row.side_picker, corner: true }) : "",
   });
 }

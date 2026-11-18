@@ -106,6 +106,12 @@ class TechnicalHistoryReader:
     def _session(self, market: str, session: str, code: str) -> dict[str, Any]:
         return self._sessions(market, code).get(session, _EMPTY)
 
+    def held_dates(self, market: str, session: str, code: str) -> set[str]:
+        """Every date the store holds of one product's session, at any timeframe: a held date needs no download. An
+        unreadable file is recorded once and holds nothing."""
+        held = self._session(market, session, code)
+        return set(held.get("daily", {})) | set(held.get("intraday", {}))
+
     def minute_days(self, market: str, session: str, code: str, before: str | None, limit: int | None) -> dict[str, Any]:
         """Up to `limit` trading days before `before` (oldest first), each at the timeframe it is held, and where the
         next older page starts."""
@@ -120,10 +126,11 @@ class TechnicalHistoryReader:
                 next_before = days[-1]["trading_date"]
                 break
             held = intraday[trading_date]
-            days.append({"trading_date": trading_date, "source": SOURCE_STORE, "timeframe": held["timeframe"], "bars": held["bars"]})
+            # The day's own sessions: a US half day's are shorter, and its N-minute candles are cut on them.
+            days.append({"trading_date": trading_date, "source": SOURCE_STORE, "timeframe": held["timeframe"], "bars": held["bars"],
+                         "segments": session_segments(_source_of(market), market, session, trading_date)})
         days.reverse()
-        return {"code": code, "market": market, "session": session, "resolution": "minute",
-                "segments": session_segments(_source_of(market), market, session), "days": days, "next_before": next_before,
+        return {"code": code, "market": market, "session": session, "resolution": "minute", "days": days, "next_before": next_before,
                 "horizons": kbar_retention_settings.horizons(_taipei_today())}
 
     def daily_bars(self, market: str, session: str, code: str, before: str | None, limit: int | None) -> dict[str, Any]:

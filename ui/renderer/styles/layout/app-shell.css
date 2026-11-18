@@ -137,39 +137,37 @@ body[data-layout-editor] .bottom-dock {
   }
 }
 
-/* ===== 新版提示 (features/app_update/update_notice.js): shown only while a newer release exists ===== */
-.dock-update-btn {
+/* ===== The dock's action buttons (新版提示, 新增交易, Workspace): one shape, each its own colour ===== */
+.dock-action-btn {
   min-height: 24px;
   padding: 4px 10px;
-  /* The App's accent, not a market colour: green and red mean 漲／跌 here. */
-  border: 1px solid var(--focus-ring-color);
+  border-width: 1px;
+  border-style: solid;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--focus-ring-color) 18%, transparent);
-  color: var(--white);
   font-size: 12px;
   font-weight: 800;
   line-height: 1.1;
   cursor: pointer;
   white-space: nowrap;
+}
+
+/* 新版提示 (features/app_update/update_notice.js): shown only while a newer release exists. The App's accent, not a
+   market colour: green and red mean 漲／跌 here. */
+.dock-update-btn {
+  border-color: var(--focus-ring-color);
+  background: color-mix(in srgb, var(--focus-ring-color) 18%, transparent);
+  color: var(--white);
 }
 
 .dock-update-btn:hover {
   background: color-mix(in srgb, var(--focus-ring-color) 40%, transparent);
 }
 
-/* ===== Google Form trade entry ===== */
+/* 新增交易 */
 .dock-add-trade-btn {
-  min-height: 24px;
-  padding: 4px 10px;
-  border: 1px solid var(--blue-500-a72);
-  border-radius: 6px;
+  border-color: var(--blue-500-a72);
   background: var(--blue-600-a18);
   color: var(--blue-200);
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1.1;
-  cursor: pointer;
-  white-space: nowrap;
 }
 
 .dock-add-trade-btn:hover {
@@ -179,17 +177,9 @@ body[data-layout-editor] .bottom-dock {
 }
 
 .dock-workspace-btn {
-  min-height: 24px;
-  padding: 4px 10px;
-  border: 1px solid var(--violet-300x-a72);
-  border-radius: 6px;
+  border-color: var(--violet-300x-a72);
   background: var(--violet-500x-a18);
   color: var(--violet-100x);
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1.1;
-  cursor: pointer;
-  white-space: nowrap;
 }
 
 .dock-workspace-btn:hover {
@@ -336,7 +326,7 @@ body[data-dock-trade-entry="hidden"] .dock-add-trade-btn {
 .app-shutdown-overlay {
   position: fixed;
   inset: 0;
-  z-index: 2147483647;
+  z-index: var(--z-shutdown-overlay);
   display: grid;
   place-items: center;
   background: var(--surface-panel);

@@ -104,6 +104,11 @@ for (const retired of Object.keys(layout.retired_env.names)) {
   const packaged = resolveVarPaths({ projectRoot: PROJECT_ROOT, env: { ...installedEnv, [layout.root_env]: packagedVar } });
   assert.equal(source.authRoot, path.join(local, "StockMonitorTwse", "auth"), "the source checkout keeps its existing AUTH_ROOT");
   assert.equal(packaged.authRoot, path.join(local, "StockMonitor", "auth"), "an installed app has its own");
+  // "~" in the AUTH_ROOT base expands like every other variable (Python expanduser), with either separator.
+  for (const sep of ["\\", "/"]) {
+    assert.equal(resolveVarPaths({ projectRoot: PROJECT_ROOT, env: { LOCALAPPDATA: `~${sep}AppData${sep}Local` } }).authRoot,
+      path.join(os.homedir(), "AppData", "Local", "StockMonitorTwse", "auth"), `~${sep} is the home directory`);
+  }
   assert.equal(packaged.varRoot, path.join(userData, "var"));
   for (const p of [source, packaged]) {
     assert.ok(!p.authRoot.startsWith(p.varRoot + path.sep), "AUTH_ROOT is not under VAR_ROOT");

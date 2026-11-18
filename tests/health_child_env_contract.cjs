@@ -24,15 +24,16 @@ const parent = {
 // 1. The allowlist itself.
 const base = childEnv(parent);
 for (const name of ["SystemRoot", "Path", "TEMP", "LOCALAPPDATA", "PYTHONUTF8", "STOCK_MONITOR_VAR_ROOT", "STOCK_MONITOR_SOURCES",
-  "STOCK_MONITOR_AUTH_ROOT", "STOCK_MONITOR_RUNTIME_CREDENTIAL_DIR", "SJ_LOG_PATH", "MOOMOO_POLL_SECONDS", "HTTPS_PROXY"]) {
+  "STOCK_MONITOR_AUTH_ROOT", "SJ_LOG_PATH", "MOOMOO_POLL_SECONDS", "HTTPS_PROXY"]) {
   assert.equal(base[name], parent[name], `${name} must reach the child`);
 }
 for (const name of ["STOCK_MONITOR_DAEMON_TOKEN", "STOCK_MONITOR_CLIENT_TOKEN", "STOCK_MONITOR_CONTROLLER_TOKEN",
-  "STOCK_MONITOR_DAEMON_TOKEN_FILE", "SJ_API_KEY", "SHIOAJI_SECRET_KEY", "OPENAI_API_KEY",
+  "STOCK_MONITOR_DAEMON_TOKEN_FILE", "STOCK_MONITOR_RUNTIME_CREDENTIAL_DIR", "SJ_API_KEY", "SHIOAJI_SECRET_KEY", "OPENAI_API_KEY",
   "AWS_SECRET_ACCESS_KEY", "GITHUB_TOKEN", "NODE_OPTIONS", "PYTHONPATH", "PYTHONSTARTUP", "ELECTRON_RUN_AS_NODE", "RANDOM_TOOL_SETTING"]) {
   assert.equal(base[name], undefined, `${name} must not reach the child`);
 }
-assert.equal(isSecretName("STOCK_MONITOR_RUNTIME_CREDENTIAL_DIR"), false, "a listed directory path is not a credential");
+// The market_runtime token directory is Health's (the minter) alone: a child is granted its role's token instead.
+assert.equal(isSecretName("STOCK_MONITOR_RUNTIME_CREDENTIAL_DIR"), true, "the token directory is withheld like a token");
 // A _DIR/_ROOT ending does not make an unlisted secret-looking name safe (R15-04).
 const unlisted = childEnv({ STOCK_MONITOR_TOKEN_ROOT: "t", STOCK_MONITOR_API_KEY_DIR: "k", SJ_SECRET_ROOT: "s", STOCK_MONITOR_AUTH_ROOT: "C:\\auth" });
 assert.deepEqual(Object.keys(unlisted), ["STOCK_MONITOR_AUTH_ROOT"], "only the listed secret-looking paths reach a child");
@@ -109,12 +110,46 @@ assert.equal("SKIP" in granted, false);
   assert.ok(!Object.values(env).includes(managementAuth.token), "the management token itself never leaves Health");
   assert.ok(!Object.values(env).includes(clientAuth.token), "an API verifies the client token by digest only");
 
-  // 5. health/main.js grants per role exactly as documented (source-level: main.js cannot run in a test).
+  // 5. Health's grants per role (health/startup/role_credentials.js), with the market_runtime token each Python service
+  // needs and no other: realtime_api the viewer, each provider daemon its own provider role, app_api none.
+  const { prepareRoleCredentials } = require("../health/startup/role_credentials");
+  const runtimeCredentials = require("../service/platform/js/runtime_credentials");
+  const grantRoot = makeTempDir("w6-role-grants-");
+  const grantRef = { env: { ...parent, STOCK_MONITOR_AUTH_ROOT: grantRoot, STOCK_MONITOR_RUNTIME_CREDENTIAL_DIR: path.join(grantRoot, "market_runtime") } };
+  const prepared = prepareRoleCredentials({ fs, path, processRef: grantRef, authRoot: grantRoot, renew: false });
+  const runtimeToken = (role) => runtimeCredentials.readToken(role, grantRef.env);
+  const runtimeGrants = (childEnvironment) => Object.keys(childEnvironment).filter((name) => name.startsWith(runtimeCredentials.GRANT_ENV_PREFIX)).sort();
+  const appEnv = prepared.roleEnv.api("app_api")();
+  const realtimeEnv = prepared.roleEnv.api("realtime_api")();
+  const shioajiEnv = prepared.roleEnv.provider("shioaji")();
+  const futuEnv = prepared.roleEnv.provider("futu")();
+  assert.deepEqual(runtimeGrants(appEnv), [], "app_api reads no market_runtime view");
+  assert.deepEqual(runtimeGrants(realtimeEnv), [runtimeCredentials.grantEnv("viewer")]);
+  assert.equal(realtimeEnv[runtimeCredentials.grantEnv("viewer")], runtimeToken("viewer"));
+  assert.deepEqual(runtimeGrants(shioajiEnv), [runtimeCredentials.grantEnv("provider:shioaji")]);
+  assert.equal(shioajiEnv[runtimeCredentials.grantEnv("provider:shioaji")], runtimeToken("provider:shioaji"));
+  assert.deepEqual(runtimeGrants(futuEnv), [runtimeCredentials.grantEnv("provider:futu")]);
+  assert.equal(futuEnv[runtimeCredentials.grantEnv("provider:futu")], runtimeToken("provider:futu"));
+  for (const childEnvironment of [appEnv, realtimeEnv]) {
+    assert.equal(childEnvironment.STOCK_MONITOR_DAEMON_TOKEN, prepared.daemonAuth.token);
+    assert.equal(childEnvironment.STOCK_MONITOR_CLIENT_TOKEN_SHA256, prepared.clientAuth.digest);
+    assert.equal(childEnvironment.STOCK_MONITOR_MANAGEMENT_TOKEN_SHA256, prepared.managementAuth.digest);
+  }
+  for (const childEnvironment of [shioajiEnv, futuEnv]) {
+    assert.equal(childEnvironment.STOCK_MONITOR_DAEMON_TOKEN, undefined, "a provider verifies the daemon token by digest only");
+    assert.equal(childEnvironment.STOCK_MONITOR_DAEMON_TOKEN_SHA256, prepared.daemonAuth.digest);
+    assert.equal(childEnvironment.STOCK_MONITOR_MANAGEMENT_TOKEN_SHA256, prepared.managementAuth.digest);
+  }
+  for (const childEnvironment of [appEnv, realtimeEnv, shioajiEnv, futuEnv, prepared.roleEnv.plain()]) {
+    assert.equal(childEnvironment.STOCK_MONITOR_RUNTIME_CREDENTIAL_DIR, undefined, "no child is pointed at the token directory");
+  }
+  assert.deepEqual(runtimeGrants(prepared.roleEnv.plain()), [], "Rust A/B and the jobs get no token in the environment");
+  assert.throws(() => prepared.roleEnv.api("unknown_api"), /no credential grant/);
+  assert.throws(() => prepared.roleEnv.provider("unknown"), /no credential grant/);
   const main = fs.readFileSync(path.join(__dirname, "..", "health", "main.js"), "utf8");
-  const roles = main.slice(main.indexOf("const roleEnv = {"), main.indexOf("const providerFetch"));
-  assert.match(roles, /api: \(\) => childEnv\(process\.env, \{ STOCK_MONITOR_DAEMON_TOKEN: daemonAuth\.token,\s+STOCK_MONITOR_CLIENT_TOKEN_SHA256: clientAuth\.digest, STOCK_MONITOR_MANAGEMENT_TOKEN_SHA256: managementAuth\.digest,\s+\.\.\.pythonServiceThreadDefaults\(process\.env\) \}\)/);
-  assert.match(roles, /provider: \(\) => childEnv\(process\.env, \{ STOCK_MONITOR_DAEMON_TOKEN_SHA256: daemonAuth\.digest,\s+STOCK_MONITOR_MANAGEMENT_TOKEN_SHA256: managementAuth\.digest, \.\.\.pythonServiceThreadDefaults\(process\.env\) \}\)/);
-  assert.match(roles, /plain: \(\) => childEnv\(process\.env\)/);
+  assert.match(main, /env: roleEnv\.api\(sid\)/, "each API is spawned with its own grant");
+  assert.match(main, /env: roleEnv\.provider\("shioaji"\)/);
+  assert.match(main, /env: roleEnv\.provider\("futu"\)/);
 
   // 6. The long-running Python services get one OpenBLAS thread (numpy commits a buffer per core otherwise); a value
   // the launcher already has wins, whatever its spelling.

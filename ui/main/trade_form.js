@@ -3,8 +3,21 @@
 const fs = require("node:fs");
 const { withTimeout } = require("../../service/platform/js/fetch_timeout");
 
+// The form's address and its field mapping come from the saved account settings, read here with the client
+// credential: the renderer sends only the trade, so a page cannot choose where a trade is sent.
+const FORM_FIELDS = ["trade_date", "market", "action", "code", "trade_info", "trade_time"];
+// The same links api's save_config accepts (service/account/actual_account_sync.py form_prefill_url_problem): a
+// prefilled viewform link, or a forms.gle short link that must lead to one.
+const FORM_PATH = /^\/forms\/d\/(?:e\/)?[A-Za-z0-9_-]+\/viewform$/;
+const FORM_SHORT_PATH = /^\/[A-Za-z0-9_-]+$/;
+
+function plainHttps(url) {
+  return url.protocol === "https:" && !url.username && !url.password && !url.port && !url.hash;
+}
+
+// fetch: Electron main's authenticated fetch (client_auth.js); urlFor(path): the business API URL of a path.
 // unconfirmedPagePath(name): where an answer that is not the confirmation page is kept (the run's log folder).
-function createTradeForm({ fetch: transport, timeoutMs = 20000, unconfirmedPagePath = null }) {
+function createTradeForm({ fetch: transport, urlFor, timeoutMs = 20000, unconfirmedPagePath = null }) {
   async function fetch(url, options) {
     try {
       return await withTimeout(timeoutMs, async (signal) => {
@@ -19,31 +32,37 @@ function createTradeForm({ fetch: transport, timeoutMs = 20000, unconfirmedPageP
       throw Object.assign(new Error(`no answer within ${timeoutMs} ms`), { reason: "TIMEOUT" });
     }
   }
-  async function resolveGoogleFormPrefillUrl(prefillUrl) {
-    const raw = String(prefillUrl || "").trim();
-    if (!raw) throw new Error("尚未設定 Google Form 預填連結");
+  // The saved Google Form settings: its prefilled link and the placeholder of each trade field.
+  async function readFormSettings() {
+    const response = await fetch(urlFor("/api/actual-account/config"), { method: "GET", cache: "no-store" });
+    if (!response.ok) throw new Error(`帳務設定讀取失敗：HTTP ${response.status}`);
+    const config = await response.json();
+    const mapping = Object.fromEntries(FORM_FIELDS.map((key) => [key, String(config?.[`google_form_param_${key}`] || "")]));
+    const prefillUrl = String(config?.google_form_prefill_url || "").trim();
+    if (!prefillUrl || FORM_FIELDS.some((key) => !mapping[key].trim())) {
+      throw new Error("Google Form 尚未設定完成。請先到主 App 的設定頁完成預填連結與對應參數。");
+    }
+    return { prefillUrl, mapping };
+  }
 
+  async function resolveGoogleFormPrefillUrl(prefillUrl) {
     let parsed;
     try {
-      parsed = new URL(raw);
+      parsed = new URL(prefillUrl);
     } catch (_error) {
       throw new Error("Google Form 預填連結格式不正確");
     }
 
     // 若使用者貼 forms.gle 短網址，先跟隨一次 redirect 取得完整 Google Form URL。
     // 參數對應仍以最後的完整預填 URL 為準。
-    if (parsed.hostname === "forms.gle") {
+    if (plainHttps(parsed) && parsed.hostname === "forms.gle" && FORM_SHORT_PATH.test(parsed.pathname) && !parsed.search) {
       const response = await fetch(parsed.toString(), { method: "GET", redirect: "follow" });
       if (!response.ok) throw new Error(`Google Form 短網址解析失敗：HTTP ${response.status}`);
       parsed = new URL(response.url);
     }
 
-    const host = parsed.hostname.toLowerCase();
-    if (host !== "docs.google.com" && host !== "forms.google.com") {
-      throw new Error("請使用 Google Form 的完整預填連結");
-    }
-    if (!parsed.pathname.includes("/forms/")) {
-      throw new Error("這個網址看起來不是 Google Form 預填連結");
+    if (!plainHttps(parsed) || parsed.hostname !== "docs.google.com" || !FORM_PATH.test(parsed.pathname)) {
+      throw new Error("Google Form 預填連結必須是 https://docs.google.com/forms/d/<表單 ID>/viewform?... 的預填連結");
     }
     return parsed;
   }
@@ -96,9 +115,9 @@ function createTradeForm({ fetch: transport, timeoutMs = 20000, unconfirmedPageP
     let submitted = false;
     try {
       const body = payload && typeof payload === "object" ? payload : {};
-      const mapping = body.mapping && typeof body.mapping === "object" ? body.mapping : {};
       const trade = body.trade && typeof body.trade === "object" ? body.trade : {};
-      const prefill = await resolveGoogleFormPrefillUrl(body.prefill_url);
+      const { prefillUrl, mapping } = await readFormSettings();
+      const prefill = await resolveGoogleFormPrefillUrl(prefillUrl);
 
       const keys = {
         trade_date: resolveGoogleFormEntryKey(prefill, mapping.trade_date, "交易日期"),
@@ -135,13 +154,7 @@ function createTradeForm({ fetch: transport, timeoutMs = 20000, unconfirmedPageP
       const responseUrl = new URL(prefill.toString());
       responseUrl.search = "";
       responseUrl.hash = "";
-      if (/\/viewform\/?$/i.test(responseUrl.pathname)) {
-        responseUrl.pathname = responseUrl.pathname.replace(/\/viewform\/?$/i, "/formResponse");
-      } else if (/\/prefill\/?$/i.test(responseUrl.pathname)) {
-        responseUrl.pathname = responseUrl.pathname.replace(/\/prefill\/?$/i, "/formResponse");
-      } else {
-        responseUrl.pathname = responseUrl.pathname.replace(/\/$/, "") + "/formResponse";
-      }
+      responseUrl.pathname = responseUrl.pathname.replace(/\/viewform$/, "/formResponse");
 
       submitted = true;
       const response = await fetch(responseUrl.toString(), {

@@ -11,10 +11,11 @@
 
 const { fetchJson } = require("../../service/platform/js/fetch_timeout");
 const { probeTcpPort } = require("../../service/platform/js/daemon_connection");
-const { TRIGGERS, recordForcedTermination, forceEndChild } = require("../../service/platform/js/forced_termination");
+const { TRIGGERS, recordForcedTermination, forceEndChild, childExited } = require("../../service/platform/js/forced_termination");
 const { createLogSink } = require("./log_sink");
 const { spawnedStorageUser } = require("../startup/storage_users");
 const { childEnv } = require("../../service/platform/js/child_env");
+const { baseUrl } = require("../../config/js/network_config");
 const net = require("net");
 const { spawn, execFile } = require("child_process");
 
@@ -63,7 +64,7 @@ class PythonServiceHost {
     return { host: entry.host, port: Number(entry.port) };
   }
 
-  baseUrl() { return `http://${this.endpoint.host}:${this.endpoint.port}`; }
+  baseUrl() { return baseUrl(this.effective, this.serviceId); }
 
   async management(pathname, { method = "GET", timeoutMs = 2000 } = {}) {
     const { response, payload } = await fetchJson(this.fetch, `${this.baseUrl()}${pathname}`, {
@@ -111,7 +112,7 @@ class PythonServiceHost {
     const pid = id.body?.pid || this.child?.pid || null;
     return {
       service_id: this.serviceId, alive: Boolean(id.verified), occupied, verified: Boolean(id.verified), identity_verified: Boolean(id.verified),
-      instance_id: id.body?.instance_id || null, pid, owned: Boolean(this.child && this.child.exitCode === null),
+      instance_id: id.body?.instance_id || null, pid, owned: Boolean(this.child && !childExited(this.child)),
       // As the process reports them: absent stays absent, never defaulted.
       config_revision: id.body?.config_revision, bound_host: id.body?.host, bound_port: id.body?.port,
       port, reason: id.reason, draining: Boolean(id.body?.draining),
@@ -159,7 +160,7 @@ class PythonServiceHost {
     const deadline = Date.now() + START_TIMEOUT_MS;
     while (Date.now() < deadline) {
       if (child.spawnError) throw new Error(`${this.serviceId} could not be started: ${child.spawnError.message || child.spawnError}`);
-      if (child.exitCode !== null) throw new Error(`${this.serviceId} exited with code ${child.exitCode} before it was ready (see ${logFile})`);
+      if (childExited(child)) throw new Error(`${this.serviceId} exited with ${child.signalCode || `code ${child.exitCode}`} before it was ready (see ${logFile})`);
       // Until the child binds, the knock answers in at most its 250 ms; the identity request would wait out its timeout.
       const id = (await this.portPresent()) ? await this.identity(1000) : { verified: false };
       if (id.verified) {
@@ -202,11 +203,11 @@ class PythonServiceHost {
     const deadline = Date.now() + STOP_GRACE_MS;
     const { host, port } = this.endpoint;
     while (Date.now() < deadline) {
-      if (this.child && this.child.exitCode !== null) this.child = null;
+      if (this.child && childExited(this.child)) this.child = null;
       if (!(await portOpen(host, port, 150))) return { ok: true, reason, receipt, released: true };
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    if (this.child && this.child.exitCode === null) {
+    if (this.child && !childExited(this.child)) {
       this.logger.warn(`[HEALTH] ${this.serviceId} did not exit in ${STOP_GRACE_MS} ms; terminating owned pid ${this.child.pid}`);
       const pid = this.child.pid;
       const exited = await this.killOwned(this.child);

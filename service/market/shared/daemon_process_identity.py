@@ -6,6 +6,7 @@ import os
 import subprocess
 from typing import Any
 
+from service.platform.child_process import NO_CONSOLE
 from service.platform.process_observer import ProcessTableUnavailable, process_exists
 import logging
 from service.platform.failure_record import record_failure
@@ -56,6 +57,7 @@ def inspect_listening_port_owner(port: int) -> dict[str, Any] | None:
             text=True,
             timeout=2.5,
             check=False,
+            creationflags=NO_CONSOLE,
         )
         if completed.returncode != 0:
             stderr = str(completed.stderr or "").strip()[:300]

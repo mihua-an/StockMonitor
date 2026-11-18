@@ -127,6 +127,23 @@ impl Default for Calendar {
 }
 
 impl Calendar {
+    /// The calendar of the bundled config/trading_sessions.json, built once per process: for code that needs a
+    /// session's hours without holding a Calendar of its own (pre-open, the stock day's open and close).
+    pub fn bundled() -> &'static Calendar {
+        static BUNDLED: OnceLock<Calendar> = OnceLock::new();
+        BUNDLED.get_or_init(Calendar::default)
+    }
+
+    /// The first trading minute of `source|market`'s session named `session` on a whole day.
+    pub fn session_open(&self, source: &str, market: &str, session: &str) -> Option<i32> {
+        self.segments(CalKey { source, market, session: None, date: None }).iter().find(|s| s.name == session).map(|s| s.start)
+    }
+
+    /// The last trading minute of `source|market`'s session named `session` on a whole day.
+    pub fn session_close(&self, source: &str, market: &str, session: &str) -> Option<i32> {
+        self.segments(CalKey { source, market, session: None, date: None }).iter().find(|s| s.name == session).map(|s| s.end)
+    }
+
     pub fn from_json(text: &str) -> Result<Self, String> {
         let file: File = serde_json::from_str(text).map_err(|e| format!("trading sessions: {e}"))?;
         let mut markets: BTreeMap<String, BTreeMap<String, MarketSegments>> = BTreeMap::new();
@@ -240,6 +257,14 @@ impl Calendar {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_sessions_open_and_close_are_its_first_and_last_trading_minutes() {
+        let c = Calendar::bundled();
+        assert_eq!((c.session_open("shioaji", "STK", "DAY"), c.session_close("shioaji", "STK", "DAY")), (Some(540), Some(810)));
+        assert_eq!((c.session_open("shioaji", "FUT", "DAY"), c.session_open("shioaji", "FUT", "NIGHT")), (Some(525), Some(900)));
+        assert_eq!(c.session_open("shioaji", "STK", "NIGHT"), None);
+    }
 
     #[test]
     fn us_overnight_session_trades_and_its_after_midnight_tail_continues_the_previous_date() {

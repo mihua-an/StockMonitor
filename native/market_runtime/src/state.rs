@@ -13,9 +13,15 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 pub const RECENT_TRADES: usize = 100;
 pub const BOOK_LEVELS: usize = 10;
 const DEFAULT_HOT_CAPACITY: usize = 4000;
-/// TW stock day session: 09:00 opening match, 13:30 closing match (minutes after local midnight).
-const STOCK_OPEN_MINUTE: i32 = 9 * 60;
-const STOCK_CLOSE_MINUTE: i32 = 13 * 60 + 30;
+/// TW stock day session's opening match minute (09:00), from the calendar (config/trading_sessions.json).
+fn stock_open_minute() -> i32 {
+    crate::calendar::Calendar::bundled().session_open("shioaji", "STK", "DAY").expect("the bundled calendar names shioaji|STK DAY")
+}
+
+/// TW stock day session's closing match minute (13:30), from the calendar.
+fn stock_close_minute() -> i32 {
+    crate::calendar::Calendar::bundled().session_close("shioaji", "STK", "DAY").expect("the bundled calendar names shioaji|STK DAY")
+}
 
 /// Sale conditions (Futu TickerType names) that the US consolidated tape does not let update the last sale price:
 /// an odd lot, a price set elsewhere or earlier (average, prior reference, derivatively priced, a market center's
@@ -400,7 +406,7 @@ impl SymbolState {
         }
         let Some(newest) = self.recent_trades.iter().rev().find(|t| !t.simtrade) else { return PrintRepeat::TotalNotAdvanced };
         let same = newest.price == *price && crate::volume::eq(newest.volume, *volume) && crate::volume::eq(total, known);
-        let close_resent_after_hours = newest.auction && newest.minute == Some(STOCK_CLOSE_MINUTE) && *minute > STOCK_CLOSE_MINUTE;
+        let close_resent_after_hours = newest.auction && newest.minute == Some(stock_close_minute()) && *minute > stock_close_minute();
         if same && (newest.exchange_ts_ns == event.exchange_ts_ns || close_resent_after_hours) {
             PrintRepeat::Resent
         } else {
@@ -1027,16 +1033,16 @@ impl Engine {
         if *simtrade || positive_volume(*volume).is_none() || *minute < 0 {
             return;
         }
-        if *minute > STOCK_CLOSE_MINUTE {
+        if *minute > stock_close_minute() {
             *after_hours = true;
         } else if backfill {
             // A gap filled afterwards arrives after the prints around it, so the state says nothing about it: the
             // opening match is the print whose cumulative total is its own volume (the day's first), the closing
             // one is at 13:30. A 試撮 the history does not carry cannot mark an intraday auction.
             let first = positive_volume(*total_volume).is_some_and(|total| crate::volume::eq(total, *volume));
-            *auction = *minute == STOCK_CLOSE_MINUTE || (*minute == STOCK_OPEN_MINUTE && first);
+            *auction = *minute == stock_close_minute() || (*minute == stock_open_minute() && first);
         } else {
-            *auction = in_auction || *minute == STOCK_CLOSE_MINUTE || (*minute == STOCK_OPEN_MINUTE && no_print);
+            *auction = in_auction || *minute == stock_close_minute() || (*minute == stock_open_minute() && no_print);
         }
     }
 

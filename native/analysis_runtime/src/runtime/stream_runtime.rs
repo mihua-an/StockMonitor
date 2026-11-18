@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use market_runtime::event::MarketEvent;
 use market_runtime::remediation;
+use market_runtime::projection::BlockKind;
 use serde_json::{json, Value};
 use crate::cursor::{DurableCursor, GapAction};
 use crate::features::{FeatureStore, KeyId};
@@ -250,7 +251,7 @@ pub(crate) fn publish(client: &mut WsClient, shared: &Shared, local: &mut Local,
     let mut batches = Vec::new();
     for collected in local.engine.collect(full, watermark, caught_up.then_some(&local.signals)) {
         if collected.stored {
-            for item in collected.items.iter().filter(|item| item["block"] == "events") {
+            for (_, item) in collected.items.iter().filter(|(block, _)| *block == BlockKind::Events) {
                 archive_events(shared, item);
             }
         }
@@ -263,9 +264,9 @@ pub(crate) fn publish(client: &mut WsClient, shared: &Shared, local: &mut Local,
     let mut bytes = 0usize;
     let mut sent = 0u64;
     let mut batches = batches.into_iter().flat_map(|(id, list)| list.into_iter().map(move |item| (id.clone(), item))).peekable();
-    while let Some((id, item)) = batches.next() {
+    while let Some((id, (block, item))) = batches.next() {
         bytes += item.to_string().len();
-        pending.push(outbox::Pending::of(&id, &item));
+        pending.push(outbox::Pending::of(&id, block, &item));
         items.push(item);
         if bytes < PUBLISH_BYTES && batches.peek().is_some() {
             continue;

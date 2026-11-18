@@ -1,5 +1,6 @@
 import { positiveNumberOrNull as positiveNumber, numberOrNull as finiteNumber } from "../../core/numbers.js";
 import { buyCost, sellProceeds } from "../../core/trade_costs.js";
+import { subscribeEquityDate } from "../../market_data/equity_trading_date.js";
 // 庫存's 未實現損益 -- the one projection every screen showing a holding's P&L uses (帳務 庫存, 即時報價's 實際／模擬
 // 庫存 rows, 模擬帳務's 未實現). The positions (code, qty, cost_amount and their closing_terms) are the account
 // ledger's and come from FastAPI; the current price is Market Runtime's and comes over the WS -- FastAPI does not read
@@ -117,9 +118,8 @@ export function createPositionMarkTracker({ subscribeView, subscribeSession, onC
     for (const code of wanted) if (!views.has(code)) watch(code, atStart);
   }
 
-  const releaseSession = subscribeSession((session) => {
-    const date = String(session?.equity?.trading_date || "").slice(0, 10);
-    if (disposed || !/^\d{4}-\d{2}-\d{2}$/.test(date) || date === tradingDate) return;
+  const releaseSession = subscribeEquityDate(subscribeSession, (date) => {
+    if (disposed) return;
     // A new trading day (or the first session): every view is dropped and the holdings subscribe on it.
     generation += 1;
     for (const release of views.values()) release();

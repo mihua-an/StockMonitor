@@ -2,7 +2,7 @@
 
 const { writeJsonAtomic, readJsonObject } = require("../service/platform/js/atomic_files");
 const { TRIGGERS, recordForcedTermination, terminateProcessTree, endChildTree, childExited } = require("../service/platform/js/forced_termination");
-const { dataChild } = require("../config/js/system_contract.js");
+const { dataChildPath } = require("../config/js/system_contract.js");
 
 // Health's lifecycle-only half of M12 (Historical Materializer): spawn and
 // monitor the one-shot Rust job, never decide whether a session is sealed or
@@ -116,7 +116,7 @@ function createMaterializerJobRunner({
   const quarantineDir = path.join(outputDir, "materialization_jobs", "quarantine");
   const doneDir = path.join(outputDir, "materialization_jobs", "done");
   const instanceId = `materializer-${process.pid}-${Date.now()}`;
-  const walDataDir = path.join(dataRoot, dataChild("market_runtime"));
+  const walDataDir = dataChildPath(dataRoot, "market_runtime");
   // The raw-history folder (設定 → 資料儲存, config/js/storage_settings.js); Health activates a new one before this runs.
   const historicalOutDir = typeof historicalDir === "function" ? historicalDir() : historicalDir || path.join(dataRoot, "historical");
   const retentionDir = path.join(outputDir, "materialization_jobs", "wal_retention");
@@ -345,8 +345,8 @@ function createMaterializerJobRunner({
       "--start-gate", "stdin",
       // Publishing goes through the historical store's manager (native/market_runtime/src/historical_store.rs), which
       // drops a partition retention already removes: A's cutoffs, the storage_retention revision, the traded codes.
-      "--rollover-cutoffs", path.join(dataRoot, ...dataChild("rollover_cutoffs").split("/")),
-      "--traded-codes-dir", path.join(dataRoot, ...dataChild("traded_codes").split("/")),
+      "--rollover-cutoffs", dataChildPath(dataRoot, "rollover_cutoffs"),
+      "--traded-codes-dir", dataChildPath(dataRoot, "traded_codes"),
     ];
     // Only the storage_retention revision is read from it: --config-root would also fold the history under the flow/event
     // rules, which the job has never been given.
@@ -363,9 +363,9 @@ function createMaterializerJobRunner({
     if (unresolved.length) args.push("--unresolved-codes", unresolved.join(","));
     // The durable events the user decided are void (Market Runtime's list, native/market_runtime/src/voided.rs): left
     // out of every session, whichever its input.
-    args.push("--voided-events", path.join(dataRoot, ...dataChild("voided_events").split("/")));
+    args.push("--voided-events", dataChildPath(dataRoot, "voided_events"));
     // A US half day's sessions are shorter: the calendar Market Runtime splits by (OpenD's, over the NYSE days).
-    args.push("--us-trading-calendar", path.join(dataRoot, ...dataChild("us_trading_calendar").split("/")));
+    args.push("--us-trading-calendar", dataChildPath(dataRoot, "us_trading_calendar"));
     const summaryDir = typeof dailySummaryDir === "function" ? dailySummaryDir() : dailySummaryDir;
     if (summaryDir) args.push("--daily-summary-dir", summaryDir);
     // The session's K bars for 技術分析 (native/analysis_runtime/src/kbar_store.rs); the job also ages every file to the

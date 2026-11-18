@@ -12,6 +12,7 @@ import { patchRow, rowFromHtml } from "../table_patch.js";
 import { morphInto } from "../dom_morph.js";
 import { mountShell } from "../component_shell.js";
 import { titleBarMarkup } from "./title_bar.js";
+import { bindDateMenu, dateOptionsHtml } from "./date_menu.js";
 import { rowWashMarkup, washRow } from "../row_wash.js";
 import { popoutButtonHtml } from "./popout_button.js";
 import { detachedWindowFor } from "../detached_windows.js";
@@ -61,25 +62,6 @@ function shell(mode = "live") {
       </table>
     </div>
   </div>`;
-}
-
-// A portalled menu under (or, when there is no room, above) its button, kept inside the window.
-function positionMenuPortal(dateMenu, dateButton) {
-  if (!dateMenu || !dateButton || dateMenu.hidden || dateMenu.parentElement !== document.body) return;
-  const rect = dateButton.getBoundingClientRect();
-  const viewportWidth = Math.max(document.documentElement?.clientWidth || 0, window.innerWidth || 0);
-  const viewportHeight = Math.max(document.documentElement?.clientHeight || 0, window.innerHeight || 0);
-  const width = Math.max(132, Math.round(rect.width || 0));
-  const left = Math.max(4, Math.min(Math.round(rect.right - width), Math.max(4, viewportWidth - width - 4)));
-  dateMenu.style.setProperty("--event-feed-date-menu-width", `${width}px`);
-  dateMenu.style.setProperty("--event-feed-date-menu-left", `${left}px`);
-  dateMenu.style.setProperty("--event-feed-date-menu-top", `${Math.round(rect.bottom + 1)}px`);
-  const menuHeight = Math.max(1, Math.ceil(dateMenu.getBoundingClientRect().height || 0));
-  const below = Math.max(0, viewportHeight - rect.bottom - 4);
-  const above = Math.max(0, rect.top - 4);
-  if (menuHeight > below && above > below) {
-    dateMenu.style.setProperty("--event-feed-date-menu-top", `${Math.max(4, Math.round(rect.top - menuHeight - 1))}px`);
-  }
 }
 
 // Every field the same value (arrays and objects the same instance): a producer hands out a new array when its
@@ -176,74 +158,21 @@ export class EventFeedComponent {
     this.cleanup.push(() => body?.removeEventListener?.("click", click), () => body?.removeEventListener?.("dblclick", dblclick));
   }
 
-  // The date picker's menu is portalled to <body> while open, so its nodes are kept here at mount: a query of the
-  // host would not find them while the menu is open, and a VM update could not refresh or close it.
+  // The date picker (core date_menu.js). Its nodes are kept here at mount: the open menu is portalled to <body>, where
+  // a query of the host would not find it, and a VM update still has to refresh or close it.
   _bindDateMenu(host) {
-    const datePicker = role(host, "event-date-picker");
-    const dateButton = role(host, "event-date-button");
-    const dateMenu = role(host, "event-date-menu");
-    const dateList = role(host, "event-date-list");
-    const restoreDateMenuHome = () => {
-      if (!dateMenu || !datePicker || dateMenu.parentElement === datePicker) return;
-      dateMenu.classList.remove("event-feed-date-menu-portal");
-      dateMenu.removeAttribute("style");
-      datePicker.appendChild(dateMenu);
-    };
-    const positionDateMenuPortal = () => positionMenuPortal(dateMenu, dateButton);
-    const setDateMenuOpen = (open) => {
-      const visible = Boolean(open) && !datePicker?.hidden;
-      if (visible && dateMenu) {
-        /* Portal the menu to <body>.  History cards intentionally use overflow:hidden;
-         * keeping the popup inside the Slot would let panel/title stacking contexts clip
-         * the newest date rows and make them impossible to click. */
-        if (dateMenu.parentElement !== document.body) document.body.appendChild(dateMenu);
-        dateMenu.classList.add("event-feed-date-menu-portal");
-        dateMenu.hidden = false;
-        positionDateMenuPortal();
-      } else if (dateMenu) {
-        dateMenu.hidden = true;
-        restoreDateMenuHome();
-      }
-      if (dateButton) dateButton.setAttribute("aria-expanded", visible ? "true" : "false");
-      datePicker?.classList?.toggle("open", visible);
-    };
-    const toggleDateMenu = (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      setDateMenuOpen(Boolean(dateMenu?.hidden));
-    };
-    const selectDate = (event) => {
-      const option = event.target?.closest?.("button[data-event-date]");
-      if (!option || !dateList?.contains?.(option)) return;
-      const value = String(option.dataset.eventDate || "");
-      setDateMenuOpen(false);
-      if (value && value !== String(this.vm?.activeDate || "")) this.context?.services?.eventFeed?.onDateSelect?.(value);
-    };
-    const outsideDateClick = (event) => {
-      if (!datePicker?.contains?.(event.target) && !dateMenu?.contains?.(event.target)) setDateMenuOpen(false);
-    };
-    const repositionDateMenu = () => positionDateMenuPortal();
-    this.dateMenu = { picker: datePicker, button: dateButton, label: role(host, "event-date-label"), menu: dateMenu, list: dateList,
-      close: () => setDateMenuOpen(false), reposition: () => { if (dateMenu && !dateMenu.hidden) positionDateMenuPortal(); } };
-    const dateKeydown = (event) => {
-      if (event.key === "Escape") { setDateMenuOpen(false); dateButton?.focus?.(); }
-    };
-    dateButton?.addEventListener?.("click", toggleDateMenu);
-    dateList?.addEventListener?.("click", selectDate);
-    document.addEventListener("pointerdown", outsideDateClick, true);
-    document.addEventListener("keydown", dateKeydown, true);
-    window.addEventListener("resize", repositionDateMenu);
-    window.addEventListener("scroll", repositionDateMenu, true);
-    this.cleanup.push(
-      () => dateButton?.removeEventListener?.("click", toggleDateMenu),
-      () => dateList?.removeEventListener?.("click", selectDate),
-      () => document.removeEventListener("pointerdown", outsideDateClick, true),
-      () => document.removeEventListener("keydown", dateKeydown, true),
-      () => window.removeEventListener("resize", repositionDateMenu),
-      () => window.removeEventListener("scroll", repositionDateMenu, true),
-      () => { if (dateMenu) { dateMenu.hidden = true; restoreDateMenuHome(); } },
-      () => { this.dateMenu = null; },
-    );
+    const picker = role(host, "event-date-picker");
+    const menu = bindDateMenu({
+      picker, button: role(host, "event-date-button"), menu: role(host, "event-date-menu"), list: role(host, "event-date-list"),
+      // History cards use overflow:hidden; the open menu goes to <body> so the card cannot clip its newest dates.
+      attribute: "event-date", portal: true,
+      onSelect: (value) => {
+        if (value !== String(this.vm?.activeDate || "")) this.context?.services?.eventFeed?.onDateSelect?.(value);
+      },
+    });
+    this.dateMenu = { picker, label: role(host, "event-date-label"), list: role(host, "event-date-list"),
+      close: menu.close, reposition: menu.reposition };
+    this.cleanup.push(() => menu.destroy(), () => { this.dateMenu = null; });
   }
 
   _activateRow(row, lookupMode) {
@@ -279,8 +208,8 @@ export class EventFeedComponent {
         },
       });
     }
-    const { picker, button, label, menu, list, close, reposition } = this.dateMenu || {};
-    if (!picker || !button || !label || !menu || !list) return;
+    const { picker, label, list, close, reposition } = this.dateMenu || {};
+    if (!picker || !label || !list) return;
     const showDate = this.context?.mode === "replay" && Array.isArray(vm?.dates);
     picker.hidden = !showDate;
     if (!showDate) { close(); return; }
@@ -290,7 +219,7 @@ export class EventFeedComponent {
     const datesSignature = JSON.stringify([current, values]);
     if (datesSignature === this.datesSignature) return;
     this.datesSignature = datesSignature;
-    morphInto(list, values.map((date) => `<button type="button" role="option" data-morph-key="${escapeHtml(date)}" data-event-date="${escapeHtml(date)}" class="event-feed-date-option${date === current ? " active" : ""}" aria-selected="${date === current ? "true" : "false"}">${escapeHtml(date)}</button>`).join(""));
+    morphInto(list, dateOptionsHtml(values, current, "event-date"));
     reposition();
   }
 

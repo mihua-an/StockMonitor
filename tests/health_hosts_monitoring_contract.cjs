@@ -20,7 +20,7 @@ const { createControllerHttpApi } = require("../health/control_api.js");
 const { MarketRuntimeHost } = require("../health/services/market_runtime_host.js");
 const { MonitoringCollector } = require("../health/monitoring/collector.js");
 
-const manifest = networkConfig.loadManifest(networkConfig.manifestPath(process.env));
+const manifest = networkConfig.loadManifest();
 const effective = networkConfig.resolve(manifest, { env: {} });
 
 test("control API: credential required everywhere; full shutdown runs then exits", async () => {
@@ -333,7 +333,7 @@ test("monitoring: 儲存空間 is walked at most once a minute, only while detai
     // Z:\ is another disk: its paths are read from <root>/zdrive, and its size is its own.
     const onZ = (p) => /^z:/i.test(String(p));
     const zdrive = (p) => (onZ(p) ? path.join(root, "zdrive", String(p).slice(3)) : p);
-    const fsImpl = { promises: { readdir: (p, o) => fs.promises.readdir(zdrive(p), o), stat: (p) => fs.promises.stat(zdrive(p)),
+    const fsImpl = { existsSync: (p) => fs.existsSync(zdrive(p)), promises: { readdir: (p, o) => fs.promises.readdir(zdrive(p), o), stat: (p) => fs.promises.stat(zdrive(p)),
       statfs: (p) => (!onZ(p) ? fs.promises.statfs(p) : fs.existsSync(zdrive(p)) ? Promise.resolve({ bsize: 1, blocks: 9000, bavail: 4000 })
         : Promise.reject(Object.assign(new Error("absent"), { code: "ENOENT" }))) } };
     let t = 0;
@@ -371,7 +371,7 @@ test("monitoring: 儲存空間 is walked at most once a minute, only while detai
     assert.notEqual(usage.current().sampled_at, first);
 
     // A walk that fails is reported, not a zero.
-    const denied = { promises: { ...fs.promises, statfs: () => Promise.reject(Object.assign(new Error("denied"), { code: "EACCES" })) } };
+    const denied = { existsSync: fs.existsSync, promises: { ...fs.promises, statfs: () => Promise.reject(Object.assign(new Error("denied"), { code: "EACCES" })) } };
     const broken = new StorageUsage({ varRoot, dataRoot, storagePaths: () => storagePaths(storageAt), fsImpl: denied, now: () => t, logger: { warn() {} } });
     broken.refreshIfDue();
     await broken.walking;

@@ -53,7 +53,9 @@ const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (_erro
   const bootstrap = createHealthBootstrap({ isPackaged: false, resourcesPath: "", uiMainDir: path.join(root, "ui", "main"),
     healthBaseUrl: `http://127.0.0.1:${port}`, env, execPath: process.execPath, logger: { log() {}, warn() {}, error() {} },
     restartHealthyMs: { planned: 2000, crash: 10000 } });
-  bootstrap.setRemediation({ begin: ({ mechanismId, triggerReason }) => ({ finish: (outcome, { detail }) => outcomes.push({ mechanismId, triggerReason, outcome, stage: detail?.stage }) }) });
+  const forced = [];
+  bootstrap.setRemediation({ begin: ({ mechanismId, triggerReason }) => ({ finish: (outcome, { detail }) => outcomes.push({ mechanismId, triggerReason, outcome, stage: detail?.stage }) }),
+    emit: (record) => forced.push(record) });
   bootstrap.onRestarted(({ reason }) => restarted.push(reason));
   const events = () => (fs.existsSync(path.join(root, "events.log"))
     ? fs.readFileSync(path.join(root, "events.log"), "utf8").trim().split("\n").map((line) => JSON.parse(line)) : []);
@@ -67,6 +69,9 @@ const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (_erro
     assert.deepEqual(restarted, ["crash_recovery"], "the next restart recovered and was announced");
     assert.deepEqual(outcomes.map((o) => [o.triggerReason, o.outcome, o.stage]),
       [["planned_restart", "failed", "healthy"], ["unexpected_exit", "succeeded", "ready"]]);
+    // Ending that candidate by force is a health.forced_termination record naming it (R2), not a bare kill().
+    assert.deepEqual(forced.map((r) => [r.mechanismId, r.triggerReason, r.outcome, r.detail.service_id, r.detail.pid]),
+      [["health.forced_termination", "start_failed", "succeeded", "health", silent.pid]]);
   } finally {
     bootstrap.markShuttingDown();
     const pids = events().map((e) => e.pid);

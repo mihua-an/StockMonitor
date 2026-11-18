@@ -81,12 +81,6 @@ export function tradeReplayStatus(pair, clock) {
   };
 }
 
-export function formatChangeNumber(value) {
-  const numberValue = Number(value);
-  if (!Number.isFinite(numberValue)) return "--";
-  return Math.abs(numberValue) < 0.0000001 ? "0.00" : numberValue.toFixed(2);
-}
-
 /** An exchange clock or timestamp -> "HH:MM:SS" (parseExchangeClock), "" when it is not a valid clock. */
 export function normalizeHistoryClockText(value) {
   const clock = parseExchangeClock(value);

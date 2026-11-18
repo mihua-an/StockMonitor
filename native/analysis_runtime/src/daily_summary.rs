@@ -45,10 +45,14 @@ pub const SUMMARY_SCHEMA: &str = "daily-summary-v3";
 pub const VERDICT_SCHEMA: &str = "daily-summary-verdict-v1";
 /// The publisher's lock: whoever holds it is the only one writing summaries or verdict files.
 pub const LOCK_FILE: &str = ".publisher.lock";
+/// The folder of one market's summaries: a `trading_date=<date>` folder per session date.
+pub fn market_dir(dir: &Path, source: &str, market: &str) -> PathBuf {
+    dir.join(format!("source={}", source.to_lowercase())).join(format!("market={}", market.to_uppercase()))
+}
+
 /// The summary path of one session.
 pub fn summary_path(dir: &Path, source: &str, market: &str, trading_date: &str, session: &str) -> PathBuf {
-    dir.join(format!("source={}", source.to_lowercase())).join(format!("market={}", market.to_uppercase()))
-        .join(format!("trading_date={trading_date}")).join(format!("session={}.json", session.to_uppercase()))
+    market_dir(dir, source, market).join(format!("trading_date={trading_date}")).join(format!("session={}.json", session.to_uppercase()))
 }
 
 /// Whether a market's sessions get a summary.

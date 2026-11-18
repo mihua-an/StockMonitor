@@ -19,10 +19,18 @@ from typing import Any
 
 from service.platform.atomic_files import write_bytes_atomic
 from service.platform.failure_record import record_failure
+from service.market.shared.session_identity_contract import iso_trading_date
 
 _log = logging.getLogger(__name__)
-_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _NAME = re.compile(r"[A-Z0-9_.]+")
+
+
+def _is_trading_date(text: str) -> bool:
+    """Whether `text` is a trading date written as the cache names its folders (YYYY-MM-DD)."""
+    try:
+        return iso_trading_date(text) == text
+    except ValueError:  # not an error: a gap or folder that is not a trading date has no cache entry
+        return False
 
 
 @dataclass(frozen=True)
@@ -50,7 +58,7 @@ class QueryCache:
 
     def _path(self, gap: Any) -> Path | None:
         names = (gap.session, gap.market, gap.code)
-        if not _DATE.fullmatch(gap.trading_date) or not all(_NAME.fullmatch(name) for name in names):
+        if not _is_trading_date(gap.trading_date) or not all(_NAME.fullmatch(name) for name in names):
             return None
         return self._root / gap.trading_date / gap.session / f"{gap.market}_{gap.code}.json.gz"
 
@@ -91,7 +99,7 @@ class QueryCache:
         cutoff = today - timedelta(days=days)
         removed = []
         for folder in sorted(self._root.iterdir()):
-            if folder.is_dir() and _DATE.fullmatch(folder.name) and date.fromisoformat(folder.name) < cutoff:
+            if folder.is_dir() and _is_trading_date(folder.name) and date.fromisoformat(folder.name) < cutoff:
                 shutil.rmtree(folder)
                 removed.append(folder.name)
         return removed

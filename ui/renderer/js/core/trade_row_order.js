@@ -116,16 +116,24 @@ function canonicalStampOf(row = {}) {
   return raw.replace(/\.(\d+)(?=$|Z|[+-]\d\d:?\d\d$)/, (_match, fraction) => `.${String(fraction).padEnd(6, "0").slice(0, 6)}`);
 }
 
+/**
+ * A print's ONE identity, for every list that keys, merges or washes prints (the live view, the stored pages, the
+ * 成交明細 / workspace tapes, Rust B's large-order rows). A stored print is its durable sequence (unique in the
+ * stream); a print that is never stored -- durable 0: a searched product, a workspace product, a Futu crypto (shown,
+ * not kept) -- is its exchange time with the source trade id. `sequence` is not one domain (the view's state version
+ * live, the producer's sequence on a stored row), and time|price|volume alone made two same-second prints one row.
+ * exchange_ts_ns stays the string the row carries (a nanosecond count is beyond a JS number's precision).
+ */
 export function tradeRowKey(row = {}) {
-  // A print's identity is Market Runtime's durable sequence: the live view's rows and the durable page's rows both
-  // carry it. `sequence` is not one domain (the view's state version live, the producer's sequence on a stored row),
-  // so keying on it showed one print twice once a session was materialized.
-  const durable = tradeRowSequence(row);
+  const durable = finiteNumberOrNull(row?.durable_sequence ?? row?.ingest_sequence);
   if (durable != null && durable > 0) return `d:${durable}`;
+  const ts = row?.exchange_ts_ns == null ? "" : String(row.exchange_ts_ns);
+  if (ts) return `l:${ts}|${row?.trade_id ?? ""}`;
   return [
     canonicalTradeTimestamp(row),
     finiteNumberOrNull(row?.price ?? row?.current ?? row?.close) ?? "",
     Number(row?.volume || 0),
+    String(row?.tradeSide ?? row?.trade_side ?? row?.side ?? ""),
   ].join("|");
 }
 

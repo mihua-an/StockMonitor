@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from datetime import datetime
 from threading import RLock
 import time
 from typing import Any, Callable
@@ -17,6 +16,7 @@ from service.platform.model_storage_layout import process_kbar_root
 from service.market.shared.market_value_policy import resolve_market_move
 from service.market.reference import sector_indexes
 from service.market.shared.partition_evidence import PartitionEvidence
+from service.market.shared.session_identity_contract import iso_trading_date
 import logging
 from service.platform.failure_record import record_failure
 
@@ -57,7 +57,7 @@ class HistoryReplayService:
 
     @staticmethod
     def _date(value: str) -> str:
-        return datetime.strptime(str(value), "%Y-%m-%d").strftime("%Y-%m-%d")
+        return iso_trading_date(value)
 
     def _repository(self) -> MarketHistoryRepository:
         repo = self.repository_provider()

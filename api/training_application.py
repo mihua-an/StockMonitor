@@ -93,6 +93,7 @@ class TrainingApplication:
         from config.market_holidays import tw_is_trading_day
         from service.analysis.online_training.dataset import available_dates
         from service.analysis.online_training.today import date_data, training_today
+        from service.market.shared.session_identity_contract import trading_span
 
         now = datetime.now(training_job.TAIPEI)
         root = training_job.historical_root()
@@ -116,7 +117,8 @@ class TrainingApplication:
                               running=bool(view.get("running")), available=available,
                               window=training_job.training_window(available, window_days, training_job.daily_summary_root()),
                               materialized=training_job.session_materialized(now.date().isoformat()),
-                              is_trading=tw_is_trading_day, data_of=lambda day: date_data(root, day))
+                              is_trading=tw_is_trading_day, data_of=lambda day: date_data(root, day),
+                              session_span=trading_span("shioaji", "STK", "DAY", now.date().isoformat()))
 
     def run(self) -> dict[str, Any]:
         """Leave a manual request for Health; one job at a time, and a second click joins the first."""

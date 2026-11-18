@@ -27,7 +27,8 @@ EFFECTIVE_SCHEMA = "stock-monitor-effective-network-v1"
 MANIFEST_SCHEMA = "stock-monitor-network-manifest-v2"
 OVERRIDE_ENV = "STOCK_MONITOR_PORT_OVERRIDES"
 REVISION_ENV = "STOCK_MONITOR_NETWORK_REVISION"
-LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+# Every formal service listens on the IPv4 loopback; the manifest names it, and no other value is valid.
+LOOPBACK_HOST = "127.0.0.1"
 # A service a renderer may address (manifest "renderer_client": true) must speak one of these.
 RENDERER_PROTOCOLS = ("http", "ws", "http+ws")
 
@@ -35,11 +36,7 @@ _MANIFEST_PATH = Path(__file__).resolve().parent / "network_manifest.json"
 
 
 def manifest_path() -> Path:
-    resources = str(os.environ.get("STOCK_MONITOR_RESOURCES_PATH") or "").strip()
-    if resources:
-        packaged = Path(resources) / "app-runtime" / "config" / "network_manifest.json"
-        if packaged.exists():
-            return packaged
+    """The install manifest next to this module (the packaged app-runtime/config carries both)."""
     return _MANIFEST_PATH
 
 
@@ -69,8 +66,8 @@ def manifest_problems(manifest: Mapping[str, Any]) -> list[str]:
     problems: list[str] = []
     if manifest.get("schema") != MANIFEST_SCHEMA:
         problems.append(f"schema must be {MANIFEST_SCHEMA}")
-    if manifest.get("loopback_host") not in LOOPBACK_HOSTS:
-        problems.append("loopback_host must be one of 127.0.0.1, localhost, ::1")
+    if manifest.get("loopback_host") != LOOPBACK_HOST:
+        problems.append(f"loopback_host must be {LOOPBACK_HOST}")
     low, high, reserved = 1024, 65535, set()
     policy = manifest.get("port_policy")
     if not isinstance(policy, Mapping):

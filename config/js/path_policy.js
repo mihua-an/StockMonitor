@@ -37,4 +37,4 @@ function sameVolume(a, b, { fsImpl = fs } = {}) {
   return fsImpl.statSync(existingAncestor(a, fsImpl)).dev === fsImpl.statSync(existingAncestor(b, fsImpl)).dev;
 }
 
-module.exports = { pathKey, samePath, isInside, sameVolume };
+module.exports = { pathKey, samePath, isInside, existingAncestor, sameVolume };

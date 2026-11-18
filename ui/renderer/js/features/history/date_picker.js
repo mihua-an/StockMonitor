@@ -1,6 +1,7 @@
 // 歷史回放 日期: the date select and its calendar picker (split out of pages/history.js).
 import { $, escapeHtml } from "../../core/utility.js";
 import { morphInto } from "../../core/dom_morph.js";
+import { bindDateMenu, dateOptionsHtml } from "../../core/components/date_menu.js";
 import { historyPage, historyState } from "./history_state.js";
 
 // The date picker owns its three parts -- the <select> the page reads the chosen date from, the button's label and the
@@ -27,10 +28,7 @@ export function syncHistoryDatePicker() {
     `<option value="${escapeHtml(value)}"${value === current ? " selected" : ""}>${escapeHtml(value)}</option>`
   )).join(""));
   label.textContent = current;
-  morphInto(list, dates.map((value) => {
-    const active = value === current;
-    return `<button type="button" class="event-feed-date-option${active ? " active" : ""}" role="option" data-morph-key="${escapeHtml(value)}" data-history-date="${escapeHtml(value)}" aria-selected="${active ? "true" : "false"}">${escapeHtml(value)}</button>`;
-  }).join(""));
+  morphInto(list, dateOptionsHtml(dates, current, "history-date"));
 }
 
 export function setHistoryDateValue(value) {
@@ -53,49 +51,17 @@ export function bindHistoryDatePicker() {
   // every mount owns exactly one outside-click/Escape listener pair.
   historyPage.datePickerCleanup?.();
   picker.dataset.bound = "1";
-  const setOpen = (open) => {
-    const visible = Boolean(open);
-    menu.hidden = !visible;
-    button.setAttribute("aria-expanded", visible ? "true" : "false");
-    picker.classList.toggle("open", visible);
-    if (visible) syncHistoryDatePicker();
-  };
-  const onButtonClick = (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setOpen(menu.hidden);
-  };
-  const onListClick = (event) => {
-    const option = event.target?.closest?.("button[data-history-date]");
-    if (!option || !list.contains(option)) return;
-    const next = String(option.dataset.historyDate || "");
-    setOpen(false);
-    if (!next || next === String(select.value || "")) return;
-    setHistoryDateValue(next);
-    select.dispatchEvent(new Event("change", { bubbles: true }));
-  };
-  const onDocumentPointerDown = (event) => {
-    if (!picker.contains(event.target)) setOpen(false);
-  };
-  const onDocumentKeyDown = (event) => {
-    if (event.key === "Escape" && !menu.hidden) {
-      setOpen(false);
-      button.focus();
-    }
-  };
-
-  button.addEventListener("click", onButtonClick);
-  list.addEventListener("click", onListClick);
-  document.addEventListener("pointerdown", onDocumentPointerDown, true);
-  document.addEventListener("keydown", onDocumentKeyDown, true);
+  // The sidebar does not clip its menu, so it opens in place (no portal); the list is redrawn as it opens.
+  const menuControl = bindDateMenu({
+    picker, button, menu, list, attribute: "history-date", onOpen: syncHistoryDatePicker,
+    onSelect: (next) => {
+      if (next === String(select.value || "")) return;
+      setHistoryDateValue(next);
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    },
+  });
   historyPage.datePickerCleanup = () => {
-    button.removeEventListener("click", onButtonClick);
-    list.removeEventListener("click", onListClick);
-    document.removeEventListener("pointerdown", onDocumentPointerDown, true);
-    document.removeEventListener("keydown", onDocumentKeyDown, true);
-    menu.hidden = true;
-    button.setAttribute("aria-expanded", "false");
-    picker.classList.remove("open");
+    menuControl.destroy();
     delete picker.dataset.bound;
     historyPage.datePickerCleanup = null;
   };

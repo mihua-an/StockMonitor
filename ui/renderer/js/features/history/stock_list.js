@@ -3,9 +3,8 @@ import { $, escapeHtml, formatPrice } from "../../core/utility.js";
 import { morphInto } from "../../core/dom_morph.js";
 import { stockCardInnerMarkup } from "../../core/stock_card.js";
 import { historyPage, historyState } from "./history_state.js";
-import { formatChangeNumber } from "./history_values.js";
 import { numberOrNull } from "../../core/numbers.js";
-import { signedValueClass } from "../../core/market_color_policy.js";
+import { formatQuoteChange, quoteMoveClass } from "../../core/components/product_quote_header.js";
 
 // The list is in one of three named states, all read from historyState: no history to list (historyUnavailable says
 // why: no recorded dates, or the read failed), a day without stocks, or the day's stocks -- the selected one active and
@@ -33,13 +32,11 @@ export function renderHistoryStockList() {
     const close = numberOrNull(stock?.close);
     const change = numberOrNull(stock?.change);
     const changePct = numberOrNull(stock?.change_pct);
-    const moveClass = signedValueClass(change);
+    const moveClass = quoteMoveClass(change);
     const active = code === state.selectedCode ? " active" : "";
     const loading = code && code === state.loadingCode ? " history-stock-item-loading" : "";
     const closeText = Number.isFinite(close) ? formatPrice(close) : "--";
-    const changeText = Number.isFinite(change) && Number.isFinite(changePct)
-      ? `${formatChangeNumber(Math.abs(change))}(${Math.abs(changePct).toFixed(2)}%)`
-      : "--";
+    const changeText = formatQuoteChange(change, changePct);
 
     return `
       <button class="history-stock-item${active}${loading}" type="button" data-morph-key="${escapeHtml(code)}" data-history-code="${escapeHtml(code)}" role="option" aria-selected="${active ? "true" : "false"}">

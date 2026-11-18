@@ -16,11 +16,11 @@
 // and every WebSocket upgrade must carry an Origin whose host is the host the browser addressed.
 
 const crypto = require("node:crypto");
+const { isLoopbackHost } = require("../../config/js/network_config.js");
 
 const CERTS_TTL_MS = 10 * 60 * 1000;
 const UNKNOWN_KID_REFETCH_MS = 30 * 1000;
 const CLOCK_SKEW_S = 60;
-const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
 
 class AccessDenied extends Error {
   constructor(reason) {
@@ -53,7 +53,7 @@ function accessConfig(env = process.env, { host }) {
     return { mode: "cloudflare-access", team, aud, issuer: `https://${team}` };
   }
   if (requested === "none") {
-    if (!LOOPBACK_HOSTS.has(String(host || "").toLowerCase())) {
+    if (!isLoopbackHost(host)) {
       throw new Error(`STOCK_MONITOR_WEB_AUTH=none is allowed only on a loopback address, not ${host}`);
     }
     return { mode: "none" };
@@ -162,5 +162,4 @@ function needsSameOrigin(req) {
   return !SAFE_METHODS.has(String(req.method || "GET").toUpperCase());
 }
 
-module.exports = { AccessDenied, accessConfig, createAccessVerifier, sameOrigin, needsSameOrigin, requestHost, cookieValue,
-  LOOPBACK_HOSTS };
+module.exports = { AccessDenied, accessConfig, createAccessVerifier, sameOrigin, needsSameOrigin, requestHost, cookieValue };

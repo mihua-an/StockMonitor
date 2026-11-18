@@ -30,14 +30,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from pathlib import Path
 from typing import Any, Callable
 
 from service.analysis.inference.contract import (
     ContractError, load_horizon_authority, prediction_key, validate_model_manifest,
 )
-from service.analysis.online_training.cleanup import remove_tree
+from service.analysis.online_training.cleanup import STAGING_MARK, discard_dead_staging, published_dir
 from service.platform.atomic_files import write_json_atomic
 from service.platform.model_storage_layout import process_model_layout
 import logging
@@ -130,16 +129,11 @@ class OnlineModelRegistry:
         problems = validate_model_manifest(manifest, load_horizon_authority())
         if problems:
             raise ContractError(f"manifest invalid: {problems}")
-        staging = directory.with_name(f".{model_id}.staging")
-        remove_tree(staging, "a leftover model staging directory")   # one that stays makes mkdir below fail
-        staging.mkdir(parents=True)
-        try:
+        discard_dead_staging(directory.parent.glob(f"{model_id}{STAGING_MARK}*"))
+        with published_dir(directory, "model") as staging:
             (staging / MODEL_FILE).write_bytes(artifact)
             write_json_atomic(staging / MANIFEST_FILE, manifest, indent=2)
             write_json_atomic(staging / RUN_FILE, run, indent=2)
-            os.replace(staging, directory)
-        finally:
-            remove_tree(staging, "a model staging directory")
         return directory
 
     def champions(self) -> dict[str, Any]:

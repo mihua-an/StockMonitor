@@ -16,6 +16,8 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { dataChildPath } = require("../../config/js/system_contract.js");
+const { pathKey, existingAncestor } = require("../../config/js/path_policy.js");
 
 const REFRESH_MS = 60_000;
 
@@ -23,7 +25,7 @@ const REFRESH_MS = 60_000;
 // longer on the disk. Every other failure is the walk's own and is reported.
 const gone = (error) => error?.code === "ENOENT";
 
-// `skip`: folders (resolved, lower-case) counted on their own and left out of this total.
+// `skip`: folders (path_policy pathKey form) counted on their own and left out of this total.
 async function treeBytes(fsp, target, skip = new Set()) {
   let entries;
   try {
@@ -36,7 +38,7 @@ async function treeBytes(fsp, target, skip = new Set()) {
   for (const entry of entries) {
     const full = path.join(target, entry.name);
     if (entry.isDirectory()) {
-      if (!skip.has(path.resolve(full).toLowerCase())) bytes += await treeBytes(fsp, full, skip);
+      if (!skip.has(pathKey(full))) bytes += await treeBytes(fsp, full, skip);
     } else if (entry.isFile()) {
       try {
         bytes += (await fsp.stat(full)).size;
@@ -50,15 +52,10 @@ async function treeBytes(fsp, target, skip = new Set()) {
 
 // The disk a folder is on and its size: statfs of the folder, or of its nearest existing parent while it does not exist
 // yet (a storage location saved but not created yet).
-async function diskOf(fsp, dir) {
-  for (let at = path.resolve(dir); ; at = path.dirname(at)) {
-    try {
-      const stat = await fsp.statfs(at);
-      return { root: path.parse(at).root, total_bytes: stat.bsize * stat.blocks, free_bytes: stat.bsize * stat.bavail };
-    } catch (error) {
-      if (!gone(error) || path.dirname(at) === at) throw error;   // not an error: absent yet, its parent is on the same disk
-    }
-  }
+async function diskOf(fsImpl, dir) {
+  const at = existingAncestor(dir, fsImpl);
+  const stat = await fsImpl.promises.statfs(at);
+  return { root: path.parse(at).root, total_bytes: stat.bsize * stat.blocks, free_bytes: stat.bsize * stat.bavail };
 }
 
 class StorageUsage {
@@ -102,8 +99,7 @@ class StorageUsage {
     try {
       const status = this.moveStatus();
       if (!status) return null;
-      let at = path.resolve(status.to);
-      while (!this.fsImpl.existsSync(at) && path.dirname(at) !== at) at = path.dirname(at);
+      const at = existingAncestor(status.to, this.fsImpl);
       const disk = this.fsImpl.statfsSync(at);
       return { ...status, target_root: path.parse(at).root, target_free_bytes: disk.bsize * disk.bavail };
     } catch (error) {
@@ -116,26 +112,25 @@ class StorageUsage {
     const started = Date.now();
     const storage = this.storagePaths();
     const model = path.dirname(storage.model_registry);
-    const key = (dir) => path.resolve(dir).toLowerCase();
     const parts = [
       // The raw history is the storage location's root less its children.
       { id: "historical", label: "歷史資料", dir: storage.root, skip: [storage.analysis_events, model] },
       { id: "events", label: "分析事件", dir: storage.analysis_events },
       { id: "model", label: "模型訓練", dir: model },
-      { id: "wal", label: "WAL", dir: path.join(this.dataRoot, "live-engine") },
-      { id: "analysis", label: "分析", dir: path.join(this.dataRoot, "analysis-runtime") },
+      { id: "wal", label: "WAL", dir: dataChildPath(this.dataRoot, "market_runtime") },
+      { id: "analysis", label: "分析", dir: dataChildPath(this.dataRoot, "analysis_runtime") },
       { id: "market", label: "行情", dir: path.join(this.dataRoot, "market") },
     ];
-    for (const part of parts) part.bytes = await treeBytes(this.fsp, part.dir, new Set((part.skip || []).map(key)));
+    for (const part of parts) part.bytes = await treeBytes(this.fsp, part.dir, new Set((part.skip || []).map((dir) => pathKey(dir))));
     // 其他 is VAR_ROOT without the parts' folders (a storage location elsewhere is not under VAR_ROOT anyway).
     parts.push({ id: "other", label: "其他", dir: this.varRoot,
-      bytes: await treeBytes(this.fsp, this.varRoot, new Set(parts.flatMap((part) => [part.dir, ...(part.skip || [])]).map(key))) });
+      bytes: await treeBytes(this.fsp, this.varRoot, new Set(parts.flatMap((part) => [part.dir, ...(part.skip || [])]).map((dir) => pathKey(dir)))) });
     return {
       availability: "OK", sampled_at: new Date(this.now()).toISOString(), walk_ms: Date.now() - started,
       parts: parts.map(({ id, label, bytes }) => ({ id, label, bytes })),
       total_bytes: parts.reduce((sum, part) => sum + part.bytes, 0),
       // The disk the storage location is on.
-      disk: await diskOf(this.fsp, storage.root),
+      disk: await diskOf(this.fsImpl, storage.root),
     };
   }
 }

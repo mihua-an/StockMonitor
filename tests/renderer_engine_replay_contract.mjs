@@ -85,6 +85,25 @@ assert.deepEqual(metrics, { up3m: 0.62, down3m: null });
 assert.equal(notes.up3m.testOnly, true);
 assert.equal(notes.down3m.reason, "no model");
 assert.deepEqual(modelPredictionMetrics(null), { metrics: {}, notes: {} });
+// 個股走勢 in a replay shows 現價 the way the live page does (displayQuote): during a call auction the indicative
+// price, marked, so it agrees with Market Runtime's 漲跌 (computed against that same price).
+{
+  const { EngineReplay } = await import("../ui/renderer/js/features/history/engine_replay.js");
+  const engine = new EngineReplay();
+  engine.code = "2330";
+  engine.state = () => ({ summary: { status: "simtrade", indicative_price: 580, current: 575, reference_price: 575,
+    change: 5, change_pct: 0.87, open: 570 }, trend: [] });
+  engine.gateway = { readSnapshot: () => null };
+  const auction = engine.trendViewModel();
+  assert.equal(auction.currentPrice, 580);
+  assert.equal(auction.indicative, true);
+  assert.equal(auction.prevClose, 575);
+  engine.state = () => ({ summary: { status: "", current: 576, reference_price: 575, change: 1 }, trend: [] });
+  const traded = engine.trendViewModel();
+  assert.equal(traded.currentPrice, 576);
+  assert.equal(traded.indicative, false);
+}
+
 // A reply lands only on the replay it was for. (No socket here: every request answers DISCONNECTED.)
 {
   const { EngineReplay } = await import("../ui/renderer/js/features/history/engine_replay.js");

@@ -1,7 +1,7 @@
 // 帳務 個股數據: per-stock statistics, their expanded rows, inline trade details and replay host (split out of
 // pages/account.js).
 import { ACCOUNT_STOCK_DAYTRADE_COLUMNS, ACCOUNT_STOCK_NORMAL_TRADE_COLUMNS } from "../../core/column_schemas.js";
-import { loadStateHtml } from "../../core/load_state_view.js";
+import { emptyStateRowHtml, loadStateHtml, loadStateRowHtml } from "../../core/load_state_view.js";
 import { renderColumnHeaderHtml } from "../../core/column_title.js";
 import { applyStandardDataGrids, expandCellHtml, expandDetailRowHtml, recordExpandBody } from "../../core/data_grid.js";
 import { createExpandMotion } from "../../core/expand_motion.js";
@@ -201,7 +201,7 @@ export function stockInlineTradeDetailContent(item) {
       <td>${formatMoney(detail.tax, detail.market || account.market)}</td>
       <td class="account-stock-inline-action-cell"><button class="account-row-icon-btn ${activeReplay ? "active" : ""}" type="button" data-stock-pair-action="replay" aria-label="在帳務頁展開歷史回放" ${canReplay ? "" : "disabled"}>${dailyActionIcon("chart")}</button></td>
     </tr>`;
-  }).join("") : `<tr><td colspan="${mode === "daytrade" ? 13 : 11}" class="empty">目前沒有${mode === "daytrade" ? "當沖" : "零股 / 一般"}交易明細</td></tr>`;
+  }).join("") : emptyStateRowHtml(mode === "daytrade" ? 13 : 11, `目前沒有${mode === "daytrade" ? "當沖" : "零股 / 一般"}交易明細`);
 
   const tableHead = renderColumnHeaderHtml(
     mode === "daytrade" ? ACCOUNT_STOCK_DAYTRADE_COLUMNS : ACCOUNT_STOCK_NORMAL_TRADE_COLUMNS,
@@ -347,7 +347,7 @@ export function renderStockStats(analytics) {
     // A ledger built by another version is not shown patched -- it is said to need a rebuild.
     const ledgerState = account.dashboard?.analytics?.ledger_state;
     const pending = ledgerState && ledgerState.state !== "CURRENT";
-    body.innerHTML = `<tr><td colspan="12" class="empty">${pending ? `個股數據暫不可用：${escapeHtml(ledgerState.reason || "帳務需要重新計算")}` : "尚無個股數據"}</td></tr>`;
+    body.innerHTML = pending ? loadStateRowHtml(12, "unavailable", ledgerState.reason || "帳務需要重新計算") : emptyStateRowHtml(12, "尚無個股數據");
     return;
   }
 

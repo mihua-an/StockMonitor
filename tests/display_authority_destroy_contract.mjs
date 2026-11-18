@@ -42,7 +42,7 @@ for (const { className, sharedField } of cases) {
   instance.host = {};
   instance[sharedField] = { destroy: () => sharedDestroyCalls.push(sharedField) };
   const pageCountResets = [];
-  if (className === "MoomooTradesComponent") instance.pageCount = { reset: () => pageCountResets.push(true) };
+  if (className === "MoomooTradesComponent") instance.pager = { dispose: () => pageCountResets.push(true) };
 
   instance.destroy();
 
@@ -52,7 +52,7 @@ for (const { className, sharedField } of cases) {
     `${className}.destroy() must drain and run every queued cleanup callback`);
   assert.deepEqual(sharedDestroyCalls, [sharedField],
     `${className}.destroy() must destroy its shared ${sharedField} sub-component`);
-  if (className === "MoomooTradesComponent") assert.equal(pageCountResets.length, 1, "the trade list forgets its page-count read");
+  if (className === "MoomooTradesComponent") assert.equal(pageCountResets.length, 1, "the trade list disposes its pager (aborts its reads)");
   assert.equal(instance[sharedField], null, `${className}.destroy() must release its ${sharedField} reference`);
   assert.equal(instance.host, null, `${className}.destroy() must release its host reference`);
 

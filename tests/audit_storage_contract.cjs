@@ -6,9 +6,8 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { createTradeForm } = require('../ui/main/trade_form');
 const { createWatchPageStore } = require('../ui/main/watch_page_store');
-const payload = { prefill_url: 'https://docs.google.com/forms/d/e/fake/viewform',
-  mapping: Object.fromEntries(['trade_date','market','action','code','trade_info','trade_time'].map((k,i)=>[k,`entry.${i}`])),
-  trade: {trade_date:'2026-09-19',market:'台股',action:'買進',code:'2330',trade_info:'1@100',trade_time:''} };
+const { formSettings, urlFor } = require('./support/trade_form_settings.cjs');
+const payload = { trade: {trade_date:'2026-09-19',market:'台股',action:'買進',code:'2330',trade_info:'1@100',trade_time:''} };
 const reply = (url, text) => ({ok:true,status:200,url,text:async()=>text});
 (async () => {
   for (const [url, content, ok] of [
@@ -21,7 +20,7 @@ const reply = (url, text) => ({ok:true,status:200,url,text:async()=>text});
     ['https://docs.google.com/forms/d/e/fake/formResponse','<title>表單</title><a href="https://docs.google.com/forms/d/e/fake/viewform?usp=form_confirm&amp;edit2=x">提交其他回應</a>',true],
   ]) {
     const kept = makeTempDir('stockmonitor-form-page-');
-    const form = createTradeForm({fetch:async()=>reply(url,content),notifyTradeChanged(){},unconfirmedPagePath:(name)=>path.join(kept,name)});
+    const form = createTradeForm({fetch:formSettings(async()=>reply(url,content)),urlFor,notifyTradeChanged(){},unconfirmedPagePath:(name)=>path.join(kept,name)});
     const answer = await form.submitGoogleFormTrade(payload);
     assert.equal(answer.ok,ok,content);
     // A sent form whose answer is not the confirmation page says so -- never reported as a timeout -- and the page
@@ -33,15 +32,15 @@ const reply = (url, text) => ({ok:true,status:200,url,text:async()=>text});
       assert.equal(fs.readFileSync(path.join(kept,pages[0]),'utf8'),content);
     } else assert.deepEqual(fs.readdirSync(kept),[],'a confirmed answer keeps nothing');
   }
-  const failing = createTradeForm({fetch:async()=>({ok:false,status:500,url:'',text:async()=>''}),notifyTradeChanged(){}});
+  const failing = createTradeForm({fetch:formSettings(async()=>({ok:false,status:500,url:'',text:async()=>''})),urlFor,notifyTradeChanged(){}});
   assert.equal((await failing.submitGoogleFormTrade(payload)).reason,'HTTP_STATUS');
   for (const bodyStall of [false,true]) {
     let signal;
-    const form = createTradeForm({timeoutMs:10,notifyTradeChanged(){},fetch:async (_, options)=>{
+    const form = createTradeForm({timeoutMs:10,urlFor,notifyTradeChanged(){},fetch:formSettings(async (_, options)=>{
       signal=options.signal;
       if (!bodyStall) return new Promise(()=>{});
       return {...reply('', ''),text:()=>new Promise(()=>{})};
-    }});
+    })});
     const result=await form.submitGoogleFormTrade(payload);
     assert.equal(result.uncertain,true); assert.equal(signal.aborted,true); assert.equal(result.reason,'TIMEOUT');
   }

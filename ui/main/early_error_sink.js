@@ -51,4 +51,16 @@ function installEarlyErrorSink({ resolvePrimary, fallbackFile, fsImpl = fs, cons
   };
 }
 
-module.exports = { installEarlyErrorSink };
+// The fixed startup-errors file in this flavor's userData. It must not depend on config/var_layout.json -- an
+// unreadable layout is one of the failures it records -- so the flavor is decided from app.isPackaged
+// (launch_runtime flavorOf) and its userData folder name is held here too; tests/install_flavor_contract.cjs proves
+// each equals var_layout.json flavors[*].user_data_dir.
+const FALLBACK_USER_DATA_DIR = Object.freeze({ source: "stock-monitor-shioaji-desktop", installed: "StockMonitor" });
+
+function startupFallbackFile({ appDataDir, flavor }) {
+  const folder = FALLBACK_USER_DATA_DIR[flavor];
+  if (!folder) throw new Error(`no startup-errors folder for flavor ${flavor}`);
+  return path.join(appDataDir, folder, "startup_errors.log");
+}
+
+module.exports = { installEarlyErrorSink, startupFallbackFile, FALLBACK_USER_DATA_DIR };

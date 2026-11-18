@@ -138,8 +138,12 @@ def authorization_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {load_or_create_daemon_token()}"}
 
 
-def _host_is_direct(scope) -> bool:
-    """True when the request's Host is an IP literal or localhost (or absent, as with HTTP/1.0 tools)."""
+def host_is_direct(scope) -> bool:
+    """True when the request's Host is an IP literal or localhost (or absent, as with HTTP/1.0 tools).
+
+    The DNS-rebinding check of every local HTTP listener: the provider daemons (below) and the business APIs
+    (api/client_auth.py). A web page that re-points its own hostname at 127.0.0.1 reaches the listener with that
+    hostname in Host; every legitimate client addresses it by IP literal or "localhost"."""
     raw = next((value for key, value in scope.get("headers", []) if key.lower() == b"host"), b"")
     host = raw.decode("latin-1").strip().lower()
     if not host:
@@ -180,7 +184,7 @@ class DaemonAuthenticationMiddleware:
 
     async def __call__(self, scope, receive, send):
         kind = scope.get("type")
-        if kind in {"http", "websocket"} and not _host_is_direct(scope):
+        if kind in {"http", "websocket"} and not host_is_direct(scope):
             # DNS rebinding: a web page that re-points its own hostname at 127.0.0.1 reaches the daemon with that
             # hostname in Host. Every legitimate client addresses the daemon by IP literal or "localhost", so any
             # other name is refused -- on /health too, which needs no token and names the watched codes, the

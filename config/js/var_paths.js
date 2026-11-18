@@ -52,8 +52,7 @@ function resolveAuthRoot({ env = process.env } = {}) {
   const spec = layout.auth_root;
   const explicit = firstEnv(env, spec.env);
   if (explicit) return explicit;
-  const base = String(env[spec.base_env] || "").trim();
-  const basePath = base ? path.resolve(base.replace(/^~(?=[\/]|$)/, os.homedir())) : path.resolve(os.homedir(), ...spec.base_fallback);
+  const basePath = firstEnv(env, [spec.base_env]) || path.resolve(os.homedir(), ...spec.base_fallback);
   return path.join(basePath, ...layout.flavors[installFlavor(env)][spec.dir_from_flavor]);
 }
 

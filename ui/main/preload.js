@@ -94,7 +94,8 @@ contextBridge.exposeInMainWorld("desktopAPI", {
   },
   reportStartupStep: (payload) => ipcRenderer.invoke("startup:renderer-step", payload || {}),
   openDetachedView: (payload) => ipcRenderer.invoke("detached-view:open", payload || {}),
-  submitGoogleFormTrade: (payload) => ipcRenderer.invoke("google-form:submit-trade", payload),
+  // The trade only: main sends it to the form named in the saved account settings.
+  submitGoogleFormTrade: (trade) => ipcRenderer.invoke("google-form:submit-trade", { trade }),
   openTradeWindow: (payload) => ipcRenderer.invoke("trade-window:open", payload || {}),
   openWatchPageEditor: () => ipcRenderer.invoke("watch-pages-window:open"),
   openLayoutEditor: () => ipcRenderer.invoke("layout-editor:open", {}),

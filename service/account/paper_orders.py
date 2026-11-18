@@ -32,6 +32,7 @@ from service.account import capital
 from service.account.accounting_core import AccountingCore
 from service.account.account_types import ActualAccountError, invalid_account_input
 from service.market.shared.native_values import DEFAULT_PRICE_SCALE, derived_price_to_units
+from service.market.shared.session_identity_contract import iso_trading_date
 from service.market.semantics.twse_price_policy import PRICE_POLICY, price_policy_projection, twse_tick_size
 from service.platform.change_feed import ChangeFeed
 from service.platform.failure_record import record_failure
@@ -69,7 +70,6 @@ STATE_LABELS = {"submitted": "等待撮合", "pending": "送出中", "working": 
                 "expired": "已失效", "rejected": "拒絕"}
 # 委託紀錄 reads at most this many days at once (one request; the screen pages by date range).
 HISTORY_MAX_DAYS = 366
-DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _amount(qty: int, lot: str) -> str:
@@ -122,18 +122,13 @@ def _price(scaled: Any) -> float:
 
 def _fill_price(fill: dict[str, Any]) -> int | float:
     """A matched fill's price as the ledger records it."""
-    return _number(_price_decimal(fill["price_scaled"]))
+    return capital.plain_number(_price_decimal(fill["price_scaled"]))
 
 
 def _fill_time(fill: dict[str, Any]) -> str:
     """A matched fill's exchange time (Taipei, HH:MM:SS); "" when the matcher gave none."""
     ts = fill["exchange_ts_ns"]
     return datetime.fromtimestamp(ts / 1e9, TAIPEI).strftime("%H:%M:%S") if ts else ""
-
-
-def _number(value: Decimal | float) -> int | float:
-    value = Decimal(str(value))
-    return int(value) if value == value.to_integral_value() else float(value)
 
 
 def _shares(value: Any) -> int:
@@ -733,7 +728,7 @@ class PaperOrderDesk:
         if limit > 0:
             used = capital.used_limit(trades, "台股", trading_date, outcomes)
             if used > limit:
-                raise invalid_account_input(f"每日交易額度 {_number(limit):,} 不足：含委託中的單已用 {_number(used):,}")
+                raise invalid_account_input(f"每日交易額度 {capital.plain_number(limit):,} 不足：含委託中的單已用 {capital.plain_number(used):,}")
 
     def place(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Check and write one order (O1-O7). The matching takes it from orders.jsonl."""
@@ -926,7 +921,7 @@ class PaperOrderDesk:
                 "code": command["code"], "name": names.get(str(command["code"]).upper(), ""),
                 "side": SIDES[command["side"]], "lot": command["lot"], "price_type": command["price_type"],
                 "price": _price(command["price"]) if command.get("price") is not None else None,
-                "tif": command["tif"], "qty": _number(order["qty"]), "filled": _number(filled), "unfilled": _number(self._remaining(order)),
+                "tif": command["tif"], "qty": capital.plain_number(order["qty"]), "filled": capital.plain_number(filled), "unfilled": capital.plain_number(self._remaining(order)),
                 "avg_price": float(round(amount / filled, 4)) if filled else None, "state": state, "state_label": label,
                 "reason": order["reason"], "messages": list(order["messages"]),
                 # Each 改價: when, from what price to what (the order's lines show them under its 委託).
@@ -963,9 +958,10 @@ class PaperOrderDesk:
         `orders`: every 模擬下單 order with its fills, its 經過 and its 類型 (零股 by its lot, else 當沖 when its trade
         is, else 現股); orders deleted with their trades are not listed.
         `fills`: every trade of the paper ledger on those days (matched or typed in), with its 類型 (trade_kind)."""
-        for value in (start, end):
-            if not DATE.fullmatch(str(value or "")):
-                raise invalid_account_input("日期格式要是 YYYY-MM-DD")
+        try:
+            start, end = iso_trading_date(start), iso_trading_date(end)
+        except ValueError:
+            raise invalid_account_input("日期格式要是 YYYY-MM-DD") from None
         if start > end:
             start, end = end, start
         if (datetime.fromisoformat(end) - datetime.fromisoformat(start)).days >= HISTORY_MAX_DAYS:
@@ -983,7 +979,7 @@ class PaperOrderDesk:
             cash = AccountingCore.trade_cash(t["action"], Decimal(str(t["gross_amount"] or 0)), Decimal(str(t["fee"] or 0)), Decimal(str(t["tax"] or 0)))
             fills.append({"trade_id": t["trade_id"], "date": t["date"], "time": t["time"], "code": t["code"], "name": t["name"],
                           "action": t["action"], "qty": t["qty"], "avg_price": t["avg_price"], "gross_amount": t["gross_amount"],
-                          "fee": t["fee"], "tax": t["tax"], "cash": _number(cash), "kind": kinds[t["trade_id"]],
+                          "fee": t["fee"], "tax": t["tax"], "cash": capital.plain_number(cash), "kind": kinds[t["trade_id"]],
                           "origin": "撮合" if t.get("source") == "paper_match" else "手動", "order_id": t.get("order_id") or "",
                           "fill_reason": t.get("fill_reason") or ""})
         fills.sort(key=lambda f: (str(f["date"]), str(f["time"] or "")), reverse=True)
@@ -999,7 +995,7 @@ class PaperOrderDesk:
             gross = Decimal(str(t["gross_amount"] or 0))
             fee = Decimal(str(t["fee"] or 0))
             tax = Decimal(str(t["tax"] or 0))
-            out.append({**t, "cash": _number(AccountingCore.trade_cash(t["action"], gross, fee, tax)),
+            out.append({**t, "cash": capital.plain_number(AccountingCore.trade_cash(t["action"], gross, fee, tax)),
                         "origin": "撮合" if t.get("source") == "paper_match" else "手動"})
         return {"ok": True, "trading_date": trading_date, "fills": out}
 
@@ -1027,11 +1023,11 @@ class PaperOrderDesk:
         limit = Decimal(settings["台股"].get("daily_limit") or "0")
         used = Decimal(str(view["used_today"]))
         view.update({
-            "reserved_limit": _number(used_with_orders - used),
-            "used_with_orders": _number(used_with_orders),
-            "remaining_with_orders": _number(limit - used_with_orders) if limit > 0 else None,
-            "reserved_cash": _number(reserved_buys),
-            "available_cash": _number(Decimal(str(view["principal_after_settlement"])) - reserved_buys) if "principal_after_settlement" in view else None,
+            "reserved_limit": capital.plain_number(used_with_orders - used),
+            "used_with_orders": capital.plain_number(used_with_orders),
+            "remaining_with_orders": capital.plain_number(limit - used_with_orders) if limit > 0 else None,
+            "reserved_cash": capital.plain_number(reserved_buys),
+            "available_cash": capital.plain_number(Decimal(str(view["principal_after_settlement"])) - reserved_buys) if "principal_after_settlement" in view else None,
             # What an ordinary trade of each instrument kind is charged (the order ticket's 預估金額): the ledger's own
             # terms, 手續費折扣 applied (AccountingCore.closing_terms, core/trade_costs.js), and the 升降單位 tables
             # its price steppers use (config/twse_price_policy.json).

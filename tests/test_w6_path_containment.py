@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 
 from service.market.projection.analysis_event_archive import AnalysisEventArchive
 
@@ -30,9 +31,8 @@ def test_event_archive_reads_a_real_date_and_refuses_anything_else(tmp_path: Pat
 
     for value in ("../secret", "../../secret", "..\\secret", "../secret.jsonl", "2026-10-06/../../secret",
                   str(tmp_path / "secret"), "2026-13-01", "2026-02-30", "20261006", "2026-10-06x", "", None):
-        result = archive.read(value)
-        assert result["ok"] is False and result["error"] == "INVALID_DATE", value
-        assert result["events"] == [] and "leak" not in json.dumps(result)
+        with pytest.raises(ValueError):
+            archive.read(value)
 
 
 def test_event_archive_date_route_cannot_read_outside(tmp_path: Path, monkeypatch):
@@ -41,8 +41,8 @@ def test_event_archive_date_route_cannot_read_outside(tmp_path: Path, monkeypatc
     root.mkdir()
     (tmp_path / "x.jsonl").write_text(_event_line("leak"), encoding="utf-8")
     archive = AnalysisEventArchive(root)
-    # The route slices [:10]: "../x" fits in ten characters.
-    assert archive.read("../x"[:10])["ok"] is False
+    with pytest.raises(ValueError):
+        archive.read("../x")
 
 
 class _NoMetadata:

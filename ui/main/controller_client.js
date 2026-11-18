@@ -149,6 +149,14 @@ function createControllerClient({ fs, env = process.env, baseUrl, baseUrlProvide
     }
   }
 
+  // Remediation events for Health's ledger (service/platform/js/remediation_client.js): resolves how many leading
+  // events Health settled; throws when Health did not answer (the client keeps them and sends them again).
+  async function postRemediation(events, timeoutMs) {
+    const { response, payload } = await fetchJson("/control/remediation", { method: "POST", body: { events }, timeoutMs });
+    if (!response.ok || payload?.ok !== true) throw new Error(`Health refused the remediation batch: HTTP ${response.status} ${payload?.error || ""}`.trim());
+    return Number(payload.settled) || 0;
+  }
+
   // Renewed while a monitoring page is visible; detail (metrics, OS resources) stops when renewals stop.
   // `appPids`: Electron's own process ids (main first) -- 系統 CPU counts them beside the services.
   async function requestMonitoringDetail({ appPids = null, timeoutMs = 1500 } = {}) {
@@ -219,7 +227,7 @@ function createControllerClient({ fs, env = process.env, baseUrl, baseUrlProvide
   }
 
   return { health, shutdown, followUiEvents, acknowledgeUiClosing, getStatus, getStartupStatus, getSnapshot, requestMonitoringDetail, reportAppProcesses,
-    previewNetwork, applyNetwork, getOperations, getNetworkEffective, getProviderSdk, getProviderSdkJob, installProviderSdk };
+    postRemediation, previewNetwork, applyNetwork, getOperations, getNetworkEffective, getProviderSdk, getProviderSdkJob, installProviderSdk };
 }
 
 module.exports = { PROTOCOL, createControllerClient, PROTOCOL };

@@ -229,6 +229,9 @@ class ShioajiBrokerService:
         self.delivery_evidence = LaneDeliveryEvidence()
         self._taiex_contract: Any | None = None
         self._txf_contract: Any | None = None
+        # The FUT trading date the session owner last named (txf_contract_for): the date TXFR1's month is resolved
+        # for. None until it names one: the calendar's trading date for now (_txf_business_date).
+        self._txf_trading_date: str | None = None
         # The reference the newest TXF quote states (close - price_chg, price units) and its exchange time: which
         # trading date the contract's limits are for is read from it (_refresh_txf_limits).
         self._txf_stated_reference: tuple[int, int] | None = None
@@ -1303,7 +1306,7 @@ class ShioajiBrokerService:
         if market_u == "FUT" and not actual_contract:
             with self._lock:
                 contract = self._txf_contract
-                actual_contract = str(getattr(contract, "target_code", None) or getattr(contract, "code", None) or "")
+                actual_contract = self._contract_code(contract) if contract is not None else ""
         authority_identity = self.market_identity_authority.transition(
             market=market_u,
             trading_date=str(trading_date or "")[:10],
@@ -1344,13 +1347,75 @@ class ShioajiBrokerService:
         if api is None:
             return None
         code = identity.code
-        if identity.security_type == "FUT" and code != self.TXF_CODE:
+        if identity.security_type == "FUT" and code == self.TXF_CODE:
+            # TXFR1 is the front month of the FUT trading date being traded, not the SDK's R1 mapping read once at
+            # login: that kept naming the expired month all night after an expiry day (11-18 15:00, TXFK6).
+            month = self._txf_month(self._txf_trading_date or self._txf_business_date())
+            if month is None:
+                return None
+            code = month.code
+        elif identity.security_type == "FUT":
             # A dated month is named by its symbol (TXF202612); the broker knows it by its contract code (TXFL6).
             month = self.subscription_manager.futures_table().by_symbol.get(code)
             if month is None:
                 return None
             code = month.code
         return api.contracts.get(code)
+
+    def _txf_month(self, trading_date: str) -> Any | None:
+        """The TXF month a trading date trades as its front month: the first month of the futures contract table
+        whose last trading day (delivery_date) is not before it. On an expiry day that is the expiring month for
+        the day session and the next month for the night that opens at 15:00 (it belongs to the next trading
+        date)."""
+        for month in self.subscription_manager.futures_table().months("TXF"):
+            if month.delivery_date >= str(trading_date or "")[:10]:
+                return month
+        return None
+
+    @staticmethod
+    def _contract_code(contract: Any) -> str:
+        return str(getattr(contract, "target_code", None) or getattr(contract, "code", None) or "").strip().upper()
+
+    def txf_contract_for(self, trading_date: str) -> str:
+        """TXFR1's contract for the FUT session of `trading_date`, which the session owner (rollover.py) names its
+        session by. The owner's trading date becomes the one TXFR1 resolves with; when the subscribed month is not
+        that date's front month (the night after an expiry), the Quote lane moves to the new month now. Returns the
+        contract the lane holds ("" while none is subscribed: not logged in yet)."""
+        trading_date = str(trading_date or "")[:10]
+        month = self._txf_month(trading_date)
+        with self._lock:
+            self._txf_trading_date = trading_date or None
+            current = self._contract_code(self._txf_contract) if self._txf_contract is not None else ""
+        # The usual answer takes no subscription lock: the session owner also asks from the callback thread (an
+        # event-driven reconcile), which must never wait on a subscription sync.
+        if not current or month is None or month.code == current:
+            return current
+        with self._sync_mutex:
+            with self._lock:
+                current = self._contract_code(self._txf_contract) if self._txf_contract is not None else ""
+                keys = sorted(key for key in self._active_subscription_keys if key.startswith(f"FUT:{self.TXF_CODE}:"))
+            if not current or month.code == current:
+                return current
+            if self._subscription_mutation_frozen or self._api is None or not self._connected.is_set():
+                # not an error: the next login subscribes TXFR1 afresh, resolved with this trading date
+                return current
+            logger.info("[SHIOAJI] TXFR1 rolls from %s to %s for trading date %s", current, month.code, trading_date)
+            for key in keys:
+                identity = self._identity_from_state(key)
+                if identity is None:
+                    continue
+                if not self._unsubscribe_stream(identity, preserve_desired=True):
+                    # The broker may still stream the old month; the lane is left for the next sync to settle.
+                    record_failure(logger, f"unsubscribing TXFR1's expired month {current}",
+                                   RuntimeError(f"{key}: unsubscribe uncertain"))
+                    continue
+                try:
+                    self._subscribe_stream(identity)
+                except Exception as exc:
+                    # The lane stays desired and unsubscribed: the next subscription sync subscribes it again.
+                    record_failure(logger, f"subscribing TXFR1 on {month.code}", exc)
+            with self._lock:
+                return self._contract_code(self._txf_contract) if self._txf_contract is not None else ""
 
     TXF_LIMITS_RETRY_S = 60.0
 
@@ -1612,16 +1677,11 @@ class ShioajiBrokerService:
         return False
 
     def _txf_business_date(self, at: datetime | None = None) -> str:
-        """The TAIFEX trading date a TXF session is for at `at` (local time; now when omitted): that day's while its
-        day session may trade, else -- from 15:00, when the night that belongs to the next trading date opens -- the
-        next trading date. The one calendar decides (official schedule)."""
+        """The TAIFEX trading date a TXF session is for at `at` (local time; now when omitted): the calendar's
+        upcoming trading date."""
         from service.market.lifecycle.calendar import MarketSessionCalendar
 
-        moment = at or datetime.now()
-        calendar = MarketSessionCalendar()
-        if moment.time() >= dt_time(15, 0):
-            return calendar.next_trading_date(moment.date() + timedelta(days=1), inclusive=True)[0].isoformat()
-        return calendar.next_trading_date(moment.date(), inclusive=True)[0].isoformat()
+        return MarketSessionCalendar().upcoming_trading_date(at or datetime.now()).isoformat()
 
     def _publish_txf_reference(self, dated: str, contract_code: str, limit_up: float, limit_down: float) -> bool:
         """The contract's limits for trading date `dated` (_refresh_txf_limits), handed to Market Runtime: it holds and
@@ -2288,7 +2348,7 @@ class ShioajiBrokerService:
         with self._lock:
             stream_state = deepcopy(self._stream_subscription_state)
             active_keys = set(self._active_subscription_keys)
-            txf_target = getattr(self._txf_contract, "target_code", None) if self._txf_contract is not None else None
+            txf_target = self._contract_code(self._txf_contract) or None if self._txf_contract is not None else None
 
         confirmed_symbols = sum(
             1 for code in desired_stocks

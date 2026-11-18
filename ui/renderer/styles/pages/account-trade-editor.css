@@ -46,16 +46,20 @@
   padding: 16px 18px;
 }
 
-.account-trade-modal-footer {
+/* The actions row of both variants (刪除 on the left, the rest on the right). */
+.account-trade-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+.account-trade-modal-footer {
   padding: 12px 18px 16px;
   border-top: 1px solid var(--slate-700-a72);
 }
 
-.account-trade-modal-footer-right {
+.account-trade-actions-right {
   margin-left: auto;
   display: flex;
   align-items: center;

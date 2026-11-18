@@ -22,7 +22,6 @@ export class TechnicalHistory {
     this.lanes = { minute: emptyLane(), day: emptyLane() };
     this.days = [];         // minute pages, oldest day first, each at the timeframe it is held
     this.daily = [];        // daily bars, oldest first
-    this.segments = [];     // the session's trading intervals
     this.horizons = {};     // minute timeframe -> the oldest date its retention keeps
     this.built = new Map(); // timeframe -> candles of the pages held
   }
@@ -50,7 +49,6 @@ export class TechnicalHistory {
     const added = resolution === "minute" ? (page?.days || []) : (page?.bars || []);
     if (!added.length) return false;
     if (resolution === "minute") {
-      this.segments = page.segments;
       this.days = [...added, ...this.days];
     } else {
       this.daily = [...added, ...this.daily];
@@ -98,7 +96,6 @@ export class TechnicalHistory {
     const [newDays, days] = join(this.days, minute?.days);
     const [newBars, daily] = join(this.daily, day?.bars);
     if (minute?.horizons) this.horizons = minute.horizons;
-    if (minute?.segments) this.segments = minute.segments;
     this.days = days; this.daily = daily;
     if (!newDays.length && !newBars.length) return false;
     this.built.clear();
@@ -111,7 +108,7 @@ export class TechnicalHistory {
     let bars = this.built.get(timeframe);
     if (!bars) {
       bars = this.#showable(timeframe).flatMap((day) => {
-        const [first, ...rest] = historyDayBars(day, timeframe, this.segments);
+        const [first, ...rest] = historyDayBars(day, timeframe);
         return first ? [markDayStart(first, day.trading_date), ...rest] : [];
       });
       this.built.set(timeframe, bars);

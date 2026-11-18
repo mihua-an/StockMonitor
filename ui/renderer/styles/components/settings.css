@@ -766,9 +766,13 @@
   text-align: left;
 }
 
+/* A service's CPU line (core/diagnostics_cards.js trendHtml, drawn as 連線診斷's): its place in the row. */
 .settings-spark {
   flex: none;
-  color: var(--blue-400);
+  display: inline-block;
+  vertical-align: middle;
+  width: 90px;
+  height: 20px;
 }
 
 /* One step of a port apply (排空, 綁定 ...), under its service. */

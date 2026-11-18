@@ -34,7 +34,7 @@ for (const event of events) assert.ok(Object.values(event.detail).every((v) => v
   try {
     // A client whose writer is gone: nothing it emits is acknowledged.
     const client = createRemediationClient({ process: { service_id: "electron_main", instance_id: "e-1", pid: 1, runtime: "node" },
-      pipePath: path.join(root, "no-such-pipe"), logger: { warn() {} } });
+      post: () => Promise.reject(new Error("Health is not running")), logger: { warn() {} } });
     client.emit({ component: "ui_sinks", mechanismId: "sink.observability_loss", triggerReason: "records_lost", outcome: "failed",
       identity: {}, detail: { sink: "error_log" } });
     const warned = [];

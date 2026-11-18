@@ -62,6 +62,19 @@ const { createLogSink } = require("../health/services/log_sink");
     assert.equal(health.unstated_loss, 0);
     const text = fs.readFileSync(flakyFile, "utf8");
     assert.match(text, /^\[health\] LOSS MARKER: 2 record\(s\) lost .*\(write_failed=2\); last error ENOSPC disk full\nc\n$/);
+
+    // A rotation that fails is counted in the sink's health (the same shared writer as Electron main's error log),
+    // and the append still happens.
+    const lockedFile = path.join(dir, "locked.log");
+    fs.writeFileSync(lockedFile, "x".repeat(200));
+    const locked = { ...fs, promises: { ...fs.promises, rename: async () => { throw Object.assign(new Error("locked"), { code: "EBUSY" }); } } };
+    const rotating = createLogSink(locked, lockedFile, { limit: 64 });
+    rotating.write("kept\n");
+    health = await rotating.flush();
+    assert.equal(health.state, "OK", "the append itself succeeded");
+    assert.equal(health.rotation.failures, 1, "a failed rotation of a service log is counted, not only warned");
+    assert.equal(health.rotation.last_error.code, "EBUSY");
+    assert.match(fs.readFileSync(lockedFile, "utf8"), /kept\n$/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

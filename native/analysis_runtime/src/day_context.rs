@@ -24,7 +24,7 @@ use std::sync::Arc;
 use market_runtime::rollover::TradingCalendar;
 use serde_json::{json, Value};
 
-use crate::daily_summary::SUMMARY_SCHEMA;
+use crate::daily_summary::{market_dir, summary_path, SUMMARY_SCHEMA};
 
 /// The most sessions any column reads (88-day averages).
 pub const MAX_SESSIONS: usize = 88;
@@ -370,11 +370,15 @@ impl ContextSource {
     /// The summaries of the sessions before `trading_date`, newest first: (date, path).
     fn sessions(&self, source: &str, market: &str, trading_date: &str) -> Vec<(String, PathBuf)> {
         let Some(dir) = &self.summary_dir else { return Vec::new() };
-        let root = dir.join(format!("source={source}")).join(format!("market={market}"));
-        let Ok(entries) = std::fs::read_dir(&root) else { return Vec::new() };
-        let mut found: Vec<(String, PathBuf)> = entries.flatten().filter_map(|e| {
-            let date = e.file_name().to_string_lossy().strip_prefix("trading_date=")?.to_string();
-            let path = e.path().join("session=DAY.json");
+        let root = market_dir(dir, source, market);
+        let dates = market_runtime::fsutil::list_dir(&root).unwrap_or_else(|e| {
+            // The day context then has no history of this market: its columns are missing, never invented.
+            eprintln!("[analysis_runtime] listing the daily summaries {}: {e}", root.display());
+            Vec::new()
+        });
+        let mut found: Vec<(String, PathBuf)> = dates.iter().filter_map(|folder| {
+            let date = folder.file_name()?.to_string_lossy().strip_prefix("trading_date=")?.to_string();
+            let path = summary_path(dir, source, market, &date, "DAY");
             (date.as_str() < trading_date && path.is_file()).then_some((date, path))
         }).collect();
         found.sort_by(|a, b| b.0.cmp(&a.0));
@@ -521,6 +525,21 @@ mod tests {
         let path = dir.join("source=shioaji").join(format!("market={market}")).join(format!("trading_date={date}"));
         std::fs::create_dir_all(&path).unwrap();
         std::fs::write(path.join("session=DAY.json"), json!({"schema": SUMMARY_SCHEMA, "codes": codes}).to_string()).unwrap();
+    }
+
+    /// The summaries are found where the publisher writes them (daily_summary::summary_path), whatever case the
+    /// caller names the source and market in.
+    #[test]
+    fn the_summaries_are_read_from_the_publishers_paths() {
+        let dir = std::env::temp_dir().join(format!("ar-day-context-paths-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = crate::daily_summary::summary_path(&dir, "shioaji", "STK", "2026-10-21", "DAY");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"{}").unwrap();
+        let source = ContextSource { summary_dir: Some(dir.clone()), ..ContextSource::default() };
+        assert_eq!(source.sessions("Shioaji", "stk", "2026-10-22"), vec![("2026-10-21".to_string(), path.clone())]);
+        assert!(source.sessions("shioaji", "IDX", "2026-10-22").is_empty(), "no folder yet: none");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

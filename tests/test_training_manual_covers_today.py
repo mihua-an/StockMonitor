@@ -76,7 +76,8 @@ def _today(clock: str, ready: bool):
     now = datetime.fromisoformat(f"2026-10-28T{clock}:00").replace(tzinfo=ZoneInfo("Asia/Taipei"))
     return training_today(now, schedule=job.read_schedule(), window_days=20, state=job.read_state(), job=None, window=(list(DAYS), []),
                           running=False, available=list(DAYS), materialized=(ready, "materialized" if ready else "not yet"),
-                          is_trading=lambda day: True, data_of=lambda day: {"date": day, "instruments": 1, "events": 1, "bytes": 1})
+                          is_trading=lambda day: True, data_of=lambda day: {"date": day, "instruments": 1, "events": 1, "bytes": 1},
+                          session_span=(540, 810))
 
 
 def test_a_manual_run_over_today_s_close_trains_today_and_closes_its_auto_schedule(domain):

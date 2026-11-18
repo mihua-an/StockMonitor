@@ -13,7 +13,8 @@ from typing import Any, Callable
 
 from fastapi import APIRouter
 
-from service.platform.http.errors import NotFoundError, ServiceUnavailableError
+from service.market.shioaji.history_download import KbarRequestInvalid
+from service.platform.http.errors import NotFoundError, ServiceUnavailableError, ValidationError
 from backend.shioaji.models import (
     KbarActionRequest,
     KbarOlderRequest,
@@ -68,21 +69,29 @@ def create_history_router(deps: HistoryRouteDependencies) -> APIRouter:
             raise ServiceUnavailableError("daemon runtime not ready", classification="DAEMON_RUNTIME_NOT_READY")
         return manager
 
+    def checked(call: Callable[[], Any]) -> Any:
+        """A K-bar request's answer; a product code or date the manager refuses (KbarRequestInvalid, worded by the
+        manager itself) is the caller's 400. Any other failure is not the caller's: it stays a 500 with no text."""
+        try:
+            return call()
+        except KbarRequestInvalid as exc:
+            raise ValidationError(exc.message) from None
+
     @router.post('/v1/history/kbars/preview')
     def history_kbars_preview(req: KbarDownloadRequest):
         manager = kbar_manager()
-        return manager.preview(req.code, req.start_date, req.end_date,
-                               user_budget_bytes=req.user_budget_bytes,
-                               safety_reserve_bytes=req.safety_reserve_bytes,
-                               refresh_usage=True)
+        return checked(lambda: manager.preview(req.code, req.start_date, req.end_date,
+                                               user_budget_bytes=req.user_budget_bytes,
+                                               safety_reserve_bytes=req.safety_reserve_bytes,
+                                               refresh_usage=True))
 
     @router.post('/v1/history/kbars/jobs')
     def history_kbars_create_job(req: KbarDownloadRequest):
         manager = kbar_manager()
-        return {"ok": True, **manager.create_job(req.code, req.start_date, req.end_date,
-                                                   user_budget_bytes=req.user_budget_bytes,
-                                                   safety_reserve_bytes=req.safety_reserve_bytes,
-                                                   auto_resume=req.auto_resume)}
+        return {"ok": True, **checked(lambda: manager.create_job(req.code, req.start_date, req.end_date,
+                                                                   user_budget_bytes=req.user_budget_bytes,
+                                                                   safety_reserve_bytes=req.safety_reserve_bytes,
+                                                                   auto_resume=req.auto_resume))}
 
     @router.get('/v1/history/kbars/jobs')
     def history_kbars_list_jobs(limit: int = 50):
@@ -104,11 +113,13 @@ def create_history_router(deps: HistoryRouteDependencies) -> APIRouter:
 
     @router.post('/v1/history/kbars/older')
     def history_kbars_request_older(req: KbarOlderRequest):
-        return kbar_manager().request_older(req.code, req.before)
+        manager = kbar_manager()
+        return checked(lambda: manager.request_older(req.code, req.before))
 
     @router.get('/v1/history/kbars/older')
     def history_kbars_older_status(code: str):
-        return kbar_manager().older_status(code)
+        manager = kbar_manager()
+        return checked(lambda: manager.older_status(code))
 
     return router
 

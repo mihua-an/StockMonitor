@@ -4,7 +4,6 @@ const path = require("path");
 const fs = require("fs");
 const { performance: nodePerformance } = require("perf_hooks");
 const { logSessionPath, MAIN_ERROR_LOG } = require("../../service/platform/js/log_session.js");
-const remediationContract = require("../../config/js/remediation_contract.js");
 const { createRemediationClient } = require("../../service/platform/js/remediation_client.js");
 
 const { createAppSingleInstanceController } = require("./app_single_instance");
@@ -101,13 +100,13 @@ function rendererSourceProjection() {
   return Object.freeze({ ...sourceSettings, startup_steps: Object.freeze(startupSteps) });
 }
 
-// Remediation events of this process and of every renderer go to Health's ledger. The pipe is
-// derived from the same logs root and mode Health derives it from, so a re-opened UI reaches the Health that outlived
-// the previous one.
-function createUiRemediation({ runtime, healthBootstrap, logger, trustedRendererPage }) {
+// Remediation events of this process and of every renderer go to Health's ledger through Health's control API (the
+// connection Electron main already authenticates), not the pipe: Node can neither limit a pipe server to identifying
+// it nor check which Windows user serves the pipe.
+function createUiRemediation({ controllerClient, healthBootstrap, logger, trustedRendererPage }) {
   const remediationClient = createRemediationClient({
     process: { service_id: "electron_main", instance_id: `electron-${process.pid}-${Date.now()}`, pid: process.pid, runtime: "node" },
-    pipePath: remediationContract.pipePath({ logsRoot: runtime.varPaths.logs }),
+    post: (events, timeoutMs) => controllerClient.postRemediation(events, timeoutMs),
     logger,
   });
   healthBootstrap?.setRemediation?.(remediationClient);
@@ -198,10 +197,23 @@ async function confirmQuestion(BrowserWindow, dialog, sender, { message }) {
   return result.response === 0;
 }
 
-// Every web contents: no new windows, webviews, cross-page navigation or redirects; API requests carry the client
-// credential only from a trusted page's main frame.
+// Every session: no page permission is ever granted (camera, microphone, notifications, clipboard, geolocation,
+// devices, ...). No App page uses a permission-gated API, and Electron's default grants whatever a page asks for.
+function denyAllPermissions(session) {
+  session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  session.setPermissionCheckHandler(() => false);
+  session.setDevicePermissionHandler(() => false);
+}
+
+// Every web contents: no new windows, webviews, cross-page navigation or redirects, no permissions; API requests
+// carry the client credential only from a trusted page's main frame.
 function secureWebContents({ app, BrowserWindow, desktopWindows, clientAuthentication }) {
+  const deniedSessions = new WeakSet();
   app.on("web-contents-created", (_event, contents) => {
+    if (!deniedSessions.has(contents.session)) {
+      deniedSessions.add(contents.session);
+      denyAllPermissions(contents.session);
+    }
     contents.setWindowOpenHandler(() => ({ action: "deny" }));
     contents.on("will-attach-webview", (event) => event.preventDefault());
     contents.on("will-navigate", (event, url) => {
@@ -306,13 +318,13 @@ function createDesktopApplication({
   const electron = { app, BrowserWindow, dialog, Menu, screen, Tray, nativeImage };
   const node = { fs, path, performance, processRef: process };
 
-  const { remediationClient, reportRemediation } = createUiRemediation({ runtime, healthBootstrap, logger,
+  const controllerClient = createControllerClient({ fs, baseUrl: runtime.network.controllerBaseUrl, baseUrlProvider: healthBootstrap ? () => healthBootstrap.baseUrl() : null });
+  const { remediationClient, reportRemediation } = createUiRemediation({ controllerClient, healthBootstrap, logger,
     trustedRendererPage: (url) => desktopWindows.trustedRendererPage(url) });
 
   const startupMetrics = createStartupMetricsRecorder({ electronPid: process.pid });
   const applyStartupTestDelay = createStartupTestDelay({ logger });
   const shutdownHandoff = createShutdownHandoffStore(runtime.projectRoot, { logger });
-  const controllerClient = createControllerClient({ fs, baseUrl: runtime.network.controllerBaseUrl, baseUrlProvider: healthBootstrap ? () => healthBootstrap.baseUrl() : null });
 
   let shutdownController = null;
   let appLifecycle = null;
@@ -398,7 +410,7 @@ function createDesktopApplication({
   teeMainConsole(rendererHealth);
   observeEveryRenderer({ app, BrowserWindow, rendererHealth });
 
-  const { submitGoogleFormTrade } = createTradeForm({ fetch, unconfirmedPagePath: (name) => logSessionPath(name) });
+  const { submitGoogleFormTrade } = createTradeForm({ fetch, urlFor, unconfirmedPagePath: (name) => logSessionPath(name) });
   const productOperations = createProductOperations({
     fetch, urlFor, productCatalogStore, sourceEnabled,
   });
@@ -484,4 +496,5 @@ function createDesktopApplication({
   };
 }
 
-module.exports = { createDesktopApplication, createRendererBootstrap, broadcastColors, appProcessIds, observeEveryRenderer };
+module.exports = { createDesktopApplication, createRendererBootstrap, broadcastColors, appProcessIds, observeEveryRenderer,
+  secureWebContents };

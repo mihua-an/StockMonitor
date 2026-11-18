@@ -15,7 +15,7 @@
 
 use crate::calendar::{CalKey, Calendar};
 use crate::event::{is_session_partitioned, local_minute_ns, source_for_market, tape_side, wal_sessions, MarketEvent, Payload};
-use crate::replay::{check_committed, Fnv1a64, Partition};
+use crate::replay::{check_committed, read_lines, Partition};
 use crate::state::{Reference, SymbolState, Trade};
 use crate::voided::Voided;
 use crate::volume as vol;
@@ -24,7 +24,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::fs::File;
-use std::io::{BufRead, BufReader, Seek, SeekFrom};
+use std::io::{BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -642,26 +642,17 @@ impl MaterializedCache {
         }
         // Line by line: the partition's hash and count are measured on the way, and only its tape is decoded and held.
         let failed = |e: String| Stored::Failed(format!("{}: {e}", path.display()));
-        let mut reader = BufReader::with_capacity(1 << 20, File::open(&path).map_err(|e| failed(e.to_string()))?);
-        let (mut line, mut number, mut lines, mut hash, mut events) = (Vec::new(), 0u64, 0u64, Fnv1a64::default(), Vec::new());
-        loop {
-            line.clear();
-            if reader.read_until(b'\n', &mut line).map_err(|e| failed(e.to_string()))? == 0 {
-                break;
-            }
-            number += 1;
-            hash.update(&line);
-            if line.iter().all(u8::is_ascii_whitespace) {
-                continue;
-            }
-            lines += 1;
-            let head: LineHead = serde_json::from_slice(&line).map_err(|e| failed(format!("line {number}: {e}")))?;
+        let reader = BufReader::with_capacity(1 << 20, File::open(&path).map_err(|e| failed(e.to_string()))?);
+        let mut events = Vec::new();
+        let (lines, hash) = read_lines(reader, |e| failed(e.to_string()), |number, line| {
+            let head: LineHead = serde_json::from_slice(line).map_err(|e| failed(format!("line {number}: {e}")))?;
             if head.read(&req.market) {
-                events.push(MarketEvent::decode_slice(line.strip_suffix(b"\n").unwrap_or(&line))
+                events.push(MarketEvent::decode_slice(line.strip_suffix(b"\n").unwrap_or(line))
                     .map_err(|e| failed(format!("line {number}: {}", e.reason())))?);
             }
-        }
-        let committed = check_committed(&path, lines, hash.hex()).map_err(Stored::Failed)?;
+            Ok(())
+        })?;
+        let committed = check_committed(&path, lines, hash).map_err(Stored::Failed)?;
         let tape = Arc::new(tape_of(&events));
         drop(events);
         let mut kept = self.kept.lock().unwrap();
@@ -783,9 +774,7 @@ mod tests {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let body: String = lines.iter().map(|l| format!("{l}\n")).collect();
         std::fs::write(&path, &body).unwrap();
-        let mut hash = Fnv1a64::default();
-        hash.update(body.as_bytes());
-        std::fs::write(path.with_file_name("manifest.json"), json!({"event_count": lines.len(), "content_hash_fnv1a64": hash.hex()}).to_string()).unwrap();
+        std::fs::write(path.with_file_name("manifest.json"), json!({"event_count": lines.len(), "content_hash_fnv1a64": crate::replay::fnv1a64(body.as_bytes())}).to_string()).unwrap();
         request
     }
 

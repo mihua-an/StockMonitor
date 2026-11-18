@@ -406,26 +406,31 @@ impl Ledger {
         let mut ledger = Ledger { root: root.clone(), ..Ledger::default() };
         let mut problems = Vec::new();
         let Some(root) = root else { return (ledger, problems) };
-        for source in read_dirs(&root) {
-            for market in read_dirs(&source) {
-                let Ok(entries) = std::fs::read_dir(&market) else { continue };
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.extension().and_then(|e| e.to_str()) != Some("json") {
-                        continue;
-                    }
-                    match std::fs::read(&path).map_err(|e| e.to_string())
-                        .and_then(|bytes| serde_json::from_slice::<File>(&bytes).map_err(|e| e.to_string())) {
-                        Ok(file) if file.schema == EVIDENCE_SCHEMA => {
-                            let id = PartitionId { source: file.source, market: file.market, trading_date: file.trading_date, session: file.session };
-                            ledger.rows.insert(id, file.row);
-                        }
-                        // not an error: a record of the earlier provider-written format; only prune reads it
-                        Ok(_) | Err(_) if is_closed_on_disk(&path).is_some() => {}
-                        Ok(file) => problems.push(format!("{}: schema {:?}", path.display(), file.schema)),
-                        Err(why) => problems.push(format!("{}: {why}", path.display())),
-                    }
+        // A directory that cannot be listed is a problem (its records are not read), never an empty one.
+        let mut list = |dir: &Path| crate::fsutil::list_dir(dir).unwrap_or_else(|e| {
+            problems.push(format!("{}: {e}", dir.display()));
+            Vec::new()
+        });
+        let mut files = Vec::new();
+        for source in list(&root).into_iter().filter(|p| p.is_dir()) {
+            for market in list(&source).into_iter().filter(|p| p.is_dir()) {
+                files.extend(list(&market));
+            }
+        }
+        for path in files {
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            match std::fs::read(&path).map_err(|e| e.to_string())
+                .and_then(|bytes| serde_json::from_slice::<File>(&bytes).map_err(|e| e.to_string())) {
+                Ok(file) if file.schema == EVIDENCE_SCHEMA => {
+                    let id = PartitionId { source: file.source, market: file.market, trading_date: file.trading_date, session: file.session };
+                    ledger.rows.insert(id, file.row);
                 }
+                // not an error: a record of the earlier provider-written format; only prune reads it
+                Ok(_) | Err(_) if is_closed_on_disk(&path).is_some() => {}
+                Ok(file) => problems.push(format!("{}: schema {:?}", path.display(), file.schema)),
+                Err(why) => problems.push(format!("{}: {why}", path.display())),
             }
         }
         let path = closed_through_path(&root);
@@ -855,13 +860,6 @@ fn loss_detail(event: &MarketEvent) -> Option<LossDetail> {
     }
 }
 
-fn read_dirs(path: &Path) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(path) else { return Vec::new() };
-    let mut dirs: Vec<PathBuf> = entries.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
-    dirs.sort();
-    dirs
-}
-
 /// Whether a partition file on disk is closed -- sealed or quarantined -- whatever format wrote it (both formats
 /// name these two fields alike); None when it cannot be read as a record at all.
 pub fn is_closed_on_disk(path: &Path) -> Option<bool> {
@@ -1137,5 +1135,21 @@ mod tests {
         assert!(reloaded.is_closed(&stk));
         assert!(!reloaded.is_closed(&id("STK", "2026-09-30", "DAY")));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_records_directory_that_cannot_be_listed_is_a_problem_not_an_empty_ledger() {
+        let dir = std::env::temp_dir().join(format!("mr-evidence-unlisted-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // A file where the records directory should be: listing it fails (not NotFound).
+        let root = dir.join("evidence");
+        std::fs::write(&root, b"not a directory").unwrap();
+        let (_, problems) = Ledger::load(Some(root.clone()));
+        assert!(problems.iter().any(|p| p.contains(&root.display().to_string())), "{problems:?}");
+        // Nothing there yet is no problem.
+        let (_, problems) = Ledger::load(Some(dir.join("absent")));
+        assert!(problems.is_empty(), "{problems:?}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

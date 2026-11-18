@@ -119,9 +119,24 @@ def _specs(source: str, market: str, session: str) -> list[dict[str, Any]]:
     return specs
 
 
-def session_segments(source: str, market: str, session: str) -> list[list[list[int]]]:
-    """Each business session of a partition as its trading intervals: what an N-minute bar's buckets count."""
-    return [[list(interval) for interval in spec["intervals"]] for spec in _specs(source, market, session)]
+def session_segments(source: str, market: str, session: str, trading_date: str) -> list[list[list[int]]]:
+    """Each business session of a partition on ``trading_date`` as its trading intervals: what an N-minute bar's buckets
+    count. A US half day (config.market_holidays.us_half_day) reads the sessions' ``half_day_intervals``, as Rust B's
+    K-bar store folds that day (native/market_runtime/src/calendar.rs ``segments``)."""
+    from config.market_holidays import us_half_day
+
+    specs = _specs(source, market, session)
+    half = any(spec.get("half_day_intervals") for spec in specs) and us_half_day(date.fromisoformat(iso_trading_date(trading_date)))
+    return [[list(interval) for interval in ((spec.get("half_day_intervals") or spec["intervals"]) if half else spec["intervals"])]
+            for spec in specs]
+
+
+def trading_span(source: str, market: str, session: str, trading_date: str) -> tuple[int, int]:
+    """First and last trading minute (inclusive minute starts) of a partition on ``trading_date``: Shioaji STK DAY is
+    (540, 810), 09:00 through the 13:30 minute -- Market Runtime's equity_span (rollover.rs), not a written clock."""
+    segments = session_segments(source, market, session, trading_date)
+    return (min(first for intervals in segments for first, _last in intervals),
+            max(last for intervals in segments for _first, last in intervals))
 
 
 def partition_end(source: str, market: str, trading_date: str, session: str) -> datetime:

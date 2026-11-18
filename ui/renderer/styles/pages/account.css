@@ -79,10 +79,6 @@
   justify-content: flex-end;
 }
 
-.account-market-switch.is-invisible {
-  visibility: hidden;
-}
-
 .account-load-error-banner {
   max-width: var(--account-content-max);
   margin: 0 auto 12px;
@@ -106,10 +102,12 @@
   min-width: 0;
 }
 
+/* 實際帳務's scroll area: no top padding, so a sticky title sits flush with the top. */
 .account-content-scroll {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  scroll-behavior: smooth;
 }
 
 .account-content-scroll > .account-view {
@@ -575,11 +573,6 @@
 .account-stock-inline-table td {
   padding: 8px 7px;
   white-space: nowrap;
-}
-
-/* 實際帳務捲動區不再保留頂部 padding，sticky title 可真正貼齊最上方。 */
-.account-content-scroll {
-  scroll-behavior: smooth;
 }
 
 /* Top 10 表頭與資料都使用相同置中規則。 */
@@ -1212,9 +1205,6 @@
 /* ===== Daytrade period / weekday analytics ===== */
 .account-daytrade-period-grid {
   margin-bottom: 12px;
-}
-
-.account-daytrade-period-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
@@ -1482,8 +1472,4 @@
   width: fit-content;
   max-width: 100%;
   margin: 0 0 12px;
-}
-
-.account-content-scroll {
-  scrollbar-gutter: auto;
 }

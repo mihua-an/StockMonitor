@@ -15,6 +15,7 @@
 
 use std::collections::BTreeMap;
 
+use market_runtime::projection::BlockKind;
 use serde_json::Value;
 
 use crate::accum::InstrumentId;
@@ -24,18 +25,19 @@ use crate::engine::Engine;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Pending {
     pub id: InstrumentId,
-    pub block: String,
+    pub block: BlockKind,
     pub minutes: Vec<i32>,
     pub events: Vec<String>,
     pub replace: bool,
 }
 
 impl Pending {
-    pub fn of(id: &InstrumentId, item: &Value) -> Self {
+    /// The item the engine made of `block` (engine::Collected::items).
+    pub fn of(id: &InstrumentId, block: BlockKind, item: &Value) -> Self {
         let data = &item["data"];
         Self {
             id: id.clone(),
-            block: item["block"].as_str().unwrap_or("").to_string(),
+            block,
             minutes: data["minutes"].as_array().into_iter().flatten().filter_map(|m| m["minute"].as_i64()).map(|m| m as i32).collect(),
             events: data["events"].as_array().into_iter().flatten().filter_map(|e| e["event_id"].as_str()).map(str::to_string).collect(),
             replace: data["replace"] == true,
@@ -45,23 +47,23 @@ impl Pending {
     /// Mark this item's block (only its own records) dirty again. False when the instrument is no longer held.
     fn redirty(&self, engine: &mut Engine) -> bool {
         let Some(inst) = engine.shown_mut(&self.id) else { return false };
-        match self.block.as_str() {
-            "minutes" => inst.projection.dirty.minutes.extend(self.minutes.iter().copied().filter(|m| inst.minutes.contains_key(m))),
-            "windows" => inst.projection.dirty.windows = true,
+        // Every block is named here: a block added to BlockKind does not compile until it is.
+        match self.block {
+            BlockKind::Minutes => inst.projection.dirty.minutes.extend(self.minutes.iter().copied().filter(|m| inst.minutes.contains_key(m))),
+            BlockKind::Windows => inst.projection.dirty.windows = true,
             // An increment's base is unknown once it was not taken: the block goes again whole.
-            "day" => {
+            BlockKind::Day => {
                 inst.projection.dirty.day = true;
                 inst.projection.dirty.day_whole = true;
             }
-            "flow" => {
+            BlockKind::Flow => {
                 inst.projection.dirty.flow = true;
                 inst.projection.dirty.flow_whole = true;
             }
-            "events" if self.replace => {
+            BlockKind::Events if self.replace => {
                 inst.projection.dirty.events.insert("*".into());
             }
-            "events" => inst.projection.dirty.events.extend(self.events.iter().cloned()),
-            _ => return false,
+            BlockKind::Events => inst.projection.dirty.events.extend(self.events.iter().cloned()),
         }
         true
     }
@@ -118,7 +120,7 @@ impl Outbox {
                 Some(r) if r["ok"] == true => outcome.committed += 1,
                 Some(r) if r["retry"] != true => {
                     let code = r["code"].as_str().unwrap_or("");
-                    let described = format!("{} {}: {} ({})", pending.id.identity(), pending.block,
+                    let described = format!("{} {}: {} ({})", pending.id.identity(), pending.block.name(),
                                             r["reason"].as_str().unwrap_or("refused"), if code.is_empty() { "no code" } else { code });
                     if OBSOLETE.contains(&code) {
                         outcome.dropped += 1;
@@ -183,11 +185,23 @@ mod tests {
         json!({"block": "minutes", "data": {"minutes": minutes.iter().map(|m| json!({"minute": m})).collect::<Vec<_>>(), "replace": false}})
     }
 
+    /// A refused item of any block marks its block dirty again: no block is dropped as if its instrument were gone.
+    #[test]
+    fn every_block_is_marked_dirty_again() {
+        for block in BlockKind::ALL {
+            let mut engine = engine_with_minutes(&[570]);
+            engine.instruments.get_mut(&id()).unwrap().projection.dirty = Default::default();
+            let pending = Pending::of(&id(), block, &json!({"block": block.name(), "data": {"minutes": [{"minute": 570}], "events": [{"event_id": "e1"}]}}));
+            assert!(pending.redirty(&mut engine), "{}", block.name());
+            assert!(engine.instruments[&id()].projection.dirty.any(), "{}", block.name());
+        }
+    }
+
     #[test]
     fn accepted_and_duplicate_items_commit_and_leave_nothing_dirty() {
         let mut engine = engine_with_minutes(&[570, 571]);
         let mut outbox = Outbox::default();
-        let rid = outbox.register(vec![Pending::of(&id(), &minutes_item(&[570, 571])), Pending::of(&id(), &json!({"block": "day", "data": {}}))]);
+        let rid = outbox.register(vec![Pending::of(&id(), BlockKind::Minutes, &minutes_item(&[570, 571])), Pending::of(&id(), BlockKind::Day, &json!({"block": "day", "data": {}}))]);
         let out = outbox.ack(Some(rid), &[json!({"ok": true}), json!({"ok": true, "duplicate": true})], &mut engine);
         assert_eq!(out, AckOutcome { committed: 2, ..Default::default() });
         assert!(!engine.instruments[&id()].projection.dirty.any());
@@ -199,9 +213,9 @@ mod tests {
         let mut engine = engine_with_minutes(&[570, 571, 572]);
         let mut outbox = Outbox::default();
         let rid = outbox.register(vec![
-            Pending::of(&id(), &minutes_item(&[570, 571])),
-            Pending::of(&id(), &json!({"block": "events", "data": {"events": [{"event_id": "e1"}], "replace": false}})),
-            Pending::of(&id(), &json!({"block": "flow", "data": {}})),
+            Pending::of(&id(), BlockKind::Minutes, &minutes_item(&[570, 571])),
+            Pending::of(&id(), BlockKind::Events, &json!({"block": "events", "data": {"events": [{"event_id": "e1"}], "replace": false}})),
+            Pending::of(&id(), BlockKind::Flow, &json!({"block": "flow", "data": {}})),
         ]);
         // The flow item got no result (the batch was cut short).
         let out = outbox.ack(Some(rid), &[json!({"ok": false, "reason": "beyond committed", "retry": true}), json!({"ok": false, "retry": true})], &mut engine);
@@ -215,7 +229,7 @@ mod tests {
     fn a_terminal_refusal_is_dropped_and_counted_never_resent() {
         let mut engine = engine_with_minutes(&[570]);
         let mut outbox = Outbox::default();
-        let rid = outbox.register(vec![Pending::of(&id(), &minutes_item(&[570]))]);
+        let rid = outbox.register(vec![Pending::of(&id(), BlockKind::Minutes, &minutes_item(&[570]))]);
         let out = outbox.ack(Some(rid), &[json!({"ok": false, "code": "ROLLED_OVER", "reason": "ROLLED_OVER"})], &mut engine);
         assert_eq!(out, AckOutcome { dropped: 1, ..Default::default() });
         assert!(!engine.instruments[&id()].projection.dirty.any());
@@ -228,7 +242,7 @@ mod tests {
         // lost with only a counter.
         let mut engine = engine_with_minutes(&[570, 571]);
         let mut outbox = Outbox::default();
-        let rid = outbox.register(vec![Pending::of(&id(), &minutes_item(&[570])), Pending::of(&id(), &minutes_item(&[571]))]);
+        let rid = outbox.register(vec![Pending::of(&id(), BlockKind::Minutes, &minutes_item(&[570])), Pending::of(&id(), BlockKind::Minutes, &minutes_item(&[571]))]);
         let out = outbox.ack(Some(rid), &[json!({"ok": false, "code": "UNKNOWN_BLOCK", "reason": "unknown block minutez"}),
             json!({"ok": false, "code": "EPOCH_BEHIND", "reason": "projection epoch 4 is older than 9", "held_epoch": 9})], &mut engine);
         assert_eq!(out.dropped, 0);
@@ -243,8 +257,8 @@ mod tests {
         // obsolete/epoch cases were told apart by matching A's wording.
         let mut engine = engine_with_minutes(&[570, 571, 572]);
         let mut outbox = Outbox::default();
-        let rid = outbox.register(vec![Pending::of(&id(), &minutes_item(&[570])), Pending::of(&id(), &minutes_item(&[571])),
-                                       Pending::of(&id(), &minutes_item(&[572]))]);
+        let rid = outbox.register(vec![Pending::of(&id(), BlockKind::Minutes, &minutes_item(&[570])), Pending::of(&id(), BlockKind::Minutes, &minutes_item(&[571])),
+                                       Pending::of(&id(), BlockKind::Minutes, &minutes_item(&[572]))]);
         let out = outbox.ack(Some(rid), &[json!({"ok": false, "code": "IDENTITY_REQUIRED", "reason": "identity required"}),
             json!({"ok": false, "reason": "ROLLED_OVER"}),
             json!({"ok": false, "code": "STALE", "reason": "anything at all"})], &mut engine);
@@ -259,8 +273,8 @@ mod tests {
     fn a_lost_connection_requeues_what_was_in_flight_and_an_unknown_ack_changes_nothing() {
         let mut engine = engine_with_minutes(&[570]);
         let mut outbox = Outbox::default();
-        outbox.register(vec![Pending::of(&id(), &json!({"block": "events", "data": {"events": [], "replace": true}}))]);
-        outbox.register(vec![Pending::of(&id(), &minutes_item(&[570]))]);
+        outbox.register(vec![Pending::of(&id(), BlockKind::Events, &json!({"block": "events", "data": {"events": [], "replace": true}}))]);
+        outbox.register(vec![Pending::of(&id(), BlockKind::Minutes, &minutes_item(&[570]))]);
         assert_eq!(outbox.ack(None, &[json!({"ok": true})], &mut engine), AckOutcome::default());
         assert_eq!(outbox.requeue_all(&mut engine), 2);
         let dirty = &engine.instruments[&id()].projection.dirty;
@@ -274,7 +288,7 @@ mod tests {
         let mut outbox = Outbox::default();
         let mut gone = id();
         gone.trading_date = "2026-10-07".into();
-        outbox.register(vec![Pending::of(&gone, &minutes_item(&[570]))]);
+        outbox.register(vec![Pending::of(&gone, BlockKind::Minutes, &minutes_item(&[570]))]);
         assert_eq!(outbox.requeue_all(&mut engine), 0);
     }
 }

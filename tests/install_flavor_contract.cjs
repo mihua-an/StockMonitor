@@ -20,4 +20,20 @@ try {
 } finally {
   console.warn = warn;
 }
+// Electron main's startup-errors file (written when even var_layout.json cannot be read) is in this flavor's
+// userData: a source checkout's went to the installed app's folder.
+{
+  const path = require("node:path");
+  const { loadVarLayout } = require("../config/js/var_paths.js");
+  const { flavorOf } = require("../service/platform/js/launch_runtime.js");
+  const { startupFallbackFile, FALLBACK_USER_DATA_DIR } = require("../ui/main/early_error_sink.js");
+  const flavors = loadVarLayout().flavors;
+  assert.deepEqual(Object.keys(FALLBACK_USER_DATA_DIR).sort(), Object.keys(flavors).sort());
+  for (const [flavor, spec] of Object.entries(flavors)) assert.equal(FALLBACK_USER_DATA_DIR[flavor], spec.user_data_dir, flavor);
+  const appData = path.resolve("AppData", "Roaming");
+  assert.equal(startupFallbackFile({ appDataDir: appData, flavor: flavorOf(false) }),
+    path.join(appData, flavors.source.user_data_dir, "startup_errors.log"));
+  assert.equal(startupFallbackFile({ appDataDir: appData, flavor: flavorOf(true) }),
+    path.join(appData, flavors.installed.user_data_dir, "startup_errors.log"));
+}
 console.log("install flavor contract ok");

@@ -18,7 +18,6 @@ from __future__ import annotations
 import json
 import math
 import sqlite3
-import subprocess
 import tempfile
 import threading
 import time
@@ -31,6 +30,8 @@ from typing import Any, Callable
 import pandas as pd
 
 from config.market_holidays import tw_is_trading_day
+from service.market.history.technical_history import TechnicalHistoryReader, valid_code
+from service.market.shared.session_identity_contract import iso_trading_date
 from service.market.storage.market_storage_layout import process_market_layout
 import logging
 from service.platform.failure_record import record_failure
@@ -38,6 +39,8 @@ from service.platform.failure_record import record_failure
 _failure_log = logging.getLogger(__name__)
 
 MAX_KBARS_DAYS = 30
+# One product's downloaded segment (at most MAX_KBARS_DAYS of minutes) into its K-bar file.
+KBAR_IMPORT_TIMEOUT_SECONDS = 120
 ESTIMATE_MODEL_VERSION = "shioaji-kbars-by-day-v1"
 AGGREGATION_VERSION = "minute-to-daily-v1"
 # Before any download was observed: an upper bound of one calendar day of 1-minute bars (about 270 rows of 7 numbers).
@@ -67,12 +70,24 @@ def _iso(value: datetime | None = None) -> str:
     return (value or _now()).isoformat(timespec="seconds")
 
 
+class KbarRequestInvalid(ValueError):
+    """A K-bar request the caller got wrong (product code, date, range). `message` is this module's own wording, the
+    one the route answers with as a 400; any other exception is not the caller's and stays a 500."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+
 def _date(value: Any) -> date:
     if isinstance(value, datetime):
         return value.date()
     if isinstance(value, date):
         return value
-    return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+    try:
+        return date.fromisoformat(iso_trading_date(value))
+    except ValueError:
+        raise KbarRequestInvalid("invalid date") from None
 
 
 def _json_number(value: Any) -> int | None:
@@ -101,6 +116,15 @@ def _field(value: Any, names: tuple[str, ...]) -> Any:
     return None
 
 
+def product_code(code: Any) -> str:
+    """A product code as the K-bar store names its file (technical_history.valid_code), else ValueError: the code is
+    part of the path every request reads or writes."""
+    text = str(code or "").strip().upper()
+    if not valid_code(text):
+        raise KbarRequestInvalid("invalid product code")
+    return text
+
+
 def technical_history_job(code: str, before: str, *, trading_days: int = 20) -> dict[str, Any]:
     """The download job that fetches up to `trading_days` trading days before `before` for 技術分析: the payload of the
     job 資料中心's download creates (quota reservation, retention), so its bars reach the chart through the store the
@@ -110,7 +134,7 @@ def technical_history_job(code: str, before: str, *, trading_days: int = 20) -> 
             if tw_is_trading_day(day)][:max(1, int(trading_days))]
     if not days:
         raise ValueError(f"no trading day within {MAX_KBARS_DAYS} days before {before}")
-    return {"code": str(code).strip().upper(), "start_date": days[-1].isoformat(), "end_date": days[0].isoformat(), "auto_resume": False}
+    return {"code": product_code(code), "start_date": days[-1].isoformat(), "end_date": days[0].isoformat(), "auto_resume": False}
 
 
 def _record_kbar_recovery(trigger: str, detail: dict[str, Any]) -> None:
@@ -445,19 +469,18 @@ class DownloadedBars:
     def __init__(self, kbar_root: Callable[[], Path], runner: Callable[[Path, dict[str, Any]], dict[str, Any]]) -> None:
         self._kbar_root = kbar_root
         self._runner = runner
+        self._reader: TechnicalHistoryReader | None = None
 
     @property
     def root(self) -> Path:
         return Path(self._kbar_root())
 
     def held_dates(self, code: str) -> set[str]:
-        """The dates the store holds of `code`: a date with a daily bar needs no download."""
-        path = self.root / "source=shioaji" / "market=STK" / f"{code}.json"
-        try:
-            session = json.loads(path.read_bytes())["sessions"].get("DAY", {})
-        except FileNotFoundError:  # not an error: a product the store holds nothing of
-            return set()
-        return set(session.get("daily", {})) | set(session.get("intraday", {}))
+        """The dates the store holds of `code`, read as 技術分析 reads them (one reader, one record of a bad file)."""
+        root = self.root
+        if self._reader is None or self._reader.kbar_root != root:
+            self._reader = TechnicalHistoryReader(root)
+        return self._reader.held_dates("STK", "DAY", code)
 
     def save(self, code: str, frame: pd.DataFrame) -> None:
         """``frame``: the 1-minute bars the broker returned for a download job."""
@@ -502,18 +525,13 @@ class DownloadedBars:
 def import_into_kbar_store(kbar_root: Path, payload: dict[str, Any]) -> dict[str, Any]:
     """The Rust B run that writes `payload` under the store's own lock, retention and fold (kbar_store.rs)."""
     from config.config_revisions import config_root
-    from service.platform.native_binaries import analysis_runtime_job_binary
+    from service.platform.native_binaries import run_job
 
     with tempfile.TemporaryDirectory(prefix="kbar-import-") as folder:
         source = Path(folder) / "days.json"
         source.write_text(json.dumps(payload), encoding="utf-8")
-        run = subprocess.run([str(analysis_runtime_job_binary()), "--import-kbars", "--kbar-dir", str(kbar_root),
-                              "--retention-config-root", str(config_root()), "--input", str(source)],
-                             capture_output=True, text=True, timeout=120, check=False)
-    lines = run.stdout.strip().splitlines()
-    if not lines:
-        return {"ok": False, "error": run.stderr.strip() or f"exit {run.returncode}"}
-    return json.loads(lines[-1])
+        return run_job(["--import-kbars", "--kbar-dir", str(kbar_root), "--retention-config-root", str(config_root()),
+                        "--input", str(source)], KBAR_IMPORT_TIMEOUT_SECONDS)
 
 
 def _kbar_root() -> Path:
@@ -595,10 +613,10 @@ class KBarDownloadManager:
 
     def preview(self, code: str, start_date: str, end_date: str, *, user_budget_bytes: int | None = None,
                 safety_reserve_bytes: int = 0, refresh_usage: bool = True) -> dict[str, Any]:
-        code = str(code or "").strip().upper()
+        code = product_code(code)
         start, end = _date(start_date), _date(end_date)
-        if not code or end < start:
-            raise ValueError("invalid code/date range")
+        if end < start:
+            raise KbarRequestInvalid("invalid date range")
         usage = self.usage.refresh(force=bool(refresh_usage))
         missing = self._missing_dates(code, start, end)
         per_day, samples, confidence = self.usage.estimate_model()
@@ -744,7 +762,7 @@ class KBarDownloadManager:
     def request_older(self, code: str, before: str) -> dict[str, Any]:
         """Earlier bars of `code` before `before`, asked for by a chart scrolled to its oldest bar: answers at once, the
         download runs behind it. One job per product at a time; a product found to end is not asked of the broker again."""
-        code = str(code or "").strip().upper()
+        code = product_code(code)
         floor = self.jobs.history_floor(code)
         if floor and str(before) <= floor:
             return {"ok": True, "state": "END", "code": code}
@@ -791,7 +809,7 @@ class KBarDownloadManager:
 
     def older_status(self, code: str) -> dict[str, Any]:
         """Where the latest request of `code` stands. DONE names the range, for the chart to read it back."""
-        code = str(code or "").strip().upper()
+        code = product_code(code)
         job_id = self.jobs.latest_job_id(code)
         with self._lock:
             running = job_id in self._running_jobs or code in self._planning

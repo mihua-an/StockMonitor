@@ -64,7 +64,9 @@ pub struct Partition {
     pub session: String,
 }
 
-fn component_ok(value: &str) -> bool {
+/// Whether `value` can be one directory name of a stored partition (source, market, date, session, code): letters,
+/// digits, '-', '_', '.', at most 32 characters, never "..". Every writer that builds a path from an identity checks it.
+pub fn component_ok(value: &str) -> bool {
     !value.is_empty() && value.len() <= 32 && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
         && !value.contains("..")
 }
@@ -124,6 +126,35 @@ pub fn fnv1a64(bytes: &[u8]) -> String {
     hash.hex()
 }
 
+/// Whether a line of a partition's events.jsonl is blank (ASCII whitespace only): no event, not counted, though its
+/// bytes are hashed. The one rule for every reader that counts or decodes partition lines.
+pub fn is_blank_line(line: &[u8]) -> bool {
+    line.iter().all(u8::is_ascii_whitespace)
+}
+
+/// Reads a partition's events.jsonl as a stream: every byte is hashed (FNV-1a 64) and each non-blank line is handed
+/// to `each` with its 1-based line number (blank lines counted) and its bytes ('\n' kept). Returns the non-blank line
+/// count and the hash, to check against the manifest (`check_committed`). A read error (`read_error`) or the first
+/// error `each` returns ends the reading.
+pub fn read_lines<E>(mut reader: impl std::io::BufRead, read_error: impl Fn(std::io::Error) -> E,
+                     mut each: impl FnMut(u64, &[u8]) -> Result<(), E>) -> Result<(u64, String), E> {
+    let (mut hash, mut number, mut lines, mut buf) = (Fnv1a64::default(), 0u64, 0u64, Vec::new());
+    loop {
+        buf.clear();
+        if reader.read_until(b'\n', &mut buf).map_err(&read_error)? == 0 {
+            break;
+        }
+        number += 1;
+        hash.update(&buf);
+        if is_blank_line(&buf) {
+            continue;
+        }
+        lines += 1;
+        each(number, &buf)?;
+    }
+    Ok((lines, hash.hex()))
+}
+
 /// What a verified partition's manifest committed: its content hash and its line count.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Committed {
@@ -135,8 +166,8 @@ pub struct Committed {
 /// without `manifest.json` is still being written (or was abandoned) and is not replayed. One whose bytes or line count
 /// differ from what its manifest committed is refused as CORRUPT, never played with lines silently skipped.
 pub fn verify_committed(path: &Path, bytes: &[u8]) -> Result<Committed, String> {
-    let lines = bytes.split(|b| *b == b'\n').filter(|l| l.iter().any(|b| !b.is_ascii_whitespace())).count() as u64;
-    check_committed(path, lines, fnv1a64(bytes))
+    let (lines, hash) = read_lines(bytes, |e| format!("CORRUPT: {e}"), |_, _| Ok(()))?;
+    check_committed(path, lines, hash)
 }
 
 /// `verify_committed` for a partition read as a stream: its non-blank line count and content hash as measured.
@@ -177,10 +208,10 @@ pub const PROVISIONAL_DIR: &str = "replay-provisional";
 /// committed, then the directories left empty; the number removed. A partition not materialized yet stays.
 pub fn prune_provisional(out_dir: &Path, historical_dir: &Path) -> usize {
     fn children(dir: &Path) -> Vec<PathBuf> {
-        match std::fs::read_dir(dir) {
-            Ok(entries) => entries.filter_map(|entry| entry.ok()).map(|entry| entry.path()).filter(|path| path.is_dir()).collect(),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(), // not an error: nothing written from the WAL yet
+        match crate::fsutil::list_dir(dir) {
+            Ok(entries) => entries.into_iter().filter(|path| path.is_dir()).collect(),
             Err(e) => {
+                // Its partitions stay until the next prune lists them.
                 eprintln!("[market_runtime] listing the WAL replay partitions under {} failed: {e}", dir.display());
                 Vec::new()
             }
@@ -297,10 +328,10 @@ pub fn decode_events(path: &Path, bytes: &[u8], mut each: impl FnMut(MarketEvent
     for raw in bytes.split(|b| *b == b'\n') {
         let at = offset;
         offset += raw.len() as u64 + 1;
-        let line = std::str::from_utf8(raw).map_err(|e| format!("CORRUPT: line at byte {at} is not UTF-8: {e}"))?;
-        if line.trim().is_empty() {
+        if is_blank_line(raw) {
             continue;
         }
+        let line = std::str::from_utf8(raw).map_err(|e| format!("CORRUPT: line at byte {at} is not UTF-8: {e}"))?;
         match MarketEvent::decode_slice(line.trim_end_matches('\r').as_bytes()) {
             Ok(event) => {
                 if event.code == CLOCK_CODE || matches!(event.payload, Payload::Clock { .. }) {
@@ -881,6 +912,26 @@ mod tests {
         streamed.update(b"foo");
         streamed.update(b"bar");
         assert_eq!(streamed.hex(), fnv1a64(b"foobar"));
+    }
+
+    /// The line count a manifest commits to and the lines decoded are the same lines: one blank-line rule. A line of
+    /// non-ASCII whitespace (U+3000) is counted, so it is decoded too -- and refused as unreadable, never skipped.
+    #[test]
+    fn counting_and_decoding_agree_on_which_lines_are_blank() {
+        let bytes = "\n  \r\n\u{3000}\n".as_bytes();
+        let dir = std::env::temp_dir().join(format!("mr-blank-lines-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("events.jsonl");
+        std::fs::write(dir.join("manifest.json"), serde_json::json!({"event_count": 1, "content_hash_fnv1a64": fnv1a64(bytes)}).to_string()).unwrap();
+        assert_eq!(verify_committed(&path, bytes).unwrap().lines, 1);
+        assert_eq!(read_lines(bytes, |e| e.to_string(), |_, _| Ok(())).unwrap(), (1, fnv1a64(bytes)));
+        let mut numbers = Vec::new();
+        read_lines(bytes, |e| e.to_string(), |number, _| { numbers.push(number); Ok(()) }).unwrap();
+        assert_eq!(numbers, vec![3], "line numbers count the blank lines too");
+        let decoded = decode_events(&path, bytes, |_, _| true);
+        assert!(decoded.as_ref().is_err_and(|e| e.contains("unreadable")), "{decoded:?}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

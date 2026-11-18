@@ -9,8 +9,12 @@ import { numberOrNull } from "../core/numbers.js";
 // pages behind them are FastAPI's. The page count is read ONCE per symbol when its page 1
 // opens and is then advanced by the optimistic per-trade count -- no metadata re-read follows each
 // trade. Opening an older page re-reads the count with it.
-export function createLiveTradePager({ apiGet, pageGet = apiGet, getQuery, getEquityDate, futuresIdentityMatches,
-  invalidateDetails }) {
+// Shioaji's 主頁 and Futu's 成交明細 share it. `projectRow(row, target)` turns a stored page's row into the list's row
+// (Futu draws its prints on the market's clock); `requiresTradingDate(market)` names the markets whose trades are one
+// trading day's, read only with that day (Shioaji's stocks, every Futu market). `getEquityDate()` is the trading day
+// shown, an answer for another day is dropped.
+export function createLiveTradePager({ apiGet, pageGet = apiGet, getQuery, getEquityDate, futuresIdentityMatches = () => true,
+  invalidateDetails, projectRow = materializedTradeToLiveTick, requiresTradingDate = (market) => market === "STK" }) {
 let liveTickMetadataRefreshInFlight = null;
 let liveTickMetadataLoadedFor = "";
 // Advanced by every reset (a new target, a new session): what a page-count read is current against. A page request
@@ -146,7 +150,7 @@ function applyTradePage(result, { target, nextPage, frozenWatermark, metadataRef
   if (!metadataRefresh) {
     liveTickPageState.page = Math.max(1, Number(result?.page) || nextPage);
     const sourceRows = Array.isArray(result?.rows) ? result.rows : [];
-    liveTickPageState.rows = sourceRows.map((row) => materializedTradeToLiveTick(row, target));
+    liveTickPageState.rows = sourceRows.map((row) => projectRow(row, target));
   }
   if (countTicket > countShownFrom) {
     countShownFrom = countTicket;
@@ -198,7 +202,7 @@ async function loadLiveTickPage({ page = 1, latest = false, metadataRefresh = fa
   const { market, session, tradingDate, actualContract, requestIdentityKey } = getQuery();
   // A stock's trades are one trading day's, and FastAPI answers only a read that names it. Before Market Runtime's
   // session has named the day there is nothing to read; the session naming it resets this pager, which reads then.
-  if (market === "STK" && !tradingDate) return null;
+  if (requiresTradingDate(market) && !tradingDate) return null;
   if (!metadataRefresh) {
     liveTickPageState.loading = true;
     liveTickPageState.lastError = null;

@@ -12,13 +12,13 @@ import { bigOrderFlowWindowsFromRust } from "../../core/big_order_flow.js";
 import { displayQuote } from "../../core/auction_price.js";
 import { queryRealtimeLargeOrders } from "../../market_data/realtime.js";
 import { txfDisplayIdentityKey } from "./txf_session_identity.js";
-import { compareTradeRowsNewestFirst, tradeRowKey, tradeRowSequence } from "../../core/trade_row_order.js";
+import { tradeRowSequence } from "../../core/trade_row_order.js";
 import { projectBenchmarkSeries } from "../../core/trend_overlay.js";
 import { positiveMarketPrice } from "../../market_data/stock_market_summary.js";
 import { modelPredictionMetrics } from "../../core/model_predictions.js";
 import { tabAmplitude, trendMetrics } from "../../core/trend_metrics.js";
 import { canonicalDisplayFrame, isSimtradeTick, normalizeDaemonPriceVolume, normalizeRustTradeFlow, orderbookDiffEventToken, tickVolume } from "../../market_data/realtime_market_math.js";
-import { isTapePrint, largeOrderDefinition, largePrintMatcher, tapeRow } from "../../market_data/trade_detail/tape_rows.js";
+import { largeOrderDefinition, largePrintMatcher, mergeFirstPage, tapeRow } from "../../market_data/trade_detail/tape_rows.js";
 import { getSelectedRealtimeSignal } from "./live_signals.js";
 import { getLiveMonitorEvents, liveEventFeedViewModel } from "./live_monitor_events.js";
 import { numberOrNull, positiveNumberOrNull } from "../../core/numbers.js";
@@ -159,17 +159,6 @@ function selectedTicks() {
   });
   selectedTicksCache = { target, trades, rows };
   return rows;
-}
-
-function selectedFlowTicks() {
-  // Restart hydration arrives through the durable TradeDetail page before new
-  // live callbacks. Merge it with the hot stream so TradeFlow never falls back
-  // to an empty panel merely because the App was reopened after market close.
-  const merged = new Map();
-  const isGenuineTrade = (row) => positiveNumberOrNull(row?.price ?? row?.current ?? row?.close) != null && Number(tickVolume(row) || 0) > 0;
-  for (const row of liveTickPageState.rows || []) if (isGenuineTrade(row)) merged.set(tradeRowKey(row), row);
-  for (const row of selectedTicks()) if (isGenuineTrade(row)) merged.set(tradeRowKey(row), { ...(merged.get(tradeRowKey(row)) || {}), ...row });
-  return [...merged.values()];
 }
 
 function selectedDaemonPriceVolume() {
@@ -517,30 +506,13 @@ function liveTickDetailsViewModel() {
 
   const page = Math.max(1, Number(liveTickPageState.page) || 1);
   let selected = [];
+  const txfIdentity = target === "TXFR1" ? currentTxfDisplayIdentity(activeTxfSession) : null;
+  const inWindow = (row) => !txfIdentity || txfTickMatchesDisplayWindow(row, txfIdentity);
   if (page === 1) {
-    // Live hot-cache and durable Page1 share one row contract.  Hot rows win on
-    // duplicate identity so the newest Tick fields appear instantly.
-    const merged = new Map();
-    const txfIdentity = target === "TXFR1" ? currentTxfDisplayIdentity(activeTxfSession) : null;
-    for (const row of liveTickPageState.rows) {
-      if (txfIdentity && !txfTickMatchesDisplayWindow(row, txfIdentity)) continue;
-      if (isTapePrint(row)) merged.set(tradeRowKey(row), row);
-    }
-    for (const row of selectedTicks()) {
-      if (txfIdentity && !txfTickMatchesDisplayWindow(row, txfIdentity)) continue;
-      if (!isTapePrint(row)) continue;
-      const key = tradeRowKey(row);
-      const durable = merged.get(key) || {};
-      // Hot WebSocket rows own the newest trade fields, while the durable
-      // projection supplies the durable Tick identity while hot WebSocket rows own the newest Tick fields.
-      merged.set(key, { ...durable, ...row });
-    }
-    selected = [...merged.values()].sort(compareTradeRowsNewestFirst).slice(0, TRADE_DETAIL_PAGE_SIZE);
+    selected = mergeFirstPage(liveTickPageState.rows, selectedTicks(), { limit: TRADE_DETAIL_PAGE_SIZE, keep: inWindow });
   } else {
-    const txfIdentity = target === "TXFR1" ? currentTxfDisplayIdentity(activeTxfSession) : null;
-    selected = liveTickPageState.rows.filter((row) => (
-      !isSimtradeTick(row) && (!txfIdentity || txfTickMatchesDisplayWindow(row, txfIdentity))
-    )).slice(0, TRADE_DETAIL_PAGE_SIZE);
+    // A stored page holds trades only: Market Runtime leaves the 試撮 prints out of its pages.
+    selected = liveTickPageState.rows.filter(inWindow).slice(0, TRADE_DETAIL_PAGE_SIZE);
   }
   const rows = selected.map((tick) => tapeRow(tick, isLargeRow(tick)));
   const liveNewest = Math.max(...selectedTicks().map((row) => Number(tradeRowSequence(row) || 0)), 0);

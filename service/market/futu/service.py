@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import threading
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +31,7 @@ from service.market.shared.rust_live import RustDaemonEventSink, RustEventSink
 from service.market.lifecycle.session import futu_session_spec, resolve_session
 import logging
 from service.platform.failure_record import record_failure
+from service.market.futu.clock import utc_now
 
 _failure_log = logging.getLogger(__name__)
 
@@ -39,10 +39,6 @@ _failure_log = logging.getLogger(__name__)
 # (never resubscribed). Thin names are often quiet for minutes; the threshold keeps them out.
 WATCH_SILENT_SECONDS = 600.0
 _LANE_BY_KIND = {"quote": "QUOTE", "minute_bar": "RT_DATA", "trade": "TICKER", "orderbook": "ORDER_BOOK"}
-
-
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
 def _seed_path():
@@ -155,7 +151,7 @@ class FutuMarketService:
         if not lane:
             return
         key = (str(code).upper(), lane)
-        now_text = _utc_now()
+        now_text = utc_now()
         with self._lock:
             self._lane_last_event_monotonic[key] = time.monotonic()
             self._lane_last_event_at[key] = now_text
@@ -425,7 +421,7 @@ class FutuMarketService:
             if code in seen:
                 continue
             seen.add(code)
-            requested.append((code, str(item.get("name") or "").strip(), index, _utc_now()))
+            requested.append((code, str(item.get("name") or "").strip(), index, utc_now()))
         if items and not requested:
             # A non-empty request with nothing valid in it is refused whole: it never clears the watchlist (only an
             # empty request does).

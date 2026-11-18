@@ -248,7 +248,7 @@ fn every_position_of_a_built_timeline_reads_back_as_the_day_analysed_step_by_ste
     let mut checked = 0;
     for p in 0..=steps.len() {
         if check.contains(&p) {
-            let want = bodies(engine.clone().collect(true, p as u64, None).into_iter().filter(|c| c.shown).flat_map(|c| c.items).collect());
+            let want = bodies(engine.clone().collect(true, p as u64, None).into_iter().filter(|c| c.shown).flat_map(|c| c.items.into_iter().map(|(_, item)| item)).collect());
             let got = timeline.state_at(p).unwrap().expect("held");
             let got = without_watermarks(&got.blocks);
             if got != want {

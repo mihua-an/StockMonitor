@@ -2,7 +2,7 @@
 // out of pages/account.js).
 import { expandCellHtml, expandDetailRowHtml, recordExpandBody } from "../../core/data_grid.js";
 import { createExpandMotion } from "../../core/expand_motion.js";
-import { emptyStateHtml, loadStateHtml } from "../../core/load_state_view.js";
+import { emptyStateHtml, emptyStateRowHtml, loadStateHtml } from "../../core/load_state_view.js";
 import { $, escapeHtml } from "../../core/utility.js";
 import { currentAnalytics, dailyActionIcon, formatMetricMoney, formatMoney, formatPercent, formatQty, formatRatio, formatTradePrice, profitClass } from "./account_format.js";
 import { account, actualAccountExpandedDays, actualAccountExpandedPairDays, actualAccountReplayState, actualAccountScrollController } from "./account_state.js";
@@ -88,7 +88,7 @@ export function renderDailyStats(analytics) {
   }
 
   if (!items.length) {
-    body.innerHTML = `<tr><td colspan="11" class="empty">尚無每日明細</td></tr>`;
+    body.innerHTML = emptyStateRowHtml(11, "尚無每日明細");
     return;
   }
 
@@ -258,7 +258,7 @@ export function renderPairDetails() {
   if (!body) return;
   const pairDayStats = Array.isArray(currentAnalytics()?.pair_days) ? currentAnalytics().pair_days : [];
   if (!pairDayStats.length) {
-    body.innerHTML = `<tr><td colspan="8" class="empty">尚無配對明細</td></tr>`;
+    body.innerHTML = emptyStateRowHtml(8, "尚無配對明細");
     return;
   }
   const days = pairDays(pairDayStats);

@@ -726,12 +726,14 @@ pub(crate) fn held_path(config: &ServerConfig) -> std::path::PathBuf {
 }
 
 fn write_held(config: &ServerConfig, held: &Value) {
-    let path = held_path(config);
-    let staged = path.with_extension("json.tmp");
-    let written = std::fs::write(&staged, held.to_string()).and_then(|_| std::fs::rename(&staged, &path));
-    if let Err(e) = written {
-        // A restart then subscribes only what is asked for again; nothing running is affected.
-        eprintln!("[market_runtime] writing the held subscriptions {}: {e}", path.display());
+    write_held_at(&held_path(config), held);
+}
+
+/// A failed write is counted and logged (FILE_WRITE_FAILURES); a restart then subscribes only what is asked for
+/// again, nothing running is affected.
+fn write_held_at(path: &std::path::Path, held: &Value) {
+    if let Err(e) = crate::fsutil::atomic_write(path, held.to_string().as_bytes()) {
+        super::startup::FILE_WRITE_FAILURES.record("held subscriptions", path, &e);
     }
 }
 
@@ -858,4 +860,26 @@ pub(crate) fn demand_state_for(hub: &Hub, instrument: &InstrumentKey) -> Value {
 pub(crate) fn forbidden(stream: &mut FrameWriter, hub: &Hub, session: &Session, kind: &str) -> io::Result<()> {
     hub.counters.commands_forbidden.fetch_add(1, Ordering::Relaxed);
     write_json(stream, &json!({"type": "error", "error": "FORBIDDEN", "command": kind, "role": session.role.label()}))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn held_subscriptions_are_replaced_atomically_and_a_failure_is_counted() {
+        let dir = std::env::temp_dir().join(format!("held-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("held_subscriptions.json");
+        // A leftover in the place a fixed staging name would use cannot stop the write: each write stages its own file.
+        std::fs::create_dir_all(dir.join("held_subscriptions.json.tmp")).unwrap();
+        write_held_at(&path, &json!({"shioaji": ["2330"]}));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), r#"{"shioaji":["2330"]}"#);
+        let missing = dir.join("no-such-dir").join("held_subscriptions.json");
+        write_held_at(&missing, &json!({}));
+        let failures = super::super::startup::FILE_WRITE_FAILURES.snapshot();
+        assert_eq!(failures.get(&format!("held subscriptions:{}", missing.display())), Some(&1), "{failures:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

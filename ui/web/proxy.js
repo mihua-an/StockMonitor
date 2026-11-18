@@ -8,6 +8,7 @@
 
 const http = require("node:http");
 const net = require("node:net");
+const { LOOPBACK_HOST } = require("../../config/js/network_config.js");
 
 // Hop-by-hop headers (RFC 9110 section 7.6.1) and everything that identifies the browser's session with Cloudflare.
 const DROPPED_REQUEST_HEADERS = new Set([
@@ -31,10 +32,11 @@ function forwardedHeaders(incoming, target, token) {
   return headers;
 }
 
+// A formal service's address: the manifest's loopback host and nothing else (config/js/network_config.js).
 function loopbackTarget(baseUrl) {
   const url = new URL(baseUrl);
   if (url.protocol !== "http:" && url.protocol !== "ws:") throw new Error(`refusing a non-http service address: ${baseUrl}`);
-  if (!["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) throw new Error(`refusing a non-loopback service address: ${baseUrl}`);
+  if (url.hostname !== LOOPBACK_HOST) throw new Error(`refusing a non-loopback service address: ${baseUrl}`);
   return url;
 }
 

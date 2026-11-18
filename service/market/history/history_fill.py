@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -23,21 +22,23 @@ from zoneinfo import ZoneInfo
 
 from service.market.shared.market_trade_semantics import shioaji_tick_side
 from service.market.shared.native_values import price_to_units
+from service.platform.native_binaries import run_job
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 FUT_DAY_FROM = 6 * 60  # a NIGHT partition's minutes before 06:00 are the next calendar day's (event.rs)
 FETCH_CHUNK = 8
+# One session's partitions scanned for holes: well under a minute even for the whole STK session.
+GAP_REPORT_TIMEOUT_SECONDS = 600
 
 
 def gap_report(binary: Path, historical_root: str | Path, market: str, trading_date: str, session: str,
                expected_codes: Iterable[str] = ()) -> dict[str, Any]:
-    command = [str(binary), "--gap-report", "--historical-root", str(historical_root), "--market", market,
-               "--trading-date", trading_date, "--session", session]
+    args = ["--gap-report", "--historical-root", str(historical_root), "--market", market,
+            "--trading-date", trading_date, "--session", session]
     expected = sorted({str(c).strip().upper() for c in expected_codes if str(c).strip()})
     if expected:
-        command += ["--expected-codes", ",".join(expected)]
-    out = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", check=True)
-    return json.loads(out.stdout.strip().splitlines()[-1])
+        args += ["--expected-codes", ",".join(expected)]
+    return run_job(args, GAP_REPORT_TIMEOUT_SECONDS, binary=binary)
 
 
 def _has_partitions(historical_root: str | Path, market: str, trading_date: str, session: str) -> bool:

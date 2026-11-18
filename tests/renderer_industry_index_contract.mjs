@@ -204,8 +204,9 @@ function fakeApi({ hold = {} } = {}) {
 {
   const api = fakeApi();
   const store = createIndustryIndexStore({ fetchJson: api.fetchJson, storage: memoryStorage() });
-  assert.match(listHtml({ items: [], error: "" }, {}), /讀取產業指數清單中/);
-  assert.match(listHtml({ items: [], error: "HTTP 500" }, {}), /讀取產業指數清單失敗：HTTP 500/);
+  // The shared load state (core/load_state_view.js), as every page that reads on demand shows it.
+  assert.match(listHtml({ items: [], error: "" }, {}), /class="load-state" data-state="loading"[^>]*>載入中…/);
+  assert.match(listHtml({ items: [], error: "HTTP 500" }, {}), /data-state="failed"[^>]*>讀取失敗：HTTP 500/);
   assert.match(currentLineHtml({ status: "unmapped", stock: "0050" }), /0050<\/b> 無對應產業指數/);
 
   const host = liveDocument.createElement("div");

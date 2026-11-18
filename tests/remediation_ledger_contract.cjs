@@ -59,7 +59,8 @@ function newLedger(root, extra = {}) {
     const ledger = newLedger(root, { pipePath: uniquePipe(root, "main") });
     await ledger.start();
     assert.equal(ledger.stats.listening, true);
-    const client = createRemediationClient({ process: proc("electron_main"), pipePath: ledger.pipePath, logger: quiet });
+    // Electron main delivers over Health's control API, which hands each batch to admitBatch().
+    const client = createRemediationClient({ process: proc("electron_main"), post: (batch, ms) => ledger.admitBatch(batch, ms), logger: quiet });
     const op = client.begin({ component: "supervisor", mechanismId: "health.service_restart", triggerReason: "service_not_alive",
       identity: {}, detail: { service_id: "app_api" } });
     assert.equal(ledger.status().active_operations.length, 0, "not delivered yet");
@@ -91,7 +92,9 @@ function newLedger(root, extra = {}) {
 
     // ---- the client's loss marker: the writer is unreachable, its queue overflows, delivery resumes
     const lateLedger = newLedger(path.join(root, "late"), { pipePath: uniquePipe(root, "late") });
-    const late = createRemediationClient({ process: proc("electron_main"), pipePath: lateLedger.pipePath, logger: quiet });
+    let lateUp = false;
+    const late = createRemediationClient({ process: proc("electron_main"), logger: quiet,
+      post: (batch, ms) => (lateUp ? lateLedger.admitBatch(batch, ms) : Promise.reject(new Error("Health is not running"))) });
     const limit = contract.loadRegistry().limits.client_queue_events;
     for (let i = 0; i <= limit + 1; i += 1) {
       late.emit({ component: "t", mechanismId: "market.wal_tail_repair", triggerReason: "unfinished_append", identity: {}, outcome: "succeeded" });
@@ -99,6 +102,7 @@ function newLedger(root, extra = {}) {
     assert.equal(late.status().dropped_total, 2);
     assert.equal(late.status().unreported_loss, 2);
     await lateLedger.start();
+    lateUp = true;
     await until(async () => (await late.flush(300)) && late.status().queued === 0, 20000, "late delivery");
     await lateLedger.flush();
     const lateEvents = events(lateLedger.sessionDir);
@@ -111,7 +115,7 @@ function newLedger(root, extra = {}) {
     await lateLedger.close("test");
 
     // An unconfigured client counts what it cannot record.
-    const unconfigured = createRemediationClient({ process: proc("t"), pipePath: "", logger: quiet });
+    const unconfigured = createRemediationClient({ process: proc("t"), logger: quiet });
     unconfigured.emit({ component: "t", mechanismId: "market.wal_tail_repair", triggerReason: "unfinished_append", identity: {}, outcome: "succeeded" });
     assert.equal(unconfigured.status().configured, false);
     assert.equal(unconfigured.status().unreported_loss, 1);

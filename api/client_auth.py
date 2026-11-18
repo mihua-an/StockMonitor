@@ -3,7 +3,7 @@ import os
 
 from starlette.responses import JSONResponse
 
-from service.platform.daemon_auth import bearer_matches, token_digest
+from service.platform.daemon_auth import bearer_matches, host_is_direct, token_digest
 
 # Health gives a business API only the SHA-256 of the client token: the API verifies Electron's requests
 # but cannot itself present the credential. A process started by hand may still be given the raw token.
@@ -22,6 +22,24 @@ PUBLIC_HTTP_PATHS = frozenset({
     "/api/diagnostics/readiness",
     "/api/diagnostics/heartbeat",
 })
+
+
+class DirectHostMiddleware:
+    """DNS rebinding: a request whose Host names anything but an IP literal or localhost is refused before every
+    other layer -- the public probes, the service-management paths and CORS included."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        kind = scope.get("type")
+        if kind in {"http", "websocket"} and not host_is_direct(scope):
+            if kind == "websocket":
+                await send({"type": "websocket.close", "code": 4403})
+            else:
+                await JSONResponse({"ok": False, "error": "APP_HOST_REJECTED"}, status_code=421)(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
 
 
 class ClientAuthenticationMiddleware:

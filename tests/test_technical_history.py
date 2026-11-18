@@ -12,6 +12,7 @@ import pytest
 
 from api.routes.history_routes import HistoryRouteDependencies, create_history_router
 from config import kbar_retention_settings as krs
+from config import market_holidays
 from config.config_revisions import ConfigRevisionStore
 from service.market.history.history_replay_service import HistoryReplayService
 from service.market.history.technical_history import TechnicalHistoryReader
@@ -53,10 +54,9 @@ def test_a_day_goes_out_at_the_timeframe_it_is_held_with_the_session_minutes(rea
     write_kbars(tmp_path / "kbars", "2330", {"DAY": {"daily": {}, "intraday": {
         "2026-11-05": {"timeframe": 1, "bars": [ROW]}, "2026-08-03": {"timeframe": 5, "bars": [ROW]}}}})
     page = minute_days(reader, "2026-11-06")
-    assert page["segments"] == STOCK_SEGMENTS
     assert page["next_before"] is None
-    assert page["days"] == [{"trading_date": "2026-08-03", "source": "kbar_store", "timeframe": 5, "bars": [ROW]},
-                            {"trading_date": "2026-11-05", "source": "kbar_store", "timeframe": 1, "bars": [ROW]}]
+    assert page["days"] == [{"trading_date": "2026-08-03", "source": "kbar_store", "timeframe": 5, "bars": [ROW], "segments": STOCK_SEGMENTS},
+                            {"trading_date": "2026-11-05", "source": "kbar_store", "timeframe": 1, "bars": [ROW], "segments": STOCK_SEGMENTS}]
 
 
 def test_a_page_stops_before_the_date_and_names_the_next_page(reader, tmp_path):
@@ -80,8 +80,21 @@ def test_each_session_of_a_future_is_its_own_chart_with_its_own_minutes(reader, 
                                               "NIGHT": {"daily": {"2026-11-05": [2.0, 2.0, 2.0, 2.0, 2.0]}, "intraday": {"2026-11-05": {"timeframe": 1, "bars": [[900, 2.0, 2.0, 2.0, 2.0, 1.0]]}}}}, market="FUT")
     assert daily_bars(reader, code="TXFR1", market="FUT", session="NIGHT")["bars"][0]["open"] == 2.0
     night = minute_days(reader, code="TXFR1", market="FUT", session="NIGHT")
-    assert night["segments"] == [[[900, 1740]]] and night["days"][0]["bars"][0][0] == 900
+    assert night["days"][0]["segments"] == [[[900, 1740]]] and night["days"][0]["bars"][0][0] == 900
     assert minute_days(reader, code="TXFR1", market="FUT", session="DAY")["days"] == []
+
+
+def test_a_us_half_day_goes_out_with_its_own_shorter_sessions(reader, tmp_path, monkeypatch):
+    """2026-11-27 closes at 13:00 New York (config/market_holidays.json NYSE half): its sessions are the half-day
+    intervals of config/trading_sessions.json, as Rust B folds that day; the day before is a whole day."""
+    monkeypatch.setattr(market_holidays, "us_calendar_path", lambda: tmp_path / "no_opend_calendar.json")
+    bars = {"timeframe": 1, "bars": [[600, 1.0, 1.0, 1.0, 1.0, 1.0]]}
+    write_kbars(tmp_path / "kbars", "US.TSM", {"FULL": {"daily": {}, "intraday": {"2026-11-25": bars, "2026-11-27": bars}}},
+                source="futu", market="US")
+    days = {day["trading_date"]: day["segments"] for day in minute_days(reader, code="US.TSM", market="US", session="FULL")["days"]}
+    regular, post = days["2026-11-27"][2], days["2026-11-27"][3]
+    assert (regular, post) == ([[570, 779]], [[780, 1019]])
+    assert (days["2026-11-25"][2], days["2026-11-25"][3]) == ([[570, 959]], [[960, 1199]])
 
 
 def test_a_futu_product_reads_its_own_source(reader, tmp_path):

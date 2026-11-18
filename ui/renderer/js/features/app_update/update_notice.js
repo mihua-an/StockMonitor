@@ -13,7 +13,7 @@ function render(dock, state) {
     button = dock.ownerDocument.createElement("button");
     button.id = BUTTON_ID;
     button.type = "button";
-    button.className = "dock-update-btn";
+    button.className = "dock-action-btn dock-update-btn";
     button.addEventListener("click", () => {
       window.desktopAPI.openAppUpdate().then((result) => {
         if (!result?.ok) console.warn(`[APP UPDATE] the release page was not opened: ${result?.error || "no answer"}`);

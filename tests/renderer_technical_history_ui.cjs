@@ -46,7 +46,7 @@ async function scenario(base) {
     const older = dates.filter((date) => date < before);
     if (resolution === "minute") {
       const page = older.slice(-5);
-      return { ok: true, segments: [[[540, 810]]], days: page.map((date) => ({ trading_date: date, source: "kbar_store", timeframe: 1, bars: rows.get(date) })),
+      return { ok: true, days: page.map((date) => ({ trading_date: date, source: "kbar_store", timeframe: 1, segments: [[[540, 810]]], bars: rows.get(date) })),
         next_before: older.length > 5 ? page[0] : null };
     }
     return { ok: true, bars: older.map((date) => {

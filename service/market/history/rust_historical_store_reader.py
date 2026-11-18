@@ -22,6 +22,7 @@ from typing import Any, Iterator
 from service.platform import project_root as process_paths
 import logging
 from service.platform.failure_record import record_failure
+from service.market.shared.session_identity_contract import iso_trading_date
 
 _failure_log = logging.getLogger(__name__)
 
@@ -34,7 +35,6 @@ def default_historical_root() -> Path:
 
 
 _SEGMENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,31}")
-_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 
 def partition_dir(
@@ -45,9 +45,11 @@ def partition_dir(
     string, and `..` / separators / absolute paths would reach files outside the store."""
     parts = {"source": str(source).strip().lower(), "market": str(market).strip().upper(),
              "session": str(session).strip().upper(), "logical_code": str(logical_code).strip().upper()}
-    date = str(trading_date)[:10]
     bad = [name for name, value in parts.items() if not _SEGMENT.fullmatch(value) or ".." in value]
-    if not _DATE.fullmatch(date):
+    try:
+        date = iso_trading_date(trading_date)
+    except ValueError:  # not an error: one bad part among others; the identity is refused below with all of them
+        date = ""
         bad.append("trading_date")
     if bad:
         raise ValueError(f"invalid historical identity: {', '.join(bad)}")

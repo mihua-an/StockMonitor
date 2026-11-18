@@ -60,6 +60,11 @@ def _regular_stock_lane(streams: dict[str, Any], code: str, quote_type: str) -> 
     return rows[0] if rows else {}
 
 
+def _file_name(key: str) -> str:
+    """A session key as a file name: letters, digits and -_. kept, anything else (":" of a stream id) as "_"."""
+    return "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in key)
+
+
 class ObservedMarketClock:
     """The market's own session clock, taken from the events it actually produced.
 
@@ -374,6 +379,19 @@ class SessionOrchestrator:
         except Exception as exc:
             record_failure(_failure_log, "event-driven session reconcile", exc)
 
+    def _txf_contract_for(self, trading_date: str) -> str:
+        """TXFR1's contract for the FUT session of `trading_date`: the broker moves its subscription to that date's
+        front month first (the night after an expiry day trades the next month), so the session is named by the
+        contract it actually streams."""
+        app = self._app()
+        if app is None:
+            return ""
+        try:
+            return str(app.broker_service.txf_contract_for(trading_date) or "").strip().upper()
+        except Exception as exc:
+            record_failure(_failure_log, f"resolving TXFR1's contract for {trading_date}", exc)
+            return ""
+
     def _actual_contract(self) -> str:
         app = self._app()
         if app is None:
@@ -459,11 +477,8 @@ class SessionOrchestrator:
 
     def _write_finalization_manifest(self, payload: dict[str, Any]) -> None:
         payload.setdefault("close_operation_id", self.close_operation_id(str(payload.get("session_key") or "session")))
-        safe = "".join(
-            ch if ch.isalnum() or ch in "-_." else "_"
-            for ch in str(payload.get("session_key") or "session")
-        )
-        write_json_atomic(self.manifest_dir / f"{safe}.json", payload, durable=True, indent=2)
+        write_json_atomic(self.manifest_dir / f"{_file_name(str(payload.get('session_key') or 'session'))}.json", payload,
+                          durable=True, indent=2)
 
     # -- persisted lifecycle: open -> expired -> sealed -> materialization -------------------------
 
@@ -858,14 +873,8 @@ class SessionOrchestrator:
                 release(markets, str(key.get("trading_date"))[:10], str(key.get("session") or "DAY").upper())
 
     def _intent_path(self, active: ActiveMarketSession) -> Path:
-        safe = "".join(
-            ch if ch.isalnum() or ch in "-_." else "_"
-            for ch in (
-                active.stream_id
-                or f"{active.market}:{active.trading_date}:{active.session}:{active.actual_contract}"
-            )
-        )
-        return self._intent_dir / f"{safe}.json"
+        key = active.stream_id or f"{active.market}:{active.trading_date}:{active.session}:{active.actual_contract}"
+        return self._intent_dir / f"{_file_name(key)}.json"
 
     def _write_session_intent(self, active: ActiveMarketSession) -> None:
         """Persist session ownership so restart cannot lose close finalization."""
@@ -1439,7 +1448,6 @@ class SessionOrchestrator:
         stamp = now or self.now_provider()
         self._refresh_market_clock()
         resolver = self._resolver()
-        actual_contract = self._actual_contract()
         transitions: list[dict[str, Any]] = []
         expected_activity: dict[str, bool] = {}
         expected_lanes: dict[str, float] = {}
@@ -1478,7 +1486,7 @@ class SessionOrchestrator:
             with self._lock:
                 previous = self._active.get(market)
                 self._last_resolution[market] = resolution.as_dict()
-            contract = actual_contract if market == "FUT" else ""
+            contract = self._txf_contract_for(resolution.trading_date) if market == "FUT" else ""
             # The broker names TXFR1's contract only once it is logged in. A contract not known yet is not another
             # contract: the session that already owns one keeps it. Read as "" at a restart (bound before the
             # login), it sealed the live night session the restart had just restored and opened an empty-contract

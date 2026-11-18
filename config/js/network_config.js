@@ -14,18 +14,20 @@ const EFFECTIVE_SCHEMA = "stock-monitor-effective-network-v1";
 const MANIFEST_SCHEMA = "stock-monitor-network-manifest-v2";
 const OVERRIDE_ENV = "STOCK_MONITOR_PORT_OVERRIDES";
 const REVISION_ENV = "STOCK_MONITOR_NETWORK_REVISION";
-const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
+// Every formal service listens on the IPv4 loopback; the manifest names it, and no other value is valid.
+const LOOPBACK_HOST = "127.0.0.1";
+// The names a listener outside the formal services (the web gateway) may give for "this machine only".
+const LOOPBACK_NAMES = new Set([LOOPBACK_HOST, "::1", "localhost"]);
+
+function isLoopbackHost(host) {
+  return LOOPBACK_NAMES.has(String(host ?? "").trim().toLowerCase().replace(/^\[|\]$/g, ""));
+}
 // A service a renderer may address (manifest "renderer_client": true) must speak one of these.
 const RENDERER_PROTOCOLS = ["http", "ws", "http+ws"];
 
-function manifestPath(env = process.env) {
-  const resources = process.resourcesPath || String(env.STOCK_MONITOR_RESOURCES_PATH || "").trim();
-  if (resources) {
-    const packaged = path.join(resources, "app-runtime", "config", "network_manifest.json");
-    if (fs.existsSync(packaged)) return packaged;
-  }
-  return path.resolve(__dirname, "..", "network_manifest.json");
-}
+// The install manifest next to this module: config/js/../network_manifest.json in a checkout and inside the
+// packaged app (build.files carries config/*.json with config/js), one rule for every caller.
+const MANIFEST_FILE = path.resolve(__dirname, "..", "network_manifest.json");
 
 const KINDS = ["api", "runtime", "controller", "provider", "external", "worker"];
 const SERVICE_ID = /^[a-z][a-z0-9_]{0,40}$/;
@@ -37,7 +39,7 @@ function manifestProblems(manifest) {
   if (!isObject(manifest)) return ["manifest must be an object"];
   const problems = [];
   if (manifest.schema !== MANIFEST_SCHEMA) problems.push(`schema must be ${MANIFEST_SCHEMA}`);
-  if (!LOOPBACK_HOSTS.has(manifest.loopback_host)) problems.push("loopback_host must be one of 127.0.0.1, localhost, ::1");
+  if (manifest.loopback_host !== LOOPBACK_HOST) problems.push(`loopback_host must be ${LOOPBACK_HOST}`);
   let low = 1024, high = 65535, reserved = new Set();
   const policy = manifest.port_policy;
   if (!isObject(policy)) problems.push("port_policy must be an object");
@@ -154,7 +156,7 @@ function topology(manifest) {
 }
 
 const cache = new Map();
-function loadManifest(file = manifestPath()) {
+function loadManifest(file = MANIFEST_FILE) {
   if (!cache.has(file)) {
     const manifest = JSON.parse(fs.readFileSync(file, "utf8"));
     const problems = manifestProblems(manifest);
@@ -336,7 +338,7 @@ function rendererProjection(effective) {
   const out = {};
   for (const [sid, entry] of Object.entries(effective.services)) {
     if (entry.renderer_client) {
-      out[sid] = { url: `${entry.protocol === "ws" ? "ws" : "http"}://${entry.host}:${entry.port}`, port: entry.port };
+      out[sid] = { url: baseUrl(effective, sid), port: entry.port };
     }
   }
   return { schema: "stock-monitor-renderer-endpoints-v1", revision: effective.revision ?? null, services: out };
@@ -347,7 +349,7 @@ function connectSources(effective) {
 }
 
 // Resolve from the ACTIVE network revision on disk -- what a starting process must use.
-function effectiveFromDisk({ env = process.env, configRoot, manifestFile = manifestPath(env) } = {}) {
+function effectiveFromDisk({ env = process.env, configRoot, manifestFile = MANIFEST_FILE } = {}) {
   const { ConfigRevisionStore } = require("./config_revisions.js");
   const { resolveVarPaths } = require("./var_paths.js");
   const root = configRoot || resolveVarPaths({ env }).config;
@@ -362,7 +364,7 @@ function effectiveFromDisk({ env = process.env, configRoot, manifestFile = manif
 }
 
 module.exports = {
-  EFFECTIVE_SCHEMA, MANIFEST_SCHEMA, OVERRIDE_ENV, REVISION_ENV, RENDERER_PROTOCOLS, rendererServices,
-  manifestPath, manifestProblems, loadManifest, services, topology, validateValues, parseEnvOverrides, resolve, endpoint, baseUrl,
+  EFFECTIVE_SCHEMA, MANIFEST_SCHEMA, OVERRIDE_ENV, REVISION_ENV, LOOPBACK_HOST, isLoopbackHost, RENDERER_PROTOCOLS, rendererServices,
+  manifestProblems, loadManifest, services, topology, validateValues, parseEnvOverrides, resolve, endpoint, baseUrl,
   listeners, rendererProjection, connectSources, effectiveFromDisk,
 };

@@ -1,6 +1,7 @@
 import { apiGet } from "../../core/api.js";
 import { apiUrl } from "../../core/state.js";
 import { startSseStream } from "../../core/sse_stream.js";
+import { parseSseEvents } from "../../core/paper_orders_store.js";
 import { canonicalMoomooCode } from "../../market_data/moomoo_symbol.js";
 
 // The product lists' holdings pages: 實際庫存 (the actual ledger) and 模擬庫存 (the paper wallet), TW and US each.
@@ -9,27 +10,6 @@ import { canonicalMoomooCode } from "../../market_data/moomoo_symbol.js";
 function isUsMarket(value) {
   const market = String(value || "").trim().toLowerCase();
   return market === "美股" || market === "us" || market === "usa";
-}
-
-export function parsePositionsChangeEvents(buffer) {
-  const events = [];
-  let rest = String(buffer || "").replace(/\r\n/g, "\n");
-  let boundary = rest.indexOf("\n\n");
-  while (boundary >= 0) {
-    const block = rest.slice(0, boundary);
-    rest = rest.slice(boundary + 2);
-    let name = "message";
-    const data = [];
-    for (const line of block.split("\n")) {
-      if (line.startsWith("event:")) name = line.slice(6).trim();
-      else if (line.startsWith("data:")) data.push(line.slice(5).trimStart());
-    }
-    if (name === "positions.changed" && data.length) {
-      try { events.push(JSON.parse(data.join("\n"))); } catch (error) { console.warn("[holdings: decoding a positions.changed frame] failed", error); }
-    }
-    boundary = rest.indexOf("\n\n");
-  }
-  return { events, rest };
 }
 
 // 持倉變動: app_api pushes a ledger's positions revision over Server-Sent Events -- once on connect, then on every
@@ -50,7 +30,7 @@ export function startPositionsChangeStream({ path = "/api/actual-account/positio
     fetchImpl, wait, ...(record ? { record } : {}),
     lastIdentity: () => ({ revision: lastRevision }),
     onBlock: (buffer) => {
-      const parsed = parsePositionsChangeEvents(buffer);
+      const parsed = parseSseEvents(buffer, "positions.changed");
       for (const event of parsed.events) {
         lastRevision = event?.revision ?? lastRevision;
         onRevision?.(event?.revision);

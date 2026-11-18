@@ -8,7 +8,7 @@ starts, waits on or predicts a run: Health starts it when the session owner publ
 """
 from __future__ import annotations
 
-from datetime import date, datetime, time
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Callable
 import logging
@@ -19,8 +19,6 @@ from service.platform.failure_record import record_failure
 _failure_log = logging.getLogger(__name__)
 
 SOURCE = "shioaji"
-SESSION_OPEN = time(9, 0)
-SESSION_CLOSE = time(13, 30)
 
 
 def date_data(historical_root: Path, day: str) -> dict[str, Any]:
@@ -42,8 +40,11 @@ def date_data(historical_root: Path, day: str) -> dict[str, Any]:
 
 def training_today(now: datetime, *, schedule: dict[str, Any], window_days: int, state: dict[str, Any], job: dict[str, Any] | None,
                    running: bool, available: list[str], window: tuple[list[str], list[str]], materialized: tuple[bool, str],
-                   is_trading: Callable[[date], bool], data_of: Callable[[str], dict[str, Any]]) -> dict[str, Any]:
-    """`now` is Taipei time. See the module doc for where each input comes from."""
+                   is_trading: Callable[[date], bool], data_of: Callable[[str], dict[str, Any]],
+                   session_span: tuple[int, int]) -> dict[str, Any]:
+    """`now` is Taipei time. `session_span`: the stock day session's first and last trading minute of today
+    (config/trading_sessions.json, inclusive minute starts; the caller reads it, service.analysis does not import the
+    market layer). See the module doc for where each other input comes from."""
     today = now.date()
     today_text = today.isoformat()
     trading = bool(is_trading(today))
@@ -63,9 +64,9 @@ def training_today(now: datetime, *, schedule: dict[str, Any], window_days: int,
         phase = "HOLIDAY"
     elif trained_today:
         phase = "TRAINED"
-    elif now.time() < SESSION_OPEN:
+    elif now.hour * 60 + now.minute < session_span[0]:
         phase = "BEFORE_OPEN"
-    elif now.time() < SESSION_CLOSE:
+    elif now.hour * 60 + now.minute <= session_span[1]:
         phase = "IN_SESSION"
     elif retry_at is not None and ready:
         # Health retries only a day the session owner published materialized (training_job_runner.js), so a due

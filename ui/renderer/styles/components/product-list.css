@@ -163,10 +163,6 @@
   background: var(--app-scrollbar-thumb-hover);
 }
 
-.product-list-table tbody tr.active {
-  box-shadow: inset 2px 0 0 var(--blue-400);
-}
-
 /* The column settings panel (core/components/column_settings_editor.js), shared by every table with a ⚙. */
 .product-list-column-settings-overlay {
   position: fixed;
@@ -466,10 +462,6 @@
 .product-list-table tbody td {
   height: var(--row-height-watchlist);
   box-sizing: border-box;
-}
-
-.product-list-table tbody tr.product-list-selected-row td {
-  outline-color: var(--blue-400-a95);
 }
 
 /* The selected row's background, on every cell but a limit price: that cell keeps base.css's red / green box. */

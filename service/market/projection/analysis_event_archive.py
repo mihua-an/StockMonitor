@@ -8,34 +8,20 @@ listing it twice. Nothing here writes.
 from __future__ import annotations
 
 import json
-import re
 import threading
 import time
 from collections import OrderedDict
-from datetime import date
 from pathlib import Path
 from typing import Any
 import logging
 from service.platform.failure_record import record_failure
+from service.market.shared.session_identity_contract import iso_trading_date
 
 _failure_log = logging.getLogger(__name__)
 
 # A last line without its newline in a file untouched this long is a write that never finished, not one in progress.
 TORN_LINE_AFTER_S = 10.0
 
-_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
-
-
-def _valid_trading_date(text: str) -> bool:
-    """A real calendar date written YYYY-MM-DD, nothing else: the value becomes a file name
-    (`?date=../x` would read a sibling .jsonl outside the events directory)."""
-    if not _DATE.fullmatch(text):
-        return False
-    try:
-        date.fromisoformat(text)
-    except ValueError:  # not an error: validator: text that is not an ISO date is answered False
-        return False
-    return True
 
 
 def default_root() -> Path:
@@ -108,10 +94,9 @@ class AnalysisEventArchive:
         return events, damaged
 
     def read(self, date_text: str, limit: int = 500) -> dict[str, Any]:
-        date_text = str(date_text or "").strip()
-        if not _valid_trading_date(date_text):
-            return {"ok": False, "error": "INVALID_DATE", "date": None, "events": [], "count": 0,
-                    "authority": "analysis_runtime", "source": "analysis_event_archive"}
+        """One trading day's events. ValueError for a value that is not a trading date: it becomes a file name
+        (`?date=../x` would read a sibling .jsonl outside the events directory)."""
+        date_text = iso_trading_date(str(date_text or "").strip())
         root = self.root.resolve()
         path = (root / f"{date_text}.jsonl").resolve()
         if path.parent != root:

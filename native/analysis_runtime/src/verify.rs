@@ -9,13 +9,13 @@
 //! is reported as the partition's problem; a reader treats it as a gap, never as complete data.
 
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::Path;
 
 use market_runtime::event::MarketEvent;
 use serde_json::{json, Value};
 
-use market_runtime::replay::Fnv1a64;
+use market_runtime::replay::read_lines;
 
 /// The verdict on one partition directory: `problem` is "" when intact.
 pub fn partition(dir: &Path) -> Value {
@@ -31,26 +31,18 @@ pub fn partition(dir: &Path) -> Value {
         Ok(file) => file,
         Err(error) => return verdict(format!("events.jsonl of {name} is unreadable: {error}"), 0, 0),
     };
-    let mut reader = BufReader::with_capacity(1 << 20, file);
-    let mut line = Vec::new();
-    let (mut hash, mut lines, mut bad) = (Fnv1a64::default(), 0u64, 0u64);
-    loop {
-        line.clear();
-        match reader.read_until(b'\n', &mut line) {
-            Ok(0) => break,
-            Ok(_) => {}
-            Err(error) => return verdict(format!("events.jsonl of {name} is unreadable: {error}"), lines, bad),
-        }
-        hash.update(&line);
-        if line.iter().all(u8::is_ascii_whitespace) {
-            continue;
-        }
-        lines += 1;
-        if MarketEvent::decode_slice(&line).is_err() {
+    let (mut read, mut bad) = (0u64, 0u64);
+    let measured = read_lines(BufReader::with_capacity(1 << 20, file), |error| error, |_, line| {
+        read += 1;
+        if MarketEvent::decode_slice(line).is_err() {
             bad += 1;
         }
-    }
-    let actual = hash.hex();
+        Ok(())
+    });
+    let (lines, actual) = match measured {
+        Ok(measured) => measured,
+        Err(error) => return verdict(format!("events.jsonl of {name} is unreadable: {error}"), read, bad),
+    };
     let problem = match (manifest.get("content_hash_fnv1a64").and_then(Value::as_str), manifest.get("event_count").and_then(Value::as_u64)) {
         _ if bad > 0 => format!("{bad} undecodable lines in events.jsonl of {name}"),
         (None, _) => format!("the manifest of {name} names no content hash"),

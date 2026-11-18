@@ -1,4 +1,5 @@
 import { escapeHtml } from "../../core/utility.js";
+import { emptyStateRowHtml } from "../../core/load_state_view.js";
 import { columnSettingsButtonHtml } from "../../core/components/column_settings_editor.js";
 import { buildCellRow, patchCellRow } from "../../core/cell_patch.js";
 import { enableCompleteRowDataGridScroll } from "../../core/data_grid.js";
@@ -276,7 +277,7 @@ export function productListShellMarkup({ ariaLabel = "商品頁", provider = "sh
   <div class="table-wrap-plain product-list-table-wrap">
     <table data-role="product-list-table" data-provider="${source}" class="product-list-table lined-rows">
       <thead><tr></tr></thead>
-      <tbody data-role="product-list-body" data-provider="${source}"><tr><td class="empty">尚無資料</td></tr></tbody>
+      <tbody data-role="product-list-body" data-provider="${source}">${emptyStateRowHtml(1, "尚無資料")}</tbody>
     </table>
   </div>
   <div data-role="product-list-cards" class="product-list-cards" role="listbox" aria-label="${escapeHtml(ariaLabel)}"></div></div>`;

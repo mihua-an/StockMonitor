@@ -9,12 +9,13 @@
 // it reads the inference config model_api writes into <data dir>/inference and publishes its signals
 // to market_runtime, so stopping the FastAPI processes never stops model signals.
 
-const { TRIGGERS, killChildAndRecord, waitChildExit } = require("../../service/platform/js/forced_termination");
+const { TRIGGERS, killChildAndRecord, waitChildExit, childExited } = require("../../service/platform/js/forced_termination");
 const { createLogSink } = require("./log_sink");
-const { dataChild } = require("../../config/js/system_contract.js");
+const { dataChildPath } = require("../../config/js/system_contract.js");
 const { spawnedStorageUser } = require("../startup/storage_users");
 const { spawn } = require("child_process");
 const { childEnv } = require("../../service/platform/js/child_env");
+const { baseUrl } = require("../../config/js/network_config");
 const readline = require("readline");
 // Cargo names the release executable with the platform suffix: analysis_runtime.exe on Windows, no suffix on Unix.
 const EXE_SUFFIX = process.platform === "win32" ? ".exe" : "";
@@ -69,11 +70,10 @@ class AnalysisRuntimeHost {
   }
 
   runtimeUrl() {
-    const entry = this.effective.services.market_runtime;
-    return `ws://${entry.host}:${entry.port}/live`;
+    return `${baseUrl(this.effective, "market_runtime")}/live`;
   }
 
-  running() { return Boolean(this.child && this.child.exitCode === null && this.child.signalCode === null); }
+  running() { return Boolean(this.child && !childExited(this.child)); }
 
   wedged(now = Date.now()) {
     if (!this.running() || !this.hello || this.helloAt === null) return false;
@@ -121,7 +121,7 @@ class AnalysisRuntimeHost {
   async ensure() {
     // A child that was ended but never proven gone holds the same data root: no replacement starts beside it.
     if (this.unexited) {
-      if (this.unexited.exitCode !== null || this.unexited.signalCode) this.unexited = null;
+      if (childExited(this.unexited)) this.unexited = null;
       else throw new Error(`analysis_runtime pid ${this.unexited.pid} was ended but has not exited; no replacement is started beside it`);
     }
     const replacement = this.wedged() ? await this.replaceWedged() : null;
@@ -141,7 +141,7 @@ class AnalysisRuntimeHost {
   async spawnAndWait() {
     const binary = this.binaryPath();
     if (!this.fs.existsSync(binary)) throw new Error(`analysis_runtime binary missing: ${binary}`);
-    const dataDir = this.path.join(this.dataRoot, dataChild("analysis_runtime"));
+    const dataDir = dataChildPath(this.dataRoot, "analysis_runtime");
     this.fs.mkdirSync(dataDir, { recursive: true });
     this.fs.mkdirSync(this.logDir, { recursive: true });
     const logFile = this.path.join(this.logDir, "analysis_runtime.log");
@@ -157,18 +157,18 @@ class AnalysisRuntimeHost {
     // 量變 compares a Shioaji day with its previous TWSE session: the same holiday file as Market Runtime.
     args.push("--market-holidays", this.path.join(this.projectRoot, "config", "market_holidays.json"));
     // ...with the closures Market Runtime observed (a typhoon day), read again whenever A rewrites the file.
-    args.push("--market-sessions", this.path.join(this.dataRoot, ...dataChild("market_sessions").split("/")));
+    args.push("--market-sessions", dataChildPath(this.dataRoot, "market_sessions"));
     // ...and the US half days Market Runtime splits by: OpenD's calendar the Futu provider writes, over the NYSE days.
-    args.push("--us-trading-calendar", this.path.join(this.dataRoot, ...dataChild("us_trading_calendar").split("/")));
+    args.push("--us-trading-calendar", dataChildPath(this.dataRoot, "us_trading_calendar"));
     // Market Runtime's void-event list (native/market_runtime/src/voided.rs): the durable events B's fold leaves out.
-    args.push("--voided-events", this.path.join(this.dataRoot, ...dataChild("voided_events").split("/")));
+    args.push("--voided-events", dataChildPath(this.dataRoot, "voided_events"));
     // 模擬下單: the orders paper_account_api writes and the matching results B writes (docs/system-architecture/11).
-    args.push("--paper-dir", this.path.join(this.dataRoot, ...dataChild("paper_matching").split("/")));
+    args.push("--paper-dir", dataChildPath(this.dataRoot, "paper_matching"));
     // B manages the historical store (native/market_runtime/src/historical_store.rs): pruned at its start and at each
     // rollover against A's cutoffs, the storage_retention revision and the codes the account ledgers traded.
     args.push("--historical-dir", this.historicalDir(),
-      "--rollover-cutoffs", this.path.join(this.dataRoot, ...dataChild("rollover_cutoffs").split("/")),
-      "--traded-codes-dir", this.path.join(this.dataRoot, ...dataChild("traded_codes").split("/")));
+      "--rollover-cutoffs", dataChildPath(this.dataRoot, "rollover_cutoffs"),
+      "--traded-codes-dir", dataChildPath(this.dataRoot, "traded_codes"));
     // The model features' day context: the previous sessions' daily summaries and each stock's industry index.
     if (this.dailySummaryDir) args.push("--daily-summary-dir", typeof this.dailySummaryDir === "function" ? this.dailySummaryDir() : this.dailySummaryDir);
     if (this.securityMaster) {
@@ -212,7 +212,7 @@ class AnalysisRuntimeHost {
     let readyDeadline = null;
     for (;;) {
       if (child.spawnError) throw new Error(`analysis_runtime could not be started: ${child.spawnError.message || child.spawnError}`);
-      if (child.exitCode !== null) throw new Error(`analysis_runtime exited with code ${child.exitCode} during start (see ${logFile})`);
+      if (childExited(child)) throw new Error(`analysis_runtime exited with ${child.signalCode || `code ${child.exitCode}`} during start (see ${logFile})`);
       if (this.ready) return { ok: true, pid: child.pid, instance_id: this.hello.instance_id, restored_cursor: this.hello.restored_cursor };
       if (this.hello && readyDeadline === null) readyDeadline = Date.now() + this.readyTimeoutMs;
       const missing = readyDeadline === null ? (Date.now() >= deadline ? "hello" : null) : (Date.now() >= readyDeadline ? "ready" : null);

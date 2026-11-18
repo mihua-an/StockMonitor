@@ -362,7 +362,8 @@ def test_the_security_master_refresh_stops_before_logout():
     release.set()
     assert coordinator.shutdown(timeout=5)["ok"] is True
     later = coordinator.schedule_daily(now=datetime(2026, 10, 10, 8, 0), connected=True, api=object())
-    assert later == {"scheduled": False, "reason": "shutting_down", "day": "2026-10-10"}
+    # The day is the futures trading date next to open (maintenance.contract_day): 10-10 is a holiday, then a weekend.
+    assert later == {"scheduled": False, "reason": "shutting_down", "day": "2026-10-12"}
 
 
 def test_the_session_owner_is_bound_before_the_shioaji_service_starts(monkeypatch):

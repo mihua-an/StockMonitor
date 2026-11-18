@@ -3,6 +3,7 @@
 const { spawn } = require("child_process");
 const pathModule = require("path");
 const { resolveVarPaths } = require("../../config/js/var_paths.js");
+const { writeJsonAtomic } = require("../../service/platform/js/atomic_files.js");
 const { createQuitWatchdog } = require("./windows_quit_watchdog.js");
 
 // A forced quit leaves a marker the next start collects into the remediation ledger: the process
@@ -168,10 +169,11 @@ class ShutdownController {
   writeForcedQuitMarker(kind, graceMs) {
     try {
       const dir = forcedQuitMarkerDir(this.node.processRef.env);
-      this.node.fs.mkdirSync(dir, { recursive: true });
       const pid = Number(this.node.processRef.pid);
-      this.node.fs.writeFileSync(this.node.path.join(dir, `${kind}-${pid}.json`), JSON.stringify({
-        schema: "stock-monitor-forced-quit-v1", kind, pid, grace_ms: graceMs, at: new Date().toISOString() }));
+      // Atomic: the next start reads it whole or not at all, never a marker cut short by the forced quit itself.
+      writeJsonAtomic(this.node.path.join(dir, `${kind}-${pid}.json`), {
+        schema: "stock-monitor-forced-quit-v1", kind, pid, grace_ms: graceMs, at: new Date().toISOString() },
+      { fsImpl: this.node.fs, pathImpl: this.node.path, indent: 0 });
     } catch (error) { console.warn("[SHUTDOWN write forced-quit marker] failed", error); }
   }
 

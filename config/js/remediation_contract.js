@@ -15,6 +15,9 @@ const path = require("path");
 
 const REGISTRY_PATH = path.join(__dirname, "..", "remediation_registry.json");
 const PIPE_ENV = "STOCK_MONITOR_REMEDIATION_PIPE";
+// Electron main hands its events to Health's control API (POST /control/remediation) instead of the pipe, at most
+// this many per request.
+const HTTP_BATCH_EVENTS = 100;
 // What a secret is (a key name, or a value: query token, Authorization/Bearer, JWT, private key): config/secret_scrub.json.
 // The client scrubs detail with it; the writer refuses an event that still carries one.
 const { secretName, secretSpans, scrubText, scrubValue } = require("./secret_scrub.js");
@@ -204,6 +207,6 @@ function createFrameDecoder(onFrame) {
 }
 
 module.exports = {
-  REGISTRY_PATH, PIPE_ENV, loadRegistry, pipePath, emptyIdentity, sanitizeDetail, createEvent, localIso,
+  REGISTRY_PATH, PIPE_ENV, HTTP_BATCH_EVENTS, loadRegistry, pipePath, emptyIdentity, sanitizeDetail, createEvent, localIso,
   validateEvent, encodeFrame, createFrameDecoder,
 };

@@ -14,8 +14,9 @@ const pendingBig = `<div class="dg-kpi-big"><span class="dg-kpi-pending">${PENDI
 // A total's last 2 minutes as a small line in the title row (user 10-22: the 系統 CPU line moved there, 記憶體 has
 // its own). CPU is drawn from 0 (its size against the computer is the point); 記憶體 between its own low and high, so
 // a slow climb shows instead of a flat line near the top. Each point sits at its time across the 2 minutes (`from` at the
-// left edge, `to` at the right). No line until two values arrived.
-function trendHtml({ points, from, to }, { fromZero }) {
+// left edge, `to` at the right). No line until two values arrived. 設定's 系統負載 draws each service's CPU with it too;
+// `className` is where the line sits and how big it is (the card's title row, a table cell).
+export function trendHtml({ points, from, to }, { fromZero, className = "dg-kpi-trend" }) {
   // Stretched to the room the title row leaves (preserveAspectRatio none; the line keeps its width, non-scaling-stroke).
   const w = 160, h = 18;
   const seen = points.map((p) => p.v).filter((v) => v !== null);
@@ -35,7 +36,7 @@ function trendHtml({ points, from, to }, { fromZero }) {
   const drawn = runs.filter((run) => run.length).map((run) => (run.length > 1 ? run : [[run[0][0] - 1, run[0][1]], [run[0][0] + 1, run[0][1]]]));
   const path = (run) => run.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
   const area = drawn.map((run) => `${path(run)} L${run.at(-1)[0].toFixed(1)} ${h} L${run[0][0].toFixed(1)} ${h} Z`).join(" ");
-  return `<svg class="dg-kpi-trend" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">`
+  return `<svg class="${className}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">`
     + `<path class="dg-spark-area" d="${area}"/><path class="dg-spark-line" d="${drawn.map(path).join(" ")}"/></svg>`;
 }
 

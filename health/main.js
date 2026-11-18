@@ -20,9 +20,9 @@ const { loadRuntime } = require("../service/platform/js/launch_runtime.js");
 const { userDataDir } = require("../config/js/var_paths.js");
 const { ensureDataLayoutVersion } = require("../service/platform/js/data_layout_version.js");
 const { sourceEnabled } = require("../config/js/source_settings.js");
-const { createDaemonAuthentication, createControllerAuthentication, createClientAuthentication, createManagementAuthentication, providerClientFetch } = require("../service/platform/js/daemon_auth.js");
-const { childEnv, pythonServiceThreadDefaults } = require("../service/platform/js/child_env.js");
+const { prepareRoleCredentials } = require("./startup/role_credentials.js");
 const { createShutdownHandoffStore } = require("../service/platform/js/shutdown_handoff.js");
+const { createHealthEndpointStore, PLANNED_RESTART_EXIT } = require("../service/platform/js/health_endpoint.js");
 const { resolveStartupNetwork, NoValidNetworkRevision } = require("./startup/network_revision.js");
 const { pruneOldLogSessions } = require("../service/platform/js/log_session.js");
 const { createStartupTimeline } = require("./startup/timeline.js");
@@ -31,7 +31,6 @@ const { ConfigRevisionStore, setRemediationEmitter: setConfigStoreRemediation } 
 const { applyPendingLocation, advanceBackgroundMove, historicalRoot, storagePaths, locationChangePending, storageMoveStatus } = require("../config/js/storage_settings.js");
 const { installStorageUserRegistry } = require("./startup/storage_users");
 const { startStorageBackgroundMove } = require("./startup/storage_background_move");
-const runtimeCredentials = require("../service/platform/js/runtime_credentials.js");
 const { resolveVarPaths } = require("../config/js/var_paths.js");
 
 const { Supervisor, restartSummary } = require("./supervisor.js");
@@ -80,7 +79,7 @@ async function main() {
   // refused before anything opens it.
   ensureDataLayoutVersion(varPaths.varRoot, { logger: console });
   const configRoot = varPaths.config;
-  const manifest = networkConfig.loadManifest(networkConfig.manifestPath(process.env));
+  const manifest = networkConfig.loadManifest();
   const networkStore = new ConfigRevisionStore(configRoot, "network");
   const bootstrapOperation = NetworkOperations.pendingBootstrap(configRoot);
   // A saved revision that no longer validates never falls back to the defaults: the last good one, recorded
@@ -106,31 +105,20 @@ async function main() {
   log(`starting pid=${process.pid} network revision=${effective.revision ?? "defaults"} root=${runtime.projectRoot}`);
   timeline.mark("network_resolved", { revision: effective.revision ?? null });
 
-  // Role credentials. Each file is minted here (first writer wins); none is exported into process.env, and
-  // each child is started with an allowlisted environment carrying only what its role needs:
-  //   business API      daemon token (it reads the provider daemons), digests of the client and management tokens
-  //   provider daemon   digests of the daemon and management tokens
-  //   Rust A/B, materializer, training job: no token in the environment (A/B get their own file by argument)
-  // A verifier holds a digest, never the token, so it cannot present that credential to anyone else. Only Health
-  // holds the management token: no API can stop another API, no daemon can stop an API.
-  const daemonAuth = createDaemonAuthentication({ fs, path, processRef: process });
-  const managementAuth = createManagementAuthentication({ fs, path, processRef: process });
-  const controllerAuth = createControllerAuthentication({ fs, path, processRef: process });
-  const clientAuth = createClientAuthentication({ fs, path, processRef: process });
-  // Read at each spawn, not captured at boot: an applied network revision changes STOCK_MONITOR_NETWORK_REVISION.
-  const roleEnv = {
-    api: () => childEnv(process.env, { STOCK_MONITOR_DAEMON_TOKEN: daemonAuth.token,
-      STOCK_MONITOR_CLIENT_TOKEN_SHA256: clientAuth.digest, STOCK_MONITOR_MANAGEMENT_TOKEN_SHA256: managementAuth.digest,
-      ...pythonServiceThreadDefaults(process.env) }),
-    provider: () => childEnv(process.env, { STOCK_MONITOR_DAEMON_TOKEN_SHA256: daemonAuth.digest,
-      STOCK_MONITOR_MANAGEMENT_TOKEN_SHA256: managementAuth.digest, ...pythonServiceThreadDefaults(process.env) }),
-    plain: () => childEnv(process.env),
-  };
-  const providerFetch = providerClientFetch({ daemonAuth, managementAuth });
-  const credentialsFile = path.join(varPaths.authRoot, "market_runtime_credentials.json");
-  runtimeCredentials.writeCredentialsFile(credentialsFile, process.env);
+  // Role credentials (health/startup/role_credentials.js: who is given what). Renewed on a full start only: a process
+  // an earlier Health started that is still running (the storage-users registry records every token holder Health
+  // spawns -- A, B, the APIs, the provider daemons -- until that exact process is gone) was started with, or verifies,
+  // the current tokens, and Health attaches to it instead of starting it again. An unreadable registry keeps them.
+  const storageUsersRegistry = installStorageUserRegistry({ file: path.join(varPaths.state, "health", "storage_users.json"), logger: console });
+  const earlierProcesses = timeline.stage("earlier_processes", () => storageUsersRegistry.alive(), (alive) => ({ alive: alive.length }));
+  const renewCredentials = earlierProcesses.length === 0;
+  log(renewCredentials ? "full start: every role credential is renewed"
+    : `processes of an earlier Health still run (${earlierProcesses.join(", ")}); role credentials are kept`);
+  const { managementAuth, controllerAuth, credentialsFile, roleEnv, providerFetch, runtimeControllerToken, analysisRuntimeTokenFile } =
+    prepareRoleCredentials({ fs, path, processRef: process, authRoot: varPaths.authRoot, renew: renewCredentials });
   const logDir = path.join(varPaths.logs, runtime.logSession || "current");
   const shutdownHandoff = createShutdownHandoffStore(runtime.projectRoot, { logger: console });
+  const endpointRecord = createHealthEndpointStore(configRoot);
   const instanceId = `health-${process.pid}-${startedAt}`;
   timeline.mark("credentials_ready");
 
@@ -156,7 +144,7 @@ async function main() {
   // writes the old folder, which then stays active until the next full start.
   const historicalLocation = () => historicalRoot({ configRoot, dataRoot: varPaths.data });
   const marketRuntime = new MarketRuntimeHost({ isPackaged, resourcesPath, fs, path, projectRoot: runtime.projectRoot, dataRoot: varPaths.data,
-    configRoot, logDir, effective, credentialsFile, controllerToken: runtimeCredentials.loadOrCreateToken("controller", process.env),
+    configRoot, logDir, effective, credentialsFile, controllerToken: runtimeControllerToken,
     env: roleEnv.plain, historicalDir: historicalLocation, remediation: remediation.local,
     // service/market/shared/session_evidence_files.py default_evidence_root: the same rule.
     evidenceRoot: process.env.STOCK_MONITOR_SESSION_EVIDENCE_ROOT || path.join(varPaths.output, "session_evidence"),
@@ -167,7 +155,6 @@ async function main() {
   // time) is gone -- a closed port is not an exit --; on top of that Market Runtime's port free (an occupied port or an
   // unanswered probe is a live instance), the API and provider-daemon ports free, and no materializer child of an
   // earlier Health alive. Anything unknown keeps the change pending.
-  const storageUsersRegistry = installStorageUserRegistry({ file: path.join(varPaths.state, "health", "storage_users.json"), logger: console });
   async function storageUsersAlive() {
     const alive = [...storageUsersRegistry.alive()];
     const probe = await marketRuntime.supervisorProbe().catch((error) => ({ failed: error }));
@@ -221,11 +208,11 @@ async function main() {
     eventsDir: () => storagePaths({ configRoot, dataRoot: varPaths.data }).analysis_events,
     dailySummaryDir: () => storagePaths({ configRoot, dataRoot: varPaths.data }).daily_summary,
     securityMaster, historicalDir: historicalLocation,
-    configRoot, logDir, effective, tokenFile: runtimeCredentials.tokenPath("analysis_runtime", process.env), env: roleEnv.plain,
+    configRoot, logDir, effective, tokenFile: analysisRuntimeTokenFile, env: roleEnv.plain,
     remediation: remediation.local });
   const apiHosts = Object.fromEntries(API_SERVICES.map((sid) => [sid, new PythonServiceHost({
     serviceId: sid, effective, pythonExecutable: runtime.pythonExecutable, projectRoot: runtime.projectRoot, logDir,
-    managementToken: managementAuth.token, env: roleEnv.api, fs, path, remediation: remediation.local,
+    managementToken: managementAuth.token, env: roleEnv.api(sid), fs, path, remediation: remediation.local,
   })]));
 
   // Resolved at each use: an applied revision rewrites `effective` in place, and the hosts follow it.
@@ -236,13 +223,13 @@ async function main() {
     userDataPath, projectRoot: runtime.projectRoot, pythonExecutable: runtime.pythonExecutable, endpoint: shioajiEndpoint,
     expected: { identity: runtime.marketDaemon.identity, protocolVersion: runtime.marketDaemon.protocolVersion, runtimeVersion: runtime.marketDaemon.runtimeVersion },
     enabled: sourceEnabled("shioaji"),
-    fetchImpl: providerFetch, env: roleEnv.provider, startupCoordinator: null,
+    fetchImpl: providerFetch, env: roleEnv.provider("shioaji"), startupCoordinator: null,
     markStartupTrace: () => {}, remediation: remediation.local, logger: console,
   });
   const futu = new FutuDaemonHost({
     projectRoot: runtime.projectRoot, pythonExecutable: runtime.pythonExecutable, endpoint: futuEndpoint,
     expected: { identity: runtime.moomooDaemon.identity, protocolVersion: runtime.moomooDaemon.protocolVersion, runtimeVersion: runtime.moomooDaemon.runtimeVersion },
-    enabled: sourceEnabled("futu"), fetchImpl: providerFetch, env: roleEnv.provider,
+    enabled: sourceEnabled("futu"), fetchImpl: providerFetch, env: roleEnv.provider("futu"),
     remediation: remediation.local, logger: console,
   });
   const providerHost = (daemon) => ({
@@ -444,6 +431,12 @@ async function main() {
       return { error: String(error?.message || error) };
     }),
     storageMove: () => storageMove,
+    // Electron main's remediation events (POST /control/remediation): settled within the writer's ack deadline.
+    remediation: {
+      maxEvents: remediationContract.HTTP_BATCH_EVENTS,
+      maxBodyBytes: remediationContract.HTTP_BATCH_EVENTS * remediationContract.loadRegistry().limits.frame_bytes,
+      admitBatch: (events) => remediation.admitBatch(events, remediationContract.loadRegistry().limits.client_ack_timeout_ms),
+    },
     // Electron main renews this while the monitoring page is visible (07 section 1): resources/metrics detail is
     // collected only then; the basic probes and the snapshot keep running regardless.
     // Effective while no network operation is open and Health is not handing off: the services are started (or
@@ -468,12 +461,11 @@ async function main() {
       // The candidate's own endpoint cannot be bound: record it and let the bootstrap start the previous revision.
       await NetworkOperations.markCandidateFailed(configRoot, bootstrapOperation.operation, `Health could not bind ${controllerEndpoint.host}:${controllerEndpoint.port}: ${error?.message || error}`);
       console.error(`[HEALTH] candidate endpoint unusable; exiting for bootstrap rollback`);
-      process.exit(75);
+      process.exit(PLANNED_RESTART_EXIT);
     }
     throw error;
   }
-  atomicWrite(path.join(configRoot, "bootstrap", "health_endpoint.json"), { schema: "stock-monitor-health-endpoint-v1", ...identity(),
-    host: controllerEndpoint.host, written_at: new Date().toISOString() });
+  endpointRecord.write({ ...identity(), host: controllerEndpoint.host, written_at: new Date().toISOString() });
   log(`control API on ${controllerEndpoint.host}:${controllerEndpoint.port}`);
   collector.start();
   // Expired log sessions go beside the service starts, not in front of them; a failure is recorded and costs nothing
@@ -563,18 +555,11 @@ async function main() {
       + `control_api_close_ms=${apiClosedMs} after_answer_ms=${Date.now() - exitStarted}`);
     process.exit(result?.ok === true ? 0 : 1);
   }
-  // The endpoint record outlived the process, so the next UI probed a dead (or, during shutdown, a stopping) Health
-  // before starting a new one. Removed only while it still names this process.
-  function removeEndpointRecord() {
-    const recordFile = path.join(configRoot, "bootstrap", "health_endpoint.json");
-    try {
-      if (Number(JSON.parse(fs.readFileSync(recordFile, "utf8"))?.pid) === process.pid) fs.unlinkSync(recordFile);
-    } catch (error) { /* absent is not an error: no record of ours to remove */ if (error?.code !== "ENOENT") console.warn("[removing the Health process record] failed", error); }
-  }
+  function removeEndpointRecord() { endpointRecord.removeIfOwnedBy(process.pid); }
   async function finishForHandoff(op) {
     // Health's own endpoint (or settings_api's) changes: the whole App restarts under bootstrap control. The shutdown
     // receipt goes into the operation under its handoff token; an unclean one turns it to bootstrap_rollback first,
-    // so the next Health starts the previous revision. Either way this is a planned restart (75).
+    // so the next Health starts the previous revision. Either way this is a planned restart (PLANNED_RESTART_EXIT).
     if (shuttingDown) return;
     shuttingDown = true;
     networkChanged();
@@ -589,7 +574,7 @@ async function main() {
     await api.close();
     await remediation.close("network_self_apply").catch((error) => warn(`remediation ledger close failed: ${error?.message || error}`));
     removeEndpointRecord();
-    process.exit(75);
+    process.exit(PLANNED_RESTART_EXIT);
   }
   async function graceful(signal) {
     // A full shutdown already under way (the tray's, or an earlier signal) is the one that finishes.

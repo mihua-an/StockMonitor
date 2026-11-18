@@ -33,10 +33,12 @@ const { createTradeForm } = require("../ui/main/trade_form");
   assert.equal(enabled.refreshShioajiProductCatalog, undefined);
   await enabled.refreshFutuProductCatalog();
   assert.ok(calls[0].url.endsWith("/api/futu/security-master/ensure"));
-  const form = createTradeForm({ fetch });
-  const mapping = Object.fromEntries(["trade_date", "market", "action", "code", "trade_info", "trade_time"].map((key, index) => [key, `entry.${index + 1}`]));
+  // The form's link and field mapping are the saved settings main reads from app_api; the renderer sends the trade.
+  const { formSettings, savedFormConfig, urlFor: settingsUrlFor } = require("./support/trade_form_settings.cjs");
+  const placeholders = Object.fromEntries(["trade_date", "market", "action", "code", "trade_info", "trade_time"].map((key, index) => [key, `entry.${index + 1}`]));
+  const settingsReads = [];
+  const form = createTradeForm({ fetch: formSettings(fetch, savedFormConfig("https://docs.google.com/forms/d/e/test/viewform?entry.99=fixed", placeholders), settingsReads), urlFor: settingsUrlFor });
   const result = await form.submitGoogleFormTrade({
-    prefill_url: "https://docs.google.com/forms/d/e/test/viewform?entry.99=fixed", mapping,
     trade: { trade_date: "2026-09-04", market: "台股", action: "買進", code: "2330", trade_info: "1000@100", trade_time: "0912" },
   });
   assert.equal(result.ok, true);
@@ -48,5 +50,6 @@ const { createTradeForm } = require("../ui/main/trade_form");
   // The ledger sync after a new trade is the trade window's own request (trade_window.js), not main's.
   assert.equal(form.syncActualAccountAfterTradeAdd, undefined);
   assert.equal(calls.length, 2);
+  assert.equal(settingsReads.length, 1);
   console.log("desktop product and form contracts passed (mock transport)");
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -35,6 +35,10 @@ def test_the_daily_maintenance_reports_the_hook():
     service.kbar_download_manager = Manager()
     report = ShioajiMarketService._run_shioaji_maintenance(service, datetime(2026, 10, 6, 14, 45), [])
     assert report["kbar_maintenance"]["auto_download"] == {"enabled": False, "date": "2026-10-06"}
+    # Not before the day's stock session can receive nothing more (14:30 盤後定價, config/trading_sessions.json), and
+    # not on a closed weekday (2026-10-09, closed in the TWSE holiday file) -- the weekday rule alone ran it.
+    assert ShioajiMarketService._run_shioaji_maintenance(service, datetime(2026, 10, 6, 14, 29), []) is None
+    assert ShioajiMarketService._run_shioaji_maintenance(service, datetime(2026, 10, 9, 14, 45), []) is None
 
 
 def test_recovery_after_restart_names_every_job_and_segment(tmp_path, monkeypatch):

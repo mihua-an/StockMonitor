@@ -116,8 +116,9 @@ function createWebGateway({ env = process.env, logger = console, host, port } = 
   const clientAuthentication = createClientAuthentication({ apiOrigins: () => apiEndpoints.apiOrigins(), env });
   const authenticatedFetch = clientAuthentication.fetch;
   const urlFor = (pathname) => apiEndpoints.urlFor(pathname);
-  const clientToken = require("../../service/platform/js/daemon_auth.js")
-    .createClientAuthentication({ fs, path, processRef: { env, cwd: () => process.cwd() } }).token;
+  // Read at each use, never created here: Health mints it and renews it on a full start.
+  const clientToken = () => require("../../service/platform/js/daemon_auth.js")
+    .readClientToken({ fs, path, processRef: { env, cwd: () => process.cwd() } });
   const colorPreferenceStore = createColorPreferenceStore(runtime.projectRoot);
   const sources = rendererSourceProjection();
   const clientContext = new AsyncLocalStorage();
@@ -474,7 +475,7 @@ function createWebGateway({ env = process.env, logger = console, host, port } = 
         let baseUrl;
         try { baseUrl = apiEndpoints.serviceUrl(target.serviceId); }
         catch (error) { /* not an error: endpoints Health has not confirmed yet are answered 503 (api_endpoints.js logs it) */ return sendJson(res, 503, { ok: false, error: "ENDPOINTS_NOT_CONFIRMED", detail: error.message }); }
-        return proxyHttp(req, res, { baseUrl, pathAndQuery: `${target.rest}${url.search}`, token: clientToken, logger });
+        return proxyHttp(req, res, { baseUrl, pathAndQuery: `${target.rest}${url.search}`, token: clientToken(), logger });
       }
       if (req.method === "GET" || req.method === "HEAD") return serveStatic(req, res, url.pathname);
       return sendJson(res, 405, { ok: false, error: "METHOD_NOT_ALLOWED" });
@@ -495,7 +496,7 @@ function createWebGateway({ env = process.env, logger = console, host, port } = 
     let baseUrl;
     try { baseUrl = apiEndpoints.serviceUrl(target.serviceId); } catch { /* not an error: unconfirmed endpoints are answered 503 */ return refuse(503, "Service Unavailable"); }
     // market_runtime's /live takes the viewer credential (read only); the business APIs the client token.
-    const token = target.serviceId === "market_runtime" ? runtimeCredentials.readToken("viewer", env) : clientToken;
+    const token = target.serviceId === "market_runtime" ? runtimeCredentials.readToken("viewer", env) : clientToken();
     if (target.serviceId === "market_runtime" && target.rest !== "/live") return refuse(404, "Not Found");
     if (!token) return refuse(503, "Service Unavailable");
     proxyUpgrade(req, socket, head, { baseUrl, pathAndQuery: `${target.rest}${url.search}`, token, logger });

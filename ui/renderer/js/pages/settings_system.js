@@ -11,6 +11,7 @@
 //   zero. The rows are morphed every 2 s, so a port being typed keeps its focus and its text.
 
 import { morphInto } from "../core/dom_morph.js";
+import { trendHtml } from "../core/diagnostics_cards.js";
 import { apiGetOk, apiJsonPost } from "../core/api.js";
 import { $, escapeHtml } from "../core/utility.js";
 import { fittedStatusHtml, setNote, setStatus, showToast } from "../core/settings_ui.js";
@@ -127,7 +128,7 @@ function serviceRowHtml({ sid, svc, spec }, cpuTrend) {
     + `<span class="settings-item-main"><b>${escapeHtml(svc?.display_name || spec?.display_name || sid)}</b></span>`
     + `<span class="settings-num is-state">${fittedStatusHtml(STATE_LABEL[state] || state, STATE_KIND[state] || "")}</span>`
     + `<span class="settings-num">${escapeHtml(cpu)}</span>`
-    + `<span class="settings-num">${sparkline(cpuTrend)}</span>`
+    + `<span class="settings-num">${cpuTrendHtml(cpuTrend)}</span>`
     + `<span class="settings-num">${(unavailable ? null : bytesText(res.memory_bytes)) ?? "--"}</span>`
     + `<span class="settings-num">${escapeHtml(portText(spec, addresses))}</span>`
     + `${input}</div>`;
@@ -302,24 +303,13 @@ async function applyLatest() {
 }
 
 // One service's CPU over Health's trend points ({ t, v }), each placed by its time: Health samples every 10 s while no
-// page is open and every pass while one is. Every point is a real sample, so one without a value (the service was
-// down or warming up) breaks the line, and each run starts with a moveto (a path beginning with "L" is invalid SVG).
-export function sparkline(points) {
-  const sampled = points.filter((p) => Number.isFinite(p?.v));
-  if (sampled.length < 2) return '<span class="muted">—</span>';
-  const max = Math.max(5, ...sampled.map((p) => p.v));
-  const w = 90;
-  const h = 20;
-  const from = points[0].t;
-  const span = Math.max(1, points.at(-1).t - from);
-  let pen = "M";
-  const path = points.map((p) => {
-    if (!Number.isFinite(p?.v)) { pen = "M"; return ""; }
-    const segment = `${pen}${(((p.t - from) / span) * w).toFixed(1)},${(h - (p.v / max) * h).toFixed(1)}`;
-    pen = "L";
-    return segment;
-  }).filter(Boolean).join(" ");
-  return `<svg class="settings-spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true"><path d="${path}" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`;
+// page is open and every pass while one is. The line is 連線診斷's (core/diagnostics_cards.js trendHtml): from 0, a
+// point without a value (the service down or warming up) breaks it, nothing until two values arrived.
+export function cpuTrendHtml(points) {
+  const samples = points.map((p) => ({ t: p.t, v: Number.isFinite(p?.v) ? p.v : null }));
+  const line = samples.length ? trendHtml({ points: samples, from: samples[0].t, to: samples.at(-1).t }, { fromZero: true, className: "settings-spark" }) : "";
+  // No line yet (fewer than two samples): the cell says so, as every empty cell of the row does.
+  return line || '<span class="muted">—</span>';
 }
 
 async function refreshSnapshot(gen = generation) {

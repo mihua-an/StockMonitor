@@ -46,7 +46,11 @@ test("access mode: Cloudflare Access needs both values; none only on loopback; n
   assert.throws(() => accessConfig({ STOCK_MONITOR_WEB_CF_TEAM_DOMAIN: TEAM }, { host: "127.0.0.1" }), /STOCK_MONITOR_WEB_CF_AUD/);
   assert.equal(accessConfig({ STOCK_MONITOR_WEB_AUTH: "none" }, { host: "127.0.0.1" }).mode, "none");
   assert.throws(() => accessConfig({ STOCK_MONITOR_WEB_AUTH: "none" }, { host: "0.0.0.0" }), /loopback/);
-  assert.throws(() => accessConfig({}, { host: "127.0.0.1" }), /needs an access mode/);
+  for (const host of ["::1", "[::1]", "localhost", " LocalHost "]) {
+    assert.equal(accessConfig({ STOCK_MONITOR_WEB_AUTH: "none" }, { host }).mode, "none", host);
+  }
+  assert.throws(() => accessConfig({ STOCK_MONITOR_WEB_AUTH: "none" }, { host: "192.168.1.5" }), /loopback/);
+  assert.throws(() => accessConfig({},{ host: "127.0.0.1" }), /needs an access mode/);
   assert.throws(() => accessConfig({ STOCK_MONITOR_WEB_CF_TEAM_DOMAIN: "bad domain/../x", STOCK_MONITOR_WEB_CF_AUD: AUD }, { host: "127.0.0.1" }), /invalid/);
 });
 
@@ -119,6 +123,9 @@ test("the proxy drops the browser's credentials and Cloudflare headers and attac
     authorization: "Bearer service-token" });
   assert.throws(() => loopbackTarget("http://10.0.0.5:8001"), /non-loopback/);
   assert.throws(() => loopbackTarget("https://127.0.0.1:8001"), /non-http/);
+  // Formal services listen on the manifest's 127.0.0.1 only: another loopback name is not a service address.
+  assert.throws(() => loopbackTarget("http://localhost:8001"), /non-loopback/);
+  assert.throws(() => loopbackTarget("http://[::1]:8001"), /non-loopback/);
   assert.equal(loopbackTarget("http://127.0.0.1:8010").port, "8010");
 });
 

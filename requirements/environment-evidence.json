@@ -1,5 +1,5 @@
 {
-  "captured_on": "2026-11-15",
+  "captured_on": "2026-11-16",
   "python": "3.14.6",
   "platform": "win32",
   "machine": "AMD64",
@@ -609,6 +609,10 @@
         "PySocks!=1.5.7,>=1.5.6; extra == \"socks\"",
         "chardet<8,>=3.0.2; extra == \"use-chardet-on-py3\""
       ]
+    },
+    "ruff": {
+      "version": "0.17.2",
+      "requires_dist": []
     },
     "scikit-learn": {
       "version": "1.9.0",

@@ -30,57 +30,23 @@ body.trade-window-body {
   background: var(--surface-panel);
 }
 
-:where(.trade-window-body) .trade-window-dialog {
-  position: static;
-  inset: auto;
-  transform: none;
+/* The form's window variant (features/account/trade_editor_form.js): a flat sheet filling the window, not the modal's
+ * card. Narrower than 帳務's 760 px break, it keeps two field columns. */
+.trade-window-dialog {
   width: 100%;
-  max-width: none;
-  max-height: none;
-  margin: 0;
-  padding: 0;
-  overflow: visible;
-  scrollbar-gutter: auto;
-  border: 0;
-  border-radius: 0;
   background: var(--slate-900);
-  box-shadow: none;
 }
 
-:where(.trade-window-body) .trade-window-content {
+.trade-window-content {
   padding: 16px 18px 14px;
-  overflow: visible;
-  border: 0;
 }
 
-:where(.trade-window-body) .trade-window-form-grid {
+.trade-window-form-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-:where(.trade-window-body) .trade-window-message {
-  min-height: 20px;
-  margin-top: 8px;
-}
-
-:where(.trade-window-body) .trade-window-message:empty {
-  min-height: 0;
-  margin-top: 0;
-}
-
-:where(.trade-window-body) .trade-window-message.error {
-  color: var(--status-error);
-}
-
-:where(.trade-window-body) .trade-window-message.success {
-  color: var(--status-ok);
-}
-
-:where(.trade-window-body) .trade-window-footer {
-  position: static;
+.trade-window-footer {
   padding: 0 18px 16px;
-  border: 0;
-  background: var(--slate-900);
-  z-index: auto;
 }
 
 /* The window's global message under the form. */

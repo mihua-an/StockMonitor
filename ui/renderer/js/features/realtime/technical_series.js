@@ -95,13 +95,14 @@ function bucketStart(minute, n, segments) {
   return minute;
 }
 
-/** One history day's rows ([minute, open, high, low, close, volume], at `day.timeframe`) as N-minute candles. A bar can
- * only be made from finer ones that divide it: a day held at 5 minutes has no 1- or 3-minute candles. */
-export function historyDayBars(day, minutes, segments) {
+/** One history day's rows ([minute, open, high, low, close, volume], at `day.timeframe`) as N-minute candles, cut on
+ * that day's own sessions (`day.segments`: a US half day's are shorter). A bar can only be made from finer ones that
+ * divide it: a day held at 5 minutes has no 1- or 3-minute candles. */
+export function historyDayBars(day, minutes) {
   const n = Number(minutes);
   if (n % day.timeframe !== 0) return [];
   const rows = day.bars.map(([minute, open, high, low, close, volume]) => ({ minute, open, high, low, close, volume }));
-  return foldBars(rows, (row) => bucketStart(row.minute, n, segments)).map((bar) =>
+  return foldBars(rows, (row) => bucketStart(row.minute, n, day.segments)).map((bar) =>
     intradayBar(day.trading_date, bar.key, { open: bar.open, high: bar.high, low: bar.low, close: bar.close }, bar.volume));
 }
 

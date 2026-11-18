@@ -321,6 +321,29 @@ fn an_ingest_is_answered_at_once_and_the_pushed_watermark_says_when_it_is_on_dis
     d.shutdown();
 }
 
+/// An identity that cannot name a partition directory (a path separator, "..", too long) is refused and counted as a
+/// parse rejection; the next valid event is unaffected.
+#[test]
+fn an_identity_that_is_no_path_component_is_refused_and_counted() {
+    let d = Daemon::start("bad_identity", &[]);
+    let mut p = d.client(SHIOAJI);
+    let mut c = d.client(CONTROLLER);
+    for code in ["../2330", "23/30", "A".repeat(33).as_str()] {
+        let a = ingest(&mut p, trade("shioaji", "STK", code, "DAY", 1, 1_000_000));
+        assert_eq!(a["accepted"], false, "{code}: {a}");
+        assert_eq!(a["reason"], "INVALID_IDENTITY: code", "{code}: {a}");
+    }
+    let mut bad_market = trade("shioaji", "STK", "2330", "DAY", 1, 1_000_000);
+    bad_market["market"] = json!("S/TK");
+    assert_eq!(ingest(&mut p, bad_market)["accepted"], false);
+    let ok = ingest(&mut p, trade("shioaji", "STK", "2330", "DAY", 1, 1_000_000));
+    assert_eq!(ok["accepted"], true, "{ok}");
+    c.send(json!({"type": "metrics"}));
+    let metrics = c.await_type("metrics")["payload"].clone();
+    assert_eq!(metrics["ingest"]["rejected_parse"], 4, "{metrics}");
+    d.shutdown();
+}
+
 /// A market event without an exchange time is refused (never dated by a clock); source_status is not.
 #[test]
 fn a_market_event_without_exchange_time_is_refused_and_counted() {

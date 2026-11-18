@@ -107,10 +107,13 @@ def create_market_router(d: MarketRouteDependencies) -> APIRouter:
         # Rust B's event file is the only source: nothing writes `signal_event` any more, so there is no raw
         # stream to rebuild a missing day from (the old fallback called a method AnalysisEventArchive never had).
         # The caller names the day (Market Runtime's presentation date, or 歷史回放's day).
-        date_text = str(date or "").strip()[:10]
+        date_text = str(date or "").strip()
         if not date_text:
             raise ValidationError("date is required (the trading day whose events to read)", classification="DATE_REQUIRED")
-        payload = events.read(date_text=date_text, limit=limit)
+        try:
+            payload = events.read(date_text=date_text, limit=limit)
+        except ValueError:
+            raise ValidationError("invalid date", classification="INVALID_DATE") from None
         # COMPLETE: the day's archive (events or none); PARTIAL: an archive with damaged lines -- what was read is not
         # all the day had; MISSING: B wrote no archive for it -- a day with no events and a day without an archive read
         # the same before.

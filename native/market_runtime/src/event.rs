@@ -429,7 +429,7 @@ impl MarketEvent {
             _ => false,
         }
     }
-    /// Before the market opens: stock 08:30-09:00, futures 08:30-08:45 (day) and 14:50-15:00 (night).
+    /// Before the market opens: between its previous session's close and its open (`preopen_at`).
     pub fn is_preopen(&self) -> bool {
         preopen_at(&self.market, self.exchange_ts_ns)
     }
@@ -456,15 +456,22 @@ pub const COVERAGE_UNSUBSCRIBED: &str = "unsubscribed";
 pub const LOSS_CONTROL: &str = "loss_control";
 pub const SOURCE_GAP: &str = "source_gap";
 
-/// Whether an exchange time falls before a market's open: stock 08:30-09:00, futures 08:30-08:45 (day) and
-/// 14:50-15:00 (night). A missing time is never pre-open.
+/// Whether an exchange time falls before a Shioaji market's open: after its previous session's last trading minute and
+/// before the next session's first one, both from the calendar -- stock before 09:00, futures 05:01-08:44 (day) and
+/// 13:46-14:59 (night). Nothing of a session is stored before it opens: 盤前試撮 is never written, whenever it comes.
+/// A missing time is never pre-open.
 pub fn preopen_at(market: &str, ts_ns: i64) -> bool {
-    let Some((_, minute)) = market_local_minute(market, ts_ns) else { return false };
-    match market {
-        "STK" | "IDX" => (480..540).contains(&minute),
-        "FUT" => (480..525).contains(&minute) || (840..900).contains(&minute),
-        _ => false,
+    if !matches!(market, "STK" | "IDX" | "FUT") {
+        return false;
     }
+    let Some((_, minute)) = market_local_minute(market, ts_ns) else { return false };
+    let key = crate::calendar::CalKey { source: "shioaji", market, session: None, date: None };
+    let segments = crate::calendar::Calendar::bundled().segments(key);
+    segments.iter().enumerate().any(|(i, segment)| {
+        // The session before the first one of a day is the day before's last (its end a day earlier).
+        let previous_end = if i == 0 { segments.last().map(|last| last.end - 1440) } else { Some(segments[i - 1].end) };
+        previous_end.is_some_and(|end| minute > end && minute < segment.start)
+    })
 }
 
 // ------------------------------------------------------------------------------ futures session partitions
@@ -695,6 +702,22 @@ mod tests {
         assert_eq!(local_minute_ns("STK", "2026-11-04", 29 * 60), Some(utc("2026-11-04", 21, 0)), "05:00 the next day, Taipei: a minute past 1440 is the next day");
         assert_eq!(local_minute_ns("STK", "2026-02-31", 0), None);
         assert_eq!(minute_timestamp("US", "2026-03-08", 3 * 60), "2026-03-08T03:00:00-04:00");
+    }
+
+    /// Pre-open is everything between a session's previous close and its open in the calendar, never a fixed start:
+    /// 試撮 at 08:10 is as much before the open as at 08:40, and neither is stored.
+    #[test]
+    fn preopen_runs_from_the_previous_close_to_the_calendars_open() {
+        let at = |market: &str, minute: i32| preopen_at(market, local_minute_ns(market, "2026-11-04", minute).unwrap());
+        let hm = |h: i32, m: i32| h * 60 + m;
+        assert!(at("STK", 0) && at("STK", hm(8, 0)) && at("STK", hm(8, 10)) && at("STK", hm(8, 59)));
+        assert!(!at("STK", hm(9, 0)) && !at("STK", hm(13, 26)) && !at("STK", hm(14, 30)), "a session's own minutes and after its close");
+        assert!(at("IDX", hm(8, 0)) && !at("IDX", hm(9, 0)));
+        assert!(!at("FUT", hm(5, 0)), "05:00 is the night session's last minute");
+        assert!(at("FUT", hm(5, 1)) && at("FUT", hm(8, 0)) && at("FUT", hm(8, 44)) && !at("FUT", hm(8, 45)));
+        assert!(!at("FUT", hm(13, 45)), "13:45 is the day session's last minute");
+        assert!(at("FUT", hm(13, 46)) && at("FUT", hm(14, 0)) && at("FUT", hm(14, 59)) && !at("FUT", hm(15, 0)));
+        assert!(!at("US", hm(8, 40)) && !at("OTC", hm(8, 40)));
     }
 
     #[test]

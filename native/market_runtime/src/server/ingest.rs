@@ -315,6 +315,12 @@ pub(crate) fn ingest_one(hub: &Arc<Hub>, role: &Role, raw: Value) -> Value {
         hub.counters.rejected_old_format.fetch_add(1, Ordering::Relaxed);
         return ack(false, Some(&format!("OLD_FORMAT: envelope schema {:?}; only {INGEST_SCHEMA} is read", env.schema)), idr, None);
     }
+    // The identity names the partition's directories (replay::PartitionKey): each part must be one path component.
+    if let Some(name) = [("source", &env.source), ("market", &env.market), ("code", &env.code)].into_iter()
+        .find(|(_, value)| !crate::replay::component_ok(value.trim())).map(|(name, _)| name) {
+        hub.counters.rejected_parse.fetch_add(1, Ordering::Relaxed);
+        return ack(false, Some(&format!("INVALID_IDENTITY: {name}")), idr, None);
+    }
     let Role::Provider(own) = role else {
         hub.counters.rejected_forbidden.fetch_add(1, Ordering::Relaxed);
         return ack(false, Some("FORBIDDEN_ROLE"), idr, None);

@@ -65,6 +65,7 @@ def harness(tmp_path: Path):
     identity = SimpleNamespace(generation=0, live=False, as_dict=lambda: {"generation": 0, "live": False})
     broker = SimpleNamespace(
         status=lambda: {"txf": {"target_code": "TXFI6"}},
+        txf_contract_for=lambda _trading_date: "TXFI6",
         market_identity_authority=SimpleNamespace(current=lambda _market: identity),
         mark_market_session_transition=lambda **_kw: None,
         set_market_session_event_listener=lambda _listener: None,

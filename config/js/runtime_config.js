@@ -7,13 +7,10 @@
 // config root. A port change is applied by Health's controlled restart, and Electron main rediscovers endpoints
 // through the bootstrap record (06 section 6). Must never require("electron").
 
-const path = require("path");
 const networkConfig = require("./network_config.js");
 
-function loadNetworkRuntime({ env, projectRoot, configRoot }) {
-  const effective = networkConfig.effectiveFromDisk({
-    env, configRoot, manifestFile: path.join(projectRoot, "config", "network_manifest.json"),
-  });
+function loadNetworkRuntime({ env, configRoot }) {
+  const effective = networkConfig.effectiveFromDisk({ env, configRoot });
   return {
     effective,
     revision: effective.revision,

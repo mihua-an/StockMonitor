@@ -271,8 +271,10 @@ export function bindProductSides() {
 export function bindWatchPageSources() {
   // The pages and the 訂閱偏好 are saved together: each product's sides and months are read again with them.
   viewResources.own(window.desktopAPI?.onWatchPagesChanged?.(() => { loadWatchPages(); void refreshProductSides(); }) || (() => {}));
-  // Another catalog revision: the pages' names and types are read again (watch_page_store.js joins them on read).
-  viewResources.own(window.desktopAPI?.onProductCatalogChanged?.(() => loadWatchPages()) || (() => {}));
+  // Another catalog revision: the pages' names and types are read again (watch_page_store.js joins them on read). The
+  // Shioaji master is written with the futures contract table, so each product's futures months are read again too:
+  // an expiry night drops the expired month and the near month moves on.
+  viewResources.own(window.desktopAPI?.onProductCatalogChanged?.(() => { loadWatchPages(); void refreshProductSides(); }) || (() => {}));
   // A name the catalog answered for the shown product (a searched code): its header and order book redraw.
   viewResources.own(onInstrumentNamesLearned((code) => {
     if (code === String(selectedStockCode() || "").trim().toUpperCase()) realtimeContext.dataSource.invalidateAll({ symbol: code });

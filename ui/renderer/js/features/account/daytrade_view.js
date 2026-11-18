@@ -2,7 +2,7 @@
 // report, drawn from the ledger's slice of the chosen mode (`<ledger>/daytrade-analysis`); this module selects and
 // formats, and opens a group's pairs by the ids the slice gives. Replay placement is daytrade_replay_host.js.
 import { ACCOUNT_DAYTRADE_DETAIL_COLUMNS } from "../../core/column_schemas.js";
-import { loadStateHtml } from "../../core/load_state_view.js";
+import { emptyStateRowHtml, loadStateHtml } from "../../core/load_state_view.js";
 import { createExpandMotion } from "../../core/expand_motion.js";
 import { applyStandardDataGrids, expandDetailRowHtml, recordExpandBody } from "../../core/data_grid.js";
 import { applyColumnSchema, defineColumnSchema, renderColumnHeaderHtml } from "../../core/column_title.js";
@@ -185,7 +185,7 @@ export function rankingRows(items) {
         const canReplay = pairReplayAvailable(item);
         return `<tr data-daytrade-replay-id="${escapeHtml(String(item.id ?? ""))}" class="${canReplay ? "account-daytrade-detail-replayable" : ""}"><td>${escapeHtml(item.realized_date)}</td><td>${escapeHtml(item.code)}</td><td>${escapeHtml(item.direction || "-")}</td><td>${escapeHtml(item.entry_ref || "")}</td><td>${escapeHtml(item.exit_ref || "")}</td><td>${item.hold_period ?? "-"}</td><td class="${profitClass(item.profit)}">${formatMetricMoney(item.profit)}</td><td>${formatPercent(item.roi)}</td><td><button class="account-row-icon-btn" type="button" data-daytrade-replay-action aria-label="在排名下方展開歷史回放"${canReplay ? "" : " disabled"}>${dailyActionIcon("chart")}</button></td></tr>`;
       }).join("")
-    : `<tr><td colspan="9" class="empty">尚無資料</td></tr>`;
+    : emptyStateRowHtml(9, "尚無資料");
 }
 
 export function renderDaytradeMiniReport(item, modeLabel) {
@@ -244,14 +244,14 @@ export function daytradePeriodTableHtml(items, firstLabel) {
     return `
       <table class="data-table finance-table account-daytrade-period-table">
         ${header}
-        <tbody>${rows.map((item) => `<tr><td>${escapeHtml(item.label)}</td><td class="${profitClass(item.total_profit)}">${formatMetricMoney(item.total_profit)}</td><td>${formatPercent(item.win_rate)}</td><td class="${profitClass(item.expectancy)}">${formatMetricMoney(item.expectancy)}</td><td>${formatMetricMoney(item.avg_win)}</td><td>${formatMetricMoney(item.avg_loss)}</td><td>${item.total_count || 0}</td></tr>`).join("") || `<tr><td colspan="7" class="empty">尚無資料</td></tr>`}</tbody>
+        <tbody>${rows.map((item) => `<tr><td>${escapeHtml(item.label)}</td><td class="${profitClass(item.total_profit)}">${formatMetricMoney(item.total_profit)}</td><td>${formatPercent(item.win_rate)}</td><td class="${profitClass(item.expectancy)}">${formatMetricMoney(item.expectancy)}</td><td>${formatMetricMoney(item.avg_win)}</td><td>${formatMetricMoney(item.avg_loss)}</td><td>${item.total_count || 0}</td></tr>`).join("") || emptyStateRowHtml(7, "尚無資料")}</tbody>
       </table>`;
   }
 
   return `
     <table class="data-table finance-table account-daytrade-period-table account-daytrade-period-overview-table">
       ${header}
-      <tbody>${rows.map((item) => `<tr><td>${escapeHtml(item.label)}</td><td class="${profitClass(item.total_profit)}">${formatMetricMoney(item.total_profit)}</td><td class="${profitClass(item.long_profit)}">${formatMetricMoney(item.long_profit)}</td><td class="${profitClass(item.short_profit)}">${formatMetricMoney(item.short_profit)}</td><td>${formatPercent(item.win_rate)}</td><td>${formatPercent(item.long_win_rate)}</td><td>${formatPercent(item.short_win_rate)}</td><td>${item.total_count || 0}</td></tr>`).join("") || `<tr><td colspan="8" class="empty">尚無資料</td></tr>`}</tbody>
+      <tbody>${rows.map((item) => `<tr><td>${escapeHtml(item.label)}</td><td class="${profitClass(item.total_profit)}">${formatMetricMoney(item.total_profit)}</td><td class="${profitClass(item.long_profit)}">${formatMetricMoney(item.long_profit)}</td><td class="${profitClass(item.short_profit)}">${formatMetricMoney(item.short_profit)}</td><td>${formatPercent(item.win_rate)}</td><td>${formatPercent(item.long_win_rate)}</td><td>${formatPercent(item.short_win_rate)}</td><td>${item.total_count || 0}</td></tr>`).join("") || emptyStateRowHtml(8, "尚無資料")}</tbody>
     </table>`;
 }
 
@@ -341,7 +341,7 @@ export function bindDaytradeWeekdayActions() {
 export function daytradeBucketDetailRowsHtml(rows) {
   const list = Array.isArray(rows) ? rows : [];
   if (!list.length) {
-    return `<tr><td colspan="12" class="empty">這個區間沒有交易</td></tr>`;
+    return emptyStateRowHtml(12, "這個區間沒有交易");
   }
   return list.map((item) => {
     const canReplay = pairReplayAvailable(item);
@@ -411,7 +411,7 @@ export function renderDirectionReport(slice) {
       <td class="${profitClass(item.profit)}">${formatMetricMoney(item.profit)}</td>
       <td>${formatPercent(item.roi)}</td>
     </tr>`;
-  }).join("") : `<tr><td colspan="11" class="empty">尚無${label.replace("交易明細", "")}資料</td></tr>`;
+  }).join("") : emptyStateRowHtml(11, `尚無${label.replace("交易明細", "")}資料`);
 }
 
 // Until the market's 當沖分析 is read, every section says so instead of showing the last market's or mode's figures.

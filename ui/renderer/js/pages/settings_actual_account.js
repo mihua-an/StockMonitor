@@ -186,7 +186,8 @@ async function saveActualAccountSettings() {
   };
 
   const result = await apiJsonPost("/api/actual-account/config", body);
-  if (!result?.ok) throw new Error(result?.error || "儲存失敗");
+  // A refused value (a URL outside Google, a changed URL without its token) says what to fix.
+  if (!result?.ok) throw Object.assign(new Error(result?.error || "儲存失敗"), { userMessage: result?.error || "" });
 
   applyConfig(result);
   showConfigProblem(result);

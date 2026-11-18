@@ -32,7 +32,7 @@ function readJsonBody(request, maxBytes = 1024 * 1024) {
 
 function createControllerHttpApi({ host, port, token, identity, supervisor, collector, performShutdown, onFullShutdown = () => {},
   operations = null, providerSdk = null, demandStatus = async () => null, uiScope = () => ({}), network = () => null,
-  waitNetwork = async () => {}, storageMove = () => null, logger = console }) {
+  waitNetwork = async () => {}, storageMove = () => null, remediation = null, logger = console }) {
   // The UI's event stream: a shutdown is announced on it before any service stops (ui_closing_channel.js).
   const uiChannel = createUiClosingChannel({ logger });
   // The attempt each recent start-all request id began (bounded, oldest dropped first).
@@ -146,6 +146,15 @@ function createControllerHttpApi({ host, port, token, identity, supervisor, coll
       if (providerSdk && request.method === "POST" && url.pathname === "/provider-sdk/install") {
         const result = providerSdk.install(String((await readJsonBody(request)).provider || ""));
         return send(response, result.ok ? 202 : result.http, result);
+      }
+      if (remediation && request.method === "POST" && url.pathname === "/control/remediation") {
+        // Electron main's remediation events (and its renderers'), into the same ledger the pipe feeds. `settled`:
+        // how many leading events are refused, duplicates, or durable -- the client resends the rest.
+        const { events } = await readJsonBody(request, remediation.maxBodyBytes);
+        if (!Array.isArray(events) || events.length > remediation.maxEvents) {
+          return send(response, 400, { ok: false, error: "INVALID_REMEDIATION_BATCH" });
+        }
+        return send(response, 200, { ok: true, settled: await remediation.admitBatch(events) });
       }
       if (request.method === "POST" && url.pathname === "/control/ui-scope") {
         const body = await readJsonBody(request);

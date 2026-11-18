@@ -1,7 +1,7 @@
 const { app, BrowserWindow, dialog, Menu, screen, ipcMain, Tray, nativeImage, net, shell } = require("electron");
 const path = require("path");
 const { performance } = require("perf_hooks");
-const { loadRuntime } = require("../../service/platform/js/launch_runtime");
+const { loadRuntime, flavorOf } = require("../../service/platform/js/launch_runtime");
 
 // The packaged asar mirrors the repo layout (ui/main, ui/renderer, health,
 // config/js), so every relative require resolves identically in dev and
@@ -12,12 +12,13 @@ function requireMain(name) {
 const { createAppSingleInstanceController } = requireMain("app_single_instance");
 
 // Errors before the application's error log exists go to this run's error log of Electron main from here on.
-const earlyErrors = requireMain("early_error_sink").installEarlyErrorSink({
+const { installEarlyErrorSink, startupFallbackFile } = requireMain("early_error_sink");
+const earlyErrors = installEarlyErrorSink({
   resolvePrimary: () => {
     const { logSessionPath, MAIN_ERROR_LOG } = require("../../service/platform/js/log_session.js");
     return logSessionPath(MAIN_ERROR_LOG);
   },
-  fallbackFile: path.join(app.getPath("appData"), "StockMonitor", "startup_errors.log"),
+  fallbackFile: startupFallbackFile({ appDataDir: app.getPath("appData"), flavor: flavorOf(app.isPackaged) }),
 });
 // A launcher that closed its end of stdout/stderr turns the next console line into EPIPE; that is recorded in the
 // same error log instead of becoming an uncaught exception dialog.
@@ -39,7 +40,6 @@ require("../../service/platform/js/stdio_guard.js").installStdioGuard({
 // and the source checkout each keep their own window layout and data, and Health resolves the same directory.
 {
   const { userDataDir } = require("../../config/js/var_paths.js");
-  const { flavorOf } = require("../../service/platform/js/launch_runtime.js");
   app.setPath("userData", userDataDir({ flavor: flavorOf(app.isPackaged), env: process.env }));
 }
 

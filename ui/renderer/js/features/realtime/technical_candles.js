@@ -5,6 +5,7 @@ import { KLineChart } from "../../core/trend/kline_chart.js";
 import { morphInto } from "../../core/dom_morph.js";
 import { MarketPriceColorPolicy } from "../../core/market_color_policy.js";
 import { escapeHtml, formatQuantity } from "../../core/utility.js";
+import { priceText } from "../../core/auction_price.js";
 import { TECHNICAL_TIMEFRAMES as TIMEFRAMES, technicalBars, timeframeResolution } from "./technical_series.js";
 import { TechnicalHistory } from "./technical_history.js";
 
@@ -40,8 +41,9 @@ function ohlcvHtml(bar, previous, { showDate }) {
   if (!bar) return `${date}<span>開 <b>--</b></span><span>高 <b>--</b></span><span>低 <b>--</b></span><span>收 <b>--</b></span><span>量 <b>--</b></span>`;
   const reference = previous?.close ?? bar.open;
   const tone = (value) => MarketPriceColorPolicy.cssClass(value, reference);
-  const digits = bar.high >= 1000 ? 0 : 2;
-  const cell = (label, value) => `<span>${label} <b class="${tone(value)}">${escapeHtml(value.toFixed(digits))}</b></span>`;
+  // Two decimals for every product, as the chart's own price marks (auction_price.priceText): an index or a US stock
+  // above 1000 keeps its decimals.
+  const cell = (label, value) => `<span>${label} <b class="${tone(value)}">${escapeHtml(priceText(value))}</b></span>`;
   return `${date}${cell("開", bar.open)}${cell("高", bar.high)}${cell("低", bar.low)}${cell("收", bar.close)}`
     + `<span>量 <b class="technical-analysis-volume">${escapeHtml(formatQuantity(bar.volume))}</b></span>`;
 }

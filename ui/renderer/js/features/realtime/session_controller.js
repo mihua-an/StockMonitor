@@ -7,6 +7,7 @@ import { realtimeContext } from "../../core/dashboard_context.js";
 import { sharedStatusGet } from "../../core/api.js";
 import { runUiTask } from "../../core/ui_task.js";
 import { setRealtimeFocusSymbol, subscribeRealtimeConnectionState, subscribeRealtimeSession, subscribeRealtimeSessionRollover } from "../../market_data/realtime.js";
+import { createEquityDateFollower } from "../../market_data/equity_trading_date.js";
 import { renderRealtimeQuoteTable } from "./realtime_presentation.js";
 import { replaceSignalRows } from "./live_signals.js";
 import { loadTxfTrendSnapshot, orderbookDeltaTokens, reconcileCanonicalViews } from "./canonical_view_owner.js";
@@ -93,12 +94,14 @@ function bindEquityViews() {
 
 // Market Runtime's session (pushed on every connection and with every rollover): commit the identity before any
 // view subscribes on it. Its equity date moves when A takes the new session on its first print -- the 盤前 the
-// status line shows -- and that is when the previous session's 量變, 1m3m5m and 成交明細 leave the page.
+// status line shows -- and that is when the previous session's 量變, 1m3m5m and 成交明細 leave the page. A session that
+// names no 台股 day (A's equity null) moves nothing: coming back to the same day is not a new one.
+const equityDates = createEquityDateFollower();
 function applyRealtimeSession(session) {
-  const previousEquityDate = equityTradingDate();
+  const previousEquityDate = equityDates.current;
   setRealtimeDisplayContext(session && typeof session === "object" ? session : null);
-  const nextEquityDate = equityTradingDate();
-  const dateMoved = Boolean(nextEquityDate) && previousEquityDate !== nextEquityDate;
+  const nextEquityDate = equityDates.follow(session);
+  const dateMoved = Boolean(nextEquityDate);
   if (dateMoved) {
     for (const listener of [...equityDateListeners]) {
       try { listener(nextEquityDate); } catch (error) { console.warn("[SESSION AUTHORITY] listener failed", error); }

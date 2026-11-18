@@ -28,7 +28,12 @@ assert.ok(!/font-family/.test(option), "the app's font");
 assert.match(bodyOf(".event-feed-date-option:hover"), /var\(--surface-tab-active\)/);
 assert.match(bodyOf(".event-feed-date-option.active"), /var\(--sky-800x-7\)[\s\S]*font-weight:\s*800/);
 assert.ok(!/history-sidebar-date-option/.test(css), "no second option style");
-assert.match(read("js/features/history/date_picker.js"), /class="event-feed-date-option/);
+// One menu behaviour and option markup (core date_menu.js) for 歷史事件 and the 歷史回放 sidebar.
+assert.match(read("js/core/components/date_menu.js"), /class="event-feed-date-option/);
+for (const user of ["js/features/history/date_picker.js", "js/core/components/event_feed_component.js"]) {
+  assert.match(read(user), /import \{ bindDateMenu, dateOptionsHtml \} from "[./]+(core\/)?components\/date_menu\.js"|import \{ bindDateMenu, dateOptionsHtml \} from "\.\/date_menu\.js"/, user);
+  assert.ok(!/event-feed-date-option/.test(read(user)), `${user} draws no option of its own`);
+}
 
 // The stepper, its row and the buttons under it are order-ticket's; 模擬帳務's 刪改 card uses them as 下單 does.
 assert.ok(!/paper-ledger-step\b|paper-ledger-amount|paper-ledger-link|paper-ledger-actions/.test(css), "no second stepper or button row");

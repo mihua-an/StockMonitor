@@ -14,6 +14,7 @@ const { loadVarLayout, resolveVarPaths } = require("../../../config/js/var_paths
 const { loadRuntimeContract, resolveLaunchVarRoot, RuntimeConfigurationError } = require("../../../config/js/runtime_contract");
 const { loadVarLayout: loadLayoutFile, userDataDir } = require("../../../config/js/var_paths.js");
 const { logSessionId } = require("./log_session.js");
+const { samePath } = require("../../../config/js/path_policy.js");
 
 // The per-user directories of a source checkout and of an installed app are two flavors of config/var_layout.json
 // (userData, AUTH_ROOT): an installed app never shares the developer checkout's window layout, data or IPC tokens, and
@@ -86,8 +87,7 @@ function resolvePythonExecutable(projectRoot, { env = process.env, spawnSyncImpl
 // The interpreter stage_python_runtime.py staged into the installer (app-runtime/python/python.exe), as opposed to
 // a developer's own Python or an explicit STOCK_MONITOR_PYTHON_EXECUTABLE pointing elsewhere.
 function isBundledInterpreter(projectRoot, pythonExecutable) {
-  return path.resolve(String(pythonExecutable || "")).toLowerCase()
-    === path.resolve(projectRoot, "python", "python.exe").toLowerCase();
+  return samePath(String(pythonExecutable || ""), path.join(projectRoot, "python", "python.exe"));
 }
 
 // Single structured runtime description for a process: where the project
@@ -147,7 +147,7 @@ function loadRuntime({ env = process.env, isPackaged = false, resourcesPath, use
     logSession: logSessionId(env),
     pythonExecutable,
     // Resolved here, after flavor and VAR_ROOT are set in `env`, from this install's own manifest and config root.
-    network: loadNetworkRuntime({ env, projectRoot, configRoot: varPaths.config }),
+    network: loadNetworkRuntime({ env, configRoot: varPaths.config }),
     backend: {
       architecture: String(contract.backend.architecture),
       runtimeVersion: String(contract.backend.runtime_version),

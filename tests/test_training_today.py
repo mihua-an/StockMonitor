@@ -6,6 +6,7 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from service.analysis.online_training.today import training_today
+from service.market.shared.session_identity_contract import trading_span
 
 TPE = ZoneInfo("Asia/Taipei")
 DATA = {d: {"date": d, "instruments": 70 + i, "events": 1000 * (i + 1), "bytes": 10 * (i + 1)} for i, d in
@@ -22,7 +23,8 @@ def run(clock: str, *, day="2026-10-07", state=None, schedule=None, running=Fals
     available = available if available is not None else ["2026-10-02", "2026-10-05", "2026-10-06"]
     return training_today(now, schedule=schedule or {}, window_days=3, state=state or {}, job=None, running=running,
                           available=available, window=window or (available[-3:], []),
-                          materialized=ready, is_trading=weekdays, data_of=lambda d: DATA[d])
+                          materialized=ready, is_trading=weekdays, data_of=lambda d: DATA[d],
+                          session_span=trading_span("shioaji", "STK", "DAY", day))
 
 
 def test_phases_through_a_trading_day_predict_no_clock_time():
@@ -51,6 +53,15 @@ def test_a_failed_attempt_shows_its_retry_time():
     assert out["seconds_until_next_run"] == 23 * 60
     stale = run("14:50", schedule={"trading_date": "2026-10-06", "state": "WAITING", "next_due_at": "2026-10-06T07:13:00+00:00"})
     assert stale["phase"] == "WAITING_SEAL", "another date's retry is not today's"
+
+
+def test_the_session_is_the_stock_day_of_trading_sessions_json_through_its_last_minute():
+    """IN_SESSION through the 13:30 minute, as Market Runtime's equity_session (rollover.rs): a stock whose close is
+    delayed still prints after 13:30:00 (decisions.md 台股日盤的收盤時刻)."""
+    assert run("08:59")["phase"] == "BEFORE_OPEN"
+    assert run("09:00")["phase"] == "IN_SESSION"
+    assert run("13:30")["phase"] == "IN_SESSION"
+    assert run("13:31")["phase"] == "WAITING_SEAL"
 
 
 def test_a_holiday():

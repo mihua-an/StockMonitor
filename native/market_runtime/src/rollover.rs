@@ -539,7 +539,7 @@ pub fn taipei_stamp(ts_ns: i64) -> String {
 
 /// UTC ns of Taipei-local `date` at `minute`; None when `date` is not a real `YYYY-MM-DD` date.
 pub fn taipei_minute_ns(date: &str, minute: i32) -> Option<i64> {
-    Some((day_number(date)? * 86_400 + minute as i64 * 60 - 8 * 3600) * 1_000_000_000)
+    crate::event::local_minute_ns("STK", date, minute)
 }
 
 const SESSIONS_SCHEMA: &str = "market-sessions-v1";
@@ -1221,7 +1221,19 @@ mod tests {
         assert!(never_stored("futu", "CC") && !never_stored("futu", "US") && !never_stored("shioaji", "STK"));
     }
 
+    /// The Taipei minute is the market-local minute of event.rs (one time-zone rule): 05:00 of the next day as
+    /// minute 1740, and an invalid date is none.
     #[test]
+    fn a_taipei_minute_is_the_stock_markets_local_minute() {
+        for (date, minute) in [("2026-10-06", 0), ("2026-10-06", 8 * 60 + 30), ("2026-10-06", 29 * 60), ("2026-12-31", 23 * 60 + 59)] {
+            let ns = taipei_minute_ns(date, minute).unwrap();
+            assert_eq!(Some(ns), crate::event::local_minute_ns("STK", date, minute));
+            assert_eq!(taipei_stamp(ns).len(), "2026-10-06T08:30+08:00".len());
+        }
+        assert_eq!(taipei_stamp(taipei_minute_ns("2026-10-06", 29 * 60).unwrap()), "2026-10-07T05:00+08:00");
+        assert_eq!(taipei_minute_ns("2026-02-31", 0), None);
+    }
+
     #[test]
     fn equity_session_follows_the_day_cutoff_and_the_clock() {
         let at = |date, minute| equity_session(&calendar(), &all_opened(), taipei_ns(date, minute)).unwrap();

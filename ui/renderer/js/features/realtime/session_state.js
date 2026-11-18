@@ -1,5 +1,6 @@
 // The 即時報價 page's session state: the session authority's display context (the equity trading date, PREOPEN, the
 // 期貨走勢 tabs' identities), the Market Runtime view specs those name, and the dock's freshness indicator.
+import { equityTradingDateOf } from "../../market_data/equity_trading_date.js";
 import { subscribeRealtimeConnectionState } from "../../market_data/realtime.js";
 import { normalizeTxfDisplayIdentity as normalizeTxfIdentity, txfCanonicalStateKey, txfDisplayIdentityKey, txfIdentityMatchesDisplay, txfSessionPartitions, txfTickMatchesDisplayWindow as txfTickMatchesWindow } from "./txf_session_identity.js";
 import { computeFreshnessBanner, createFreshnessBannerDebouncer, recordFreshnessTransitions } from "../../core/realtime_freshness_banner.js";
@@ -35,7 +36,7 @@ let freshnessBannerConnectionUnsubscribe = null;
 const txfDisplayIdentityBySession = new Map();
 
 export function equityTradingDate() {
-  return String(realtimeDisplayContext?.equity?.trading_date || "").slice(0, 10);
+  return equityTradingDateOf(realtimeDisplayContext);
 }
 
 
@@ -316,7 +317,7 @@ export function futuresMonthTrendSpecs(code, session = stockFuturesSessionShown(
 // earlier trading date, and a wall-clock date would bind the view to a partition that holds nothing.
 const stockViewSpecs = { key: null, byCode: new Map() };
 export function stockCanonicalViewSpec(code) {
-  const tradingDate = String(realtimeDisplayContext?.equity?.trading_date || "").slice(0, 10);
+  const tradingDate = equityTradingDateOf(realtimeDisplayContext);
   const futures = futuresLivePartition();
   const key = `${tradingDate}|${futures.trading_date}|${futures.session}`;
   const normalized = String(code || "").trim().toUpperCase();
@@ -336,7 +337,7 @@ export function setOddLotShown(on) {
 // One frozen 盤中零股 spec per stock and trading date, as stockCanonicalViewSpec.
 const oddLotViewSpecs = { key: null, byCode: new Map() };
 function oddLotCanonicalViewSpec(code) {
-  const tradingDate = String(realtimeDisplayContext?.equity?.trading_date || "").slice(0, 10);
+  const tradingDate = equityTradingDateOf(realtimeDisplayContext);
   const normalized = String(code || "").trim().toUpperCase();
   if (oddLotViewSpecs.key !== tradingDate) { oddLotViewSpecs.key = tradingDate; oddLotViewSpecs.byCode.clear(); }
   let spec = oddLotViewSpecs.byCode.get(normalized);

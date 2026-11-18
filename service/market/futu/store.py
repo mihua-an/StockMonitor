@@ -2,13 +2,9 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterator
-
-
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+from service.market.futu.clock import utc_now
 
 
 class FutuControlStore:
@@ -78,7 +74,7 @@ class FutuControlStore:
             db.execute(
                 "INSERT INTO runtime_state(key,value,updated_at) VALUES(?,?,?) "
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at",
-                (key, value, _utc_now()),
+                (key, value, utc_now()),
             )
 
     def watchlist_rows(self) -> list[dict]:

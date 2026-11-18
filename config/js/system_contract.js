@@ -24,4 +24,9 @@ function dataChild(owner) {
   return name;
 }
 
-module.exports = { SCHEMA, contract, dataChild };
+/** The full path of that DATA_ROOT child under `dataRoot` (its contract name may hold "/"-separated parts). */
+function dataChildPath(dataRoot, owner) {
+  return path.join(dataRoot, ...dataChild(owner).split("/"));
+}
+
+module.exports = { SCHEMA, contract, dataChild, dataChildPath };

@@ -2,6 +2,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { createHash } = require("node:crypto");
+const { pathKey } = require("../../config/js/path_policy.js");
 
 // Written last into a release directory: the release is complete (every file is in place). Not part of the tree.
 const COMPLETE_MARKER = ".release-complete";
@@ -33,7 +34,8 @@ function digest(files) {
 // An unreplaced placeholder is an invalid CSP source and is ignored by the browser: the page can then reach
 // nothing but itself -- it fails closed.
 const CSP_PLACEHOLDER = "__STOCKMONITOR_CONNECT_SOURCES__";
-const LOOPBACK_SOURCE = /^(http|ws):\/\/(127\.0\.0\.1|localhost|\[::1\]):\d{1,5}$/;
+// The loopback every formal service listens on (config/js/network_config.js LOOPBACK_HOST).
+const LOOPBACK_SOURCE = /^(http|ws):\/\/127\.0\.0\.1:\d{1,5}$/;
 
 function substituteConnectSources(files, connectSources) {
   const sources = [...new Set(connectSources || [])];
@@ -100,13 +102,13 @@ const STALE_STAGING_MS = 60 * 60 * 1000;
 function pruneRendererAssets(cacheDir, { keep = [], keepRecent = 3, now = Date.now() } = {}) {
   let entries;
   try { entries = fs.readdirSync(cacheDir, { withFileTypes: true }); } catch (error) { /* absent is not an error: no asset cache yet: nothing to prune */ if (error?.code !== "ENOENT") console.warn("[RENDERER ASSETS list cache] failed", error); return []; }
-  const keepSet = new Set(keep.filter(Boolean).map((dir) => path.resolve(dir).toLowerCase()));
+  const keepSet = new Set(keep.filter(Boolean).map((dir) => pathKey(dir)));
   const stat = (name) => { try { return fs.statSync(path.join(cacheDir, name)); } catch (error) { console.warn("[RENDERER ASSETS stat release] failed", error); return null; } };
   const releases = entries.filter((e) => e.isDirectory() && RELEASE_NAME.test(e.name))
     .map((e) => ({ name: e.name, mtime: stat(e.name)?.mtimeMs ?? 0 }))
     .sort((a, b) => b.mtime - a.mtime);
   const doomed = releases.slice(keepRecent).map((r) => r.name)
-    .filter((name) => !keepSet.has(path.resolve(cacheDir, name).toLowerCase()));
+    .filter((name) => !keepSet.has(pathKey(path.join(cacheDir, name))));
   for (const e of entries) {
     if (e.isDirectory() && e.name.startsWith(".prepare-") && now - (stat(e.name)?.mtimeMs ?? now) > STALE_STAGING_MS) doomed.push(e.name);
   }

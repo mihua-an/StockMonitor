@@ -76,9 +76,10 @@ def _cached(path: Path, parse, empty):
         return value
 
 
-def _parse_holidays(path: Path) -> tuple[dict[int, tuple[frozenset[date], frozenset[date]]], dict[int, frozenset[date]]]:
-    """The TWSE years (closed, trading) and the NYSE years (closed) of the holidays file, read together: the cache
-    holds one value per file."""
+def _parse_holidays(path: Path) -> tuple[dict[int, tuple[frozenset[date], frozenset[date]]],
+                                         dict[int, tuple[frozenset[date], frozenset[date]]]]:
+    """The TWSE years (closed, trading) and the NYSE years (closed, half) of the holidays file, read together: the
+    cache holds one value per file."""
     data = json.loads(path.read_text(encoding="utf-8"))
     years: dict[int, tuple[frozenset[date], frozenset[date]]] = {}
     for year, entry in ((data.get("markets") or {}).get("TWSE") or {}).get("years", {}).items():
@@ -89,10 +90,11 @@ def _parse_holidays(path: Path) -> tuple[dict[int, tuple[frozenset[date], frozen
         except (KeyError, TypeError, ValueError) as exc:
             _failure_log.warning("reading a TWSE holiday year entry failed: %s: %s", type(exc).__name__, exc)
             continue
-    nyse: dict[int, frozenset[date]] = {}
+    nyse: dict[int, tuple[frozenset[date], frozenset[date]]] = {}
     for year, entry in ((data.get("markets") or {}).get("NYSE") or {}).get("years", {}).items():
         try:
-            nyse[int(year)] = frozenset(date.fromisoformat(row["date"]) for row in entry.get("closed") or [])
+            nyse[int(year)] = (frozenset(date.fromisoformat(row["date"]) for row in entry.get("closed") or []),
+                               frozenset(date.fromisoformat(row["date"]) for row in entry.get("half") or []))
         except (KeyError, TypeError, ValueError) as exc:
             _failure_log.warning("reading an NYSE holiday year entry failed: %s: %s", type(exc).__name__, exc)
             continue
@@ -103,7 +105,7 @@ def _twse() -> dict[int, tuple[frozenset[date], frozenset[date]]]:
     return _cached(PATH, _parse_holidays, ({}, {}))[0]
 
 
-def _nyse() -> dict[int, frozenset[date]]:
+def _nyse() -> dict[int, tuple[frozenset[date], frozenset[date]]]:
     return _cached(PATH, _parse_holidays, ({}, {}))[1]
 
 
@@ -133,30 +135,45 @@ def us_calendar_path() -> Path:
     return Path(DATA_ROOT).joinpath(*data_child("us_trading_calendar").split("/"))
 
 
-def _parse_us(path: Path) -> tuple[date, date, frozenset[date]]:
+def _parse_us(path: Path) -> tuple[date, date, frozenset[date], frozenset[date]]:
+    """The window, its trading days and the ones closing early (OpenD's MORNING days)."""
     data = json.loads(path.read_text(encoding="utf-8"))
     if data.get("schema") != US_CALENDAR_SCHEMA:
         raise ValueError(f"schema {data.get('schema')!r}, expected {US_CALENDAR_SCHEMA!r}")
     first, last = date.fromisoformat(data["from"]), date.fromisoformat(data["to"])
-    days = frozenset(date.fromisoformat(row["date"]) for row in data.get("days") or [])
+    rows = [(date.fromisoformat(row["date"]), str(row.get("kind") or "").upper()) for row in data.get("days") or []]
+    days = frozenset(day for day, _kind in rows)
     if first > last or any(not first <= day <= last for day in days):
         raise ValueError(f"trading days outside the window {first}..{last}")
-    return first, last, days
+    return first, last, days, frozenset(day for day, kind in rows if kind == "MORNING")
 
 
 def us_trading_day(day: date) -> bool | None:
     """True / False from the US exchange calendar OpenD published (the Futu provider writes it, see
     service/market/futu/trading_calendar.py) inside its window, else from the NYSE days of the holidays file; None when
-    neither covers ``day``, and callers keep their weekday rule."""
+    neither covers ``day``."""
     window = _cached(us_calendar_path(), _parse_us, None)
     if window is not None:
-        first, last, days = window
+        first, last, days, _half = window
         if first <= day <= last:
             return day in days
-    closed = _nyse().get(day.year)
-    if closed is None:
+    year = _nyse().get(day.year)
+    if year is None:
         return None
-    return day.weekday() < 5 and day not in closed
+    return day.weekday() < 5 and day not in year[0]
+
+
+def us_half_day(day: date) -> bool:
+    """Whether ``day`` closes early in New York (13:00), by the same rule as Market Runtime's calendar
+    (native/market_runtime/src/rollover.rs ``with_us_calendar``): OpenD's MORNING days inside its window, else the
+    NYSE ``half`` days of the holidays file. A day neither covers is a whole day, as it is there."""
+    window = _cached(us_calendar_path(), _parse_us, None)
+    if window is not None:
+        first, last, _days, half = window
+        if first <= day <= last:
+            return day in half
+    year = _nyse().get(day.year)
+    return year is not None and day in year[1]
 
 
 def futu_trading_day(market: str, day: date) -> bool:

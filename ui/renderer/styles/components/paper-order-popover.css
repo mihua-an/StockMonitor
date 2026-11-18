@@ -61,5 +61,5 @@
 }
 
 .paper-order-popover-message.error {
-  color: var(--price-up-color);
+  color: var(--status-error);
 }

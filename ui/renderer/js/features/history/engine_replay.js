@@ -222,18 +222,17 @@ export class EngineReplay {
   trendViewModel({ displayName = "", options = {} } = {}) {
     const state = this.state();
     const summary = state.summary || {};
-    const prevClose = displayQuote(summary).reference;
-    const current = positiveNumberOrNull(summary.current ?? summary.price);
-    const high = numberOrNull(summary.high);
-    const low = numberOrNull(summary.low);
+    // 現價 (試撮 included) / 參考價: the same displayQuote() as the live page, so 現價 and 漲跌 always agree.
+    const quote = displayQuote(summary);
     const limits = this.limits(summary);
     const predictions = modelPredictionMetrics(state.signals);
     return withMarketRead({
       availability: "AVAILABLE",
       points: Array.isArray(state.trend) ? state.trend : [],
-      prevClose,
+      prevClose: quote.reference,
       openPrice: numberOrNull(summary.open),
-      currentPrice: current,
+      currentPrice: quote.current,
+      indicative: quote.indicative,
       displayName: displayName || summary.name || this.code,
       displayCode: this.code,
       symbol: this.code,

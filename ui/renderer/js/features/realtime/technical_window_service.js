@@ -5,6 +5,7 @@ import { apiGet } from "../../core/api.js";
 import { MarketDataGateway } from "../../market_data/market_data_gateway.js";
 import { stockCanonicalViewSpec } from "../../market_data/stock_view_spec.js";
 import { getRealtimeViewSnapshot, subscribeRealtimeSession, subscribeRealtimeView } from "../../market_data/realtime.js";
+import { subscribeEquityDate } from "../../market_data/equity_trading_date.js";
 import { loadTechnicalHistory, olderBarsApi } from "./technical_history_api.js";
 
 /** What a 技術分析 panel reads, the page's and the detached window's: the view a code means (`baseSpec`, its session
@@ -43,9 +44,8 @@ export function createTechnicalWindowService({ subscribeSession = subscribeRealt
   const gateway = new MarketDataGateway({ subscribeView, getSnapshot });
   const dateListeners = new Set();
   let tradingDate = "";
-  const release = subscribeSession((payload) => {
-    const date = String(payload?.equity?.trading_date || "").slice(0, 10);
-    if (date === tradingDate) return;
+  // A session that names no 台股 day (A's equity null) keeps the day shown; only a new valid day rebinds the views.
+  const release = subscribeEquityDate(subscribeSession, (date) => {
     tradingDate = date;
     for (const listener of [...dateListeners]) listener();
   });

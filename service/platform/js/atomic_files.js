@@ -33,11 +33,14 @@ function writeJsonAtomic(file, value, { fsImpl = fs, pathImpl = path, indent = 2
   }
 }
 
-// The JSON object in `file`, or null when there is none: absent, unreadable or not an object (the last two warned).
+// The JSON object in `file`, or null when there is none: absent, unreadable or not an object (an array, a number,
+// null) -- the last two warned.
 function readJsonObject(file, { fsImpl = fs, label = file } = {}) {
   try {
     const value = JSON.parse(fsImpl.readFileSync(file, "utf8"));
-    return value && typeof value === "object" ? value : null;
+    if (value && typeof value === "object" && !Array.isArray(value)) return value;
+    console.warn(`[reading ${label}] failed: not a JSON object`);
+    return null;
   } catch (error) {
     // absent is not an error: no such file
     if (error?.code !== "ENOENT") console.warn(`[reading ${label}] failed`, error);

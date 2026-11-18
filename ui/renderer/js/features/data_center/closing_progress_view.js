@@ -4,6 +4,7 @@
 // 執行紀錄 under each step, and beside it 下次物化 (what, when, countdown) over the 上次物化 rows. Pure HTML: every value
 // from the payload is escaped here.
 import { escapeHtml } from "../../core/utility.js";
+import { emptyStateRowHtml } from "../../core/load_state_view.js";
 import { numberOrNull } from "../../core/numbers.js";
 import { compactCount, clockTime, int, formatSpan, figure, logEmpty, logGroup, logList, logRow, phasePip, progressBar, runningFigures,
   stepCard } from "../../core/job_status_view.js";
@@ -112,7 +113,7 @@ export function renderClosingHistory(payload) {
       + `<td${row.stage === "failed" ? ' class="error"' : ""}>${STATE_TEXT[row.stage] || escapeHtml(row.stage)}</td>`
       + `<td>${int(row.codes)} 檔 · ${eventsText(row.events, row.backfilled)}</td>`
       + `<td>${gaps.length ? `<span class="settings-badge is-warn">有缺口：${gaps.join("、")}</span>` : '<span class="settings-badge is-pass">完整</span>'}</td><td>${ended}</td></tr>`;
-  }).join("") : `<tr><td colspan="5" class="empty">還沒有物化紀錄</td></tr>`;
+  }).join("") : emptyStateRowHtml(5, "還沒有物化紀錄");
   return `<table class="data-table dc-closing-history-table">`
     + `<thead><tr><th>物化</th><th>狀態</th><th>歷史資料</th><th>完整性</th><th>完成時間</th></tr></thead><tbody>${body}</tbody></table>`;
 }

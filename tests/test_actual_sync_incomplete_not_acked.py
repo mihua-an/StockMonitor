@@ -64,7 +64,7 @@ def test_a_gas_script_without_the_ack_action_still_records_the_synced_revision(t
     monkeypatch.setattr(ledger.sync_service, "_gas_request", request)
     monkeypatch.setattr(ledger.report_publisher, "_gas_request", request)
     try:
-        ledger.sync_service.save_config("https://example.invalid/exec", "token")
+        ledger.sync_service.save_config("https://script.google.com/macros/s/FAKE/exec", "token")
         first = ledger.sync_service.poll_gas_bridge_once()
         assert first.get("changed") is True and first.get("local_revision_after") == 7, first
         assert "actualBridgeAck" in calls

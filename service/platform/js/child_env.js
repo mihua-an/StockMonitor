@@ -42,9 +42,9 @@ const APP_NAMES = require("../../../config/child_env_names.json").inherit;
 // Never inherited, even when listed; a role gets these only through `grant`. A token FILE path is withheld like the
 // token itself, and so is any other secret-looking name -- a `_DIR`/`_ROOT` ending does not make one safe.
 const SECRET_PATTERN = /(TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|CREDENTIAL|PRIVATE_?KEY|COOKIE|SESSION_?KEY)/i;
-// The secret-looking names that are directories a child must resolve, listed one by one: the var_layout.json locations
-// (layoutNames: STOCK_MONITOR_AUTH_ROOT ...) and the broker credential directory (service/platform/runtime_credentials.py).
-const SECRET_LOOKING_PATHS = ["STOCK_MONITOR_RUNTIME_CREDENTIAL_DIR"];
+// The secret-looking names that are directories a child must resolve: the var_layout.json locations (layoutNames:
+// STOCK_MONITOR_AUTH_ROOT ...). The market_runtime token directory (STOCK_MONITOR_RUNTIME_CREDENTIAL_DIR) is not one:
+// a child is granted its role's token itself and never reads that directory; only Health, the minter, is given it.
 
 // Every variable config/var_layout.json resolves a location from (the flavor, VAR_ROOT, AUTH_ROOT and its base
 // directory and each child's overrides): a child must resolve exactly the paths its
@@ -57,7 +57,7 @@ function layoutNames() {
 }
 
 const OS_LOOKUP = new Set([...OS_NAMES, ...layoutNames(), ...APP_NAMES].map((name) => name.toUpperCase()));
-const PATH_LOOKUP = new Set([...layoutNames(), ...SECRET_LOOKING_PATHS].map((name) => name.toUpperCase()));
+const PATH_LOOKUP = new Set(layoutNames().map((name) => name.toUpperCase()));
 
 function isSecretName(name) {
   return SECRET_PATTERN.test(name) && !PATH_LOOKUP.has(String(name).toUpperCase());

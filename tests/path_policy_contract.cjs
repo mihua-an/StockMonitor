@@ -5,7 +5,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { pathKey, samePath, isInside, sameVolume } = require("../config/js/path_policy.js");
+const { pathKey, samePath, isInside, existingAncestor, sameVolume } = require("../config/js/path_policy.js");
+const { dataChildPath } = require("../config/js/system_contract.js");
 const { pipePath } = require("../config/js/remediation_contract.js");
 
 const base = path.resolve(os.tmpdir(), "PolicyCase");
@@ -30,6 +31,14 @@ try {
     statSync: (p) => ({ dev: p === mountA ? 1 : 2 }),
   };
   assert.equal(sameVolume("/mnt/a/x", "/mnt/b/y", { fsImpl: fakeFs }), false, "two mounts under one root are two volumes");
+  // The one "nearest existing folder" rule, shared with Health's storage usage (its disk of a folder not created yet).
+  assert.equal(existingAncestor(path.join(dir, "not", "yet"), fs), path.resolve(dir));
+  assert.equal(existingAncestor(dir, fs), path.resolve(dir));
+
+  // A DATA_ROOT child's full path comes from the system contract, never a hand-written folder name.
+  assert.equal(dataChildPath(dir, "market_runtime"), path.join(dir, "live-engine"));
+  assert.equal(dataChildPath(dir, "market_sessions"), path.join(dir, "live-engine", "market_sessions.json"));
+  assert.throws(() => dataChildPath(dir, "no_such_owner"), /names no data directory/);
 } finally {
   fs.rmSync(dir, { recursive: true, force: true });
 }

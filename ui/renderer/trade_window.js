@@ -72,18 +72,7 @@ async function submitAddTrade(body) {
   setMessage("正在送出 Google Form…");
   const config = await getGoogleFormConfig();
   if (!window.desktopAPI?.submitGoogleFormTrade) throw new Error("Electron 交易送出功能尚未載入，請重新啟動 App");
-  const result = await window.desktopAPI.submitGoogleFormTrade({
-    prefill_url: config.google_form_prefill_url,
-    mapping: {
-      trade_date: config.google_form_param_trade_date,
-      market: config.google_form_param_market,
-      action: config.google_form_param_action,
-      code: config.google_form_param_code,
-      trade_info: config.google_form_param_trade_info,
-      trade_time: config.google_form_param_trade_time,
-    },
-    trade: body,
-  });
+  const result = await window.desktopAPI.submitGoogleFormTrade(body);
   if (!result?.ok) {
     submissionUncertain = Boolean(result?.uncertain);
     throw Object.assign(new Error(result?.error || "Google Form submit failed"), {

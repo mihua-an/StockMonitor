@@ -51,7 +51,7 @@ use market_runtime::event::{MarketEvent, Payload, Refused, CLOCK_CODE};
 use serde_json::{json, Value};
 
 use market_runtime::historical_store::PartitionKey;
-use market_runtime::replay::{check_committed, Committed, Fnv1a64};
+use market_runtime::replay::{check_committed, is_blank_line, read_lines, Committed, Fnv1a64};
 use crate::contract::SpecIdentity;
 use crate::day_context::ContextSource;
 use crate::features::{FeatureSnapshot, FeatureStore, Folded, KeyId, CATEGORY_COLUMNS, FOLD_VERSION, NUMERIC_COLUMNS};
@@ -133,21 +133,8 @@ pub struct ExportArgs {
 /// before anything is folded, so a refused partition contributes nothing.
 fn verify(events: &Path) -> Result<Committed, String> {
     let file = File::open(events).map_err(|e| format!("open: {e}"))?;
-    let mut reader = BufReader::with_capacity(1 << 20, file);
-    let (mut hash, mut lines, mut buf) = (Fnv1a64::default(), 0u64, Vec::new());
-    loop {
-        buf.clear();
-        match reader.read_until(b'\n', &mut buf) {
-            Ok(0) => break,
-            Ok(_) => {}
-            Err(e) => return Err(format!("read: {e}")),
-        }
-        hash.update(&buf);
-        if buf.iter().any(|b| !b.is_ascii_whitespace()) {
-            lines += 1;
-        }
-    }
-    check_committed(events, lines, hash.hex())
+    let (lines, hash) = read_lines(BufReader::with_capacity(1 << 20, file), |e| format!("read: {e}"), |_, _| Ok(()))?;
+    check_committed(events, lines, hash)
 }
 
 /// One verified partition, read lazily line by line.
@@ -183,13 +170,13 @@ impl Partition {
                 Err(e) => return Err(format!("{}: read after {} lines: {e}", self.path, self.lines)),
             }
             self.hash.update(&self.buf);
-            let line = String::from_utf8_lossy(&self.buf);
-            let line = line.trim();
-            if line.is_empty() {
+            // The same blank-line rule `verify` counted with (replay::read_lines).
+            if is_blank_line(&self.buf) {
                 continue;
             }
             self.lines += 1;
-            match MarketEvent::decode_slice(line.as_bytes()) {
+            let line = String::from_utf8_lossy(&self.buf);
+            match MarketEvent::decode_slice(line.trim_end_matches(['\n', '\r']).as_bytes()) {
                 Ok(event) => return Ok(Some(event)),
                 Err(Refused::OldFormat(_)) => self.old_format += 1,
                 Err(Refused::Undecodable(_)) => self.unreadable += 1,
@@ -202,14 +189,9 @@ fn relative(root: &Path, path: &Path) -> String {
     path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/")
 }
 
-/// The entries of `dir`: `Ok(None)` when it does not exist, an error when it (or one of its entries) cannot be listed.
-fn list(dir: &Path) -> Result<Option<Vec<PathBuf>>, String> {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(entries) => entries,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(format!("list: {e}")),
-    };
-    entries.map(|entry| entry.map(|e| e.path()).map_err(|e| format!("list: {e}"))).collect::<Result<Vec<_>, _>>().map(Some)
+/// The entries of `dir` (none when it does not exist), an error when it or one of its entries cannot be listed.
+fn list(dir: &Path) -> Result<Vec<PathBuf>, String> {
+    market_runtime::fsutil::list_dir(dir).map_err(|e| format!("list: {e}"))
 }
 
 /// Whether `path` is a file: `false` only when nothing is there.
@@ -229,8 +211,7 @@ fn partitions(args: &ExportArgs, date: &str, problems: &mut Vec<Value>) -> Vec<P
     for market in &args.markets {
         let day = PartitionKey::new(&args.source, market, date, "", "").date_dir(&args.historical_root);
         let sessions = match list(&day) {
-            Ok(Some(sessions)) => sessions,
-            Ok(None) => continue,
+            Ok(sessions) => sessions,
             Err(reason) => {
                 refuse(&day, reason);
                 continue;
@@ -238,7 +219,7 @@ fn partitions(args: &ExportArgs, date: &str, problems: &mut Vec<Value>) -> Vec<P
         };
         for session in sessions {
             let codes = match list(&session) {
-                Ok(codes) => codes.unwrap_or_default(),
+                Ok(codes) => codes,
                 Err(reason) => {
                     refuse(&session, reason);
                     continue;

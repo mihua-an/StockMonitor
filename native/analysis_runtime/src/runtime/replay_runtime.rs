@@ -359,7 +359,7 @@ pub(super) fn replay_shown(item: &mut Value) {
 
 /// The analysis shown (a stored fold the live overlay shows in its place is not), as the live publish sends it.
 fn shown(collected: Vec<engine::Collected>) -> Vec<Value> {
-    collected.into_iter().filter(|c| c.shown).flat_map(|c| c.items).collect()
+    collected.into_iter().filter(|c| c.shown).flat_map(|c| c.items.into_iter().map(|(_, item)| item)).collect()
 }
 
 #[cfg(windows)]

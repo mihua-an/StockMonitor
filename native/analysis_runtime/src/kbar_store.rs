@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use market_runtime::calendar::{CalKey, Calendar};
 use market_runtime::config_store::{read_active_revision, RevisionRead};
 use market_runtime::contract::kbar_retention_months;
-use market_runtime::event::{civil_from_days, days_from_civil, is_session_partitioned, parse_calendar_date};
+use market_runtime::event::{days_from_civil, is_session_partitioned, market_local_minute, parse_calendar_date};
 use market_runtime::fsutil::atomic_write;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -155,9 +155,8 @@ fn months_before(date: &str, months: i64) -> Option<String> {
 
 /// The local (Taipei) calendar date, the clock retention ages against.
 fn today() -> String {
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
-    let (y, m, d) = civil_from_days((now + 8 * 3600).div_euclid(86_400));
-    format!("{y:04}-{m:02}-{d:02}")
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as i64).unwrap_or(0);
+    market_local_minute("STK", now).map(|(date, _)| date).unwrap_or_default()
 }
 
 /// The timeframe a date of this age is kept at, None when past every tier. `tiers` go finest first.
@@ -252,8 +251,13 @@ impl Store {
         Self { root, config_root }
     }
 
-    fn path(&self, source: &str, market: &str, code: &str) -> PathBuf {
-        self.root.join(format!("source={source}")).join(format!("market={market}")).join(format!("{code}.json"))
+    /// A code's file; Err when a part of the identity is no path component (replay::component_ok).
+    fn path(&self, source: &str, market: &str, code: &str) -> Result<PathBuf, String> {
+        if let Some((name, value)) = [("source", source), ("market", market), ("code", code)].into_iter()
+            .find(|(_, value)| !market_runtime::replay::component_ok(value)) {
+            return Err(format!("{name} {value:?} is no file name"));
+        }
+        Ok(self.root.join(format!("source={source}")).join(format!("market={market}")).join(format!("{code}.json")))
     }
 
     fn lock(&self) -> Result<File, String> {
@@ -304,7 +308,7 @@ impl Store {
             if day.daily.is_none() && day.minutes.is_empty() {
                 continue;
             }
-            let path = self.path(&source, &market, code);
+            let path = self.path(&source, &market, code)?;
             let mut doc = Self::read(&path)?.unwrap_or_else(|| CodeDoc { schema: SCHEMA.into(), source: source.clone(), market: market.clone(), code: code.clone(), sessions: BTreeMap::new() });
             let session = doc.sessions.entry(session_name.clone()).or_default();
             if let Some(daily) = day.daily {
@@ -333,7 +337,7 @@ impl Store {
         let tiers = self.retention().map_err(|reason| format!("{RETENTION_DOMAIN}: {reason}"))?;
         let (source, market, session_name) = (file.source.to_lowercase(), file.market.to_uppercase(), file.session.to_uppercase());
         let cal = Calendar::default();
-        let path = self.path(&source, &market, &file.code);
+        let path = self.path(&source, &market, &file.code)?;
         let mut doc = Self::read(&path)?.unwrap_or_else(|| CodeDoc { schema: SCHEMA.into(), source: source.clone(), market: market.clone(), code: file.code.clone(), sessions: BTreeMap::new() });
         let session = doc.sessions.entry(session_name.clone()).or_default();
         let (mut imported, mut held) = (0, 0);
@@ -398,16 +402,12 @@ fn name_of(path: &Path) -> String {
     path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
+/// The entries of `dir`; one that cannot be listed is logged and its files are not aged this time.
 fn children(dir: &Path) -> Vec<PathBuf> {
-    match fs::read_dir(dir) {
-        Ok(entries) => entries.flatten().map(|entry| entry.path()).collect(),
-        Err(e) => {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                eprintln!("[kbar_store] listing {}: {e}", dir.display());
-            }
-            Vec::new()
-        }
-    }
+    market_runtime::fsutil::list_dir(dir).unwrap_or_else(|e| {
+        eprintln!("[kbar_store] listing {}: {e}; its files are left as they are", dir.display());
+        Vec::new()
+    })
 }
 
 #[cfg(test)]
@@ -608,7 +608,7 @@ mod tests {
         assert_eq!(store.publish(&stock_id("2026-11-05"), &[("2330".into(), first)]).unwrap(), 1);
         let second = SessionDay { daily: Some([9.0, 9.0, 9.0, 9.0, 9.0]), minutes };
         store.publish(&stock_id("2026-11-05"), &[("2330".into(), second)]).unwrap();
-        let doc = Store::read(&store.path("shioaji", "STK", "2330")).unwrap().unwrap();
+        let doc = Store::read(&store.path("shioaji", "STK", "2330").unwrap()).unwrap().unwrap();
         assert_eq!(doc.sessions["DAY"].daily["2026-11-05"][0], 9.0, "a refold replaces the date");
         assert_eq!(doc.sessions["DAY"].intraday["2026-11-05"].timeframe, 1);
         let _ = fs::remove_dir_all(root);
@@ -622,13 +622,32 @@ mod tests {
         store.publish(&stock_id("2026-07-01"), &[("2330".into(), day)]).unwrap();
         assert_eq!(store.compact_all_at("2026-11-08").unwrap(), 1);
         assert_eq!(store.compact_all_at("2026-11-08").unwrap(), 0, "aged already: not written again");
-        let doc = Store::read(&store.path("shioaji", "STK", "2330")).unwrap().unwrap();
+        let doc = Store::read(&store.path("shioaji", "STK", "2330").unwrap()).unwrap().unwrap();
         assert_eq!(doc.sessions["DAY"].intraday["2026-07-01"].timeframe, 5);
         let _ = fs::remove_dir_all(root);
     }
 
     fn imported(date: &str, minutes: Vec<Row>) -> ImportedDay {
         ImportedDay { date: date.to_owned(), minutes }
+    }
+
+    #[test]
+    fn today_is_the_taipei_date_of_the_market_clock() {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos() as i64;
+        let (before, after) = (market_local_minute("STK", now).unwrap().0, today());
+        assert!(parse_calendar_date(&after).is_some(), "{after}");
+        assert!(after >= before && after <= market_local_minute("STK", now + 60_000_000_000).unwrap().0);
+    }
+
+    #[test]
+    fn an_import_whose_code_is_no_file_name_is_refused() {
+        let dir = temp("import-bad-code");
+        let _ = fs::remove_dir_all(&dir);
+        let store = Store::new(dir.clone(), None);
+        let mut file = import_file(Vec::new());
+        file.code = "../2330".into();
+        assert!(store.import_at(&file, "2026-11-08").is_err());
+        let _ = fs::remove_dir_all(&dir);
     }
 
     fn import_file(days: Vec<ImportedDay>) -> ImportFile {
@@ -643,7 +662,7 @@ mod tests {
         // The default retention, on 2026-11-08: 1m to 08-08, 5m to 06-08, 15m to 04-08, 30m to 02-08, 60m to 2025-12-08.
         let file = import_file(vec![imported("2026-09-01", minutes.clone()), imported("2026-07-01", minutes.clone()), imported("2026-03-02", minutes.clone()), imported("2025-01-02", minutes)]);
         assert_eq!(store.import_at(&file, "2026-11-08").unwrap()["imported"], 4);
-        let doc = Store::read(&store.path("shioaji", "STK", "2330")).unwrap().unwrap();
+        let doc = Store::read(&store.path("shioaji", "STK", "2330").unwrap()).unwrap().unwrap();
         let session = &doc.sessions["DAY"];
         let held: Vec<(&str, i32, usize)> = session.intraday.iter().map(|(date, day)| (date.as_str(), day.timeframe, day.bars.len())).collect();
         assert_eq!(held, [("2026-03-02", 30, 2), ("2026-07-01", 5, 12), ("2026-09-01", 1, 60)]);
@@ -661,7 +680,7 @@ mod tests {
         let root = temp("import-aged");
         let store = Store::new(root.clone(), None);
         store.import_at(&import_file(vec![imported("2026-07-01", minutes)]), today).unwrap();
-        let doc = Store::read(&store.path("shioaji", "STK", "2330")).unwrap().unwrap();
+        let doc = Store::read(&store.path("shioaji", "STK", "2330").unwrap()).unwrap().unwrap();
         assert_eq!(doc.sessions["DAY"].intraday["2026-07-01"], aged.intraday["2026-07-01"]);
         let _ = fs::remove_dir_all(root);
     }
@@ -674,7 +693,7 @@ mod tests {
         store.publish(&stock_id("2026-11-05"), &[("2330".into(), own)]).unwrap();
         let answer = store.import_at(&import_file(vec![imported("2026-11-05", vec![row(540, 1.0, 1.0, 1.0, 1.0, 1.0)])]), "2026-11-08").unwrap();
         assert_eq!((answer["imported"].as_i64(), answer["held"].as_i64()), (Some(0), Some(1)));
-        let doc = Store::read(&store.path("shioaji", "STK", "2330")).unwrap().unwrap();
+        let doc = Store::read(&store.path("shioaji", "STK", "2330").unwrap()).unwrap().unwrap();
         assert_eq!(doc.sessions["DAY"].daily["2026-11-05"][0], 7.0);
         let _ = fs::remove_dir_all(root);
     }
@@ -694,7 +713,7 @@ mod tests {
         let store = Store::new(root.clone(), None);
         let minutes = vec![row(541, 11.0, 13.0, 10.5, 12.0, 5.0), row(540, 10.0, 11.0, 9.0, 11.0, 3.0), Row(542, None, None, None, None, 2.0)];
         store.import_at(&import_file(vec![imported("2026-11-05", minutes)]), "2026-11-08").unwrap();
-        let doc = Store::read(&store.path("shioaji", "STK", "2330")).unwrap().unwrap();
+        let doc = Store::read(&store.path("shioaji", "STK", "2330").unwrap()).unwrap().unwrap();
         assert_eq!(doc.sessions["DAY"].daily["2026-11-05"], [10.0, 13.0, 9.0, 12.0, 10.0], "minute order; an odd lot's volume counts");
         let _ = fs::remove_dir_all(root);
     }
@@ -703,7 +722,7 @@ mod tests {
     fn an_unreadable_file_is_never_overwritten_and_fails_the_publish() {
         let root = temp("broken");
         let store = Store::new(root.clone(), None);
-        let path = store.path("shioaji", "STK", "2330");
+        let path = store.path("shioaji", "STK", "2330").unwrap();
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, "{broken").unwrap();
         let day = SessionDay { daily: Some([1.0; 5]), minutes: Vec::new() };

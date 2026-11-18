@@ -13,6 +13,7 @@ import { syncViewLifecycle } from "../view_lifecycle.js";
 import { mountShell } from "../component_shell.js";
 import { titleBarMarkup } from "./title_bar.js";
 import { ROW_WASH_MS, washRow } from "../row_wash.js";
+import { tradeRowKey } from "../trade_row_order.js";
 
 
 function shell(mode = "live", columns = []) {
@@ -57,15 +58,6 @@ function effectiveTradeTotalPages(vm = {}, pageSize = 100) {
   const totalCount = Math.max(0, Number(vm?.totalCount) || 0);
   const countPages = Math.max(1, Math.ceil(totalCount / safePageSize));
   return Math.max(apiPages, countPages);
-}
-
-// A row is its print's durable sequence (as tradeRowKey in trade_row_order.js). `sequence` is not one number space (the
-// live view's state version, a stored row's producer sequence), so prints sharing it were one row: every redraw built
-// the second one anew and washed it again.
-function tradeRowIdentity(tick = {}) {
-  const durable = Number(tick?.ingestSequence ?? tick?.ingest_sequence);
-  if (Number.isFinite(durable) && durable > 0) return `seq:${durable}`;
-  return [tick?.datetime ?? tick?.timestamp ?? tick?.time ?? "", tick?.price ?? "", tick?.volume ?? "", tick?.tradeSide ?? tick?.trade_side ?? tick?.side ?? ""].join("|");
 }
 
 // Which trade stream a ViewModel shows: the product plus its session identity (not the sequence).
@@ -360,7 +352,7 @@ export class TickDetailsComponent {
       && this.renderedLogicalCode === logicalCode
       && this.renderedRowIds.size > 0;
     const now = performance.now();
-    const identities = rows.map(tradeRowIdentity);
+    const identities = rows.map(tradeRowKey);
     this._trackHighlights(identities, sameStream, now);
     this.renderedPage = page;
     this.renderedLogicalCode = logicalCode;

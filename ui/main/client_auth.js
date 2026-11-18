@@ -2,10 +2,11 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { createClientAuthentication: loadSharedClientToken } = require("../../service/platform/js/daemon_auth");
+const { readClientToken } = require("../../service/platform/js/daemon_auth");
 
-// The per-launch client credential every business API checks (api/client_auth.py). Health gives every API process
-// only its SHA-256; Electron main reads the token file and attaches it -- for trusted renderer frames and
+// The client credential every business API checks (api/client_auth.py). Health mints it and gives every API process
+// only its SHA-256; Electron main reads the token file at each use (never creating it: Health renews it on a full
+// start, and the next request carries the new one) and attaches it -- for trusted renderer frames and
 // for its own requests -- to exactly the business API origins currently in effect (apiOrigins(), from Health's
 // effective endpoints), never to any other host or port. The renderer never sees the token itself.
 //
@@ -14,7 +15,7 @@ const { createClientAuthentication: loadSharedClientToken } = require("../../ser
 // current /live URL (it changes with an apply), `viewerToken()` reads Health's viewer token.
 function createClientAuthentication({ apiOrigins, liveUrl = () => "", viewerToken = () => null, fetchImpl = globalThis.fetch,
   env = process.env }) {
-  const { token } = loadSharedClientToken({ fs, path, processRef: { env, cwd: () => process.cwd() } });
+  const clientToken = () => readClientToken({ fs, path, processRef: { env, cwd: () => process.cwd() } });
 
   function isApi(url) {
     try {
@@ -35,7 +36,9 @@ function createClientAuthentication({ apiOrigins, liveUrl = () => "", viewerToke
     const url = typeof input === "string" || input instanceof URL ? String(input) : input.url;
     if (!isApi(url)) return fetchImpl(input, options);
     const headers = new Headers(options.headers || input?.headers);
-    headers.set("Authorization", `Bearer ${token}`);
+    // No token yet (Health has not started): the request goes without one and the API answers 401.
+    const token = clientToken();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
     return fetchImpl(input, { ...options, headers, redirect: "error" });
   }
 
@@ -44,13 +47,15 @@ function createClientAuthentication({ apiOrigins, liveUrl = () => "", viewerToke
     if (sessions.has(session)) return;
     sessions.add(session);
     // Loopback only; the port is checked per request against the current origins (they change with an apply).
-    session.webRequest.onBeforeSendHeaders({ urls: ["http://127.0.0.1/*", "ws://127.0.0.1/*", "http://localhost/*"] }, (details, callback) => {
+    session.webRequest.onBeforeSendHeaders({ urls: ["http://127.0.0.1/*", "ws://127.0.0.1/*"] }, (details, callback) => {
       const headers = { ...details.requestHeaders };
       for (const name of Object.keys(headers)) {
         if (name.toLowerCase() === "authorization") delete headers[name];
       }
-      if (isApi(details.url) && trustedRequest(details)) headers.Authorization = `Bearer ${token}`;
-      else if (isLive(details.url) && trustedRequest(details) && liveViewerRequest(details)) {
+      if (isApi(details.url) && trustedRequest(details)) {
+        const token = clientToken();
+        if (token) headers.Authorization = `Bearer ${token}`;
+      } else if (isLive(details.url) && trustedRequest(details) && liveViewerRequest(details)) {
         const viewer = viewerToken();
         if (viewer) headers.Authorization = `Bearer ${viewer}`;
       }

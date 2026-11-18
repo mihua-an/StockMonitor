@@ -8,17 +8,16 @@ import { syncText } from "../../../core/utility.js";
 import { replaceRealtimeWorkspace } from "../../../market_data/realtime.js";
 import { overviewPage, setWatchPages } from "../product_pages.js";
 import { suggestShioajiProducts } from "../product_search_api.js";
-import { candleStageHtml, TechnicalCandles } from "../technical_candles.js";
+import { candleStageHtml, storedTimeframe, TechnicalCandles } from "../technical_candles.js";
+import { expandPickerHtml } from "../../../core/components/expand_picker.js";
 import { TECHNICAL_TIMEFRAMES } from "../technical_series.js";
 import { productQuoteFigures, renderProductCards } from "./product_cards.js";
 
 const SEARCH_PROVIDER = "technical-window";
-// 日、週、月 first, as a chart's own timeframe row reads.
+// 日、週、月 first, as a chart's own timeframe row reads. The picker is 技術分析's own (core/components/expand_picker.js):
+// only the current timeframe shows, the others open beside it on hover (user 11-16).
 const TIMEFRAME_BUTTONS = [...TECHNICAL_TIMEFRAMES.slice(6), ...TECHNICAL_TIMEFRAMES.slice(0, 6)];
 
-function timeframeButtons(current) {
-  return TIMEFRAME_BUTTONS.map(([key, label]) => `<button type="button" class="${key === current ? "is-active" : ""}" data-pick="${key}" aria-pressed="${key === current}">${label}</button>`).join("");
-}
 
 export class TechnicalWindowComponent {
   constructor() { this.cleanup = []; this.quoteViews = new Map(); this.items = []; this.dirty = new Set(); this.frame = 0; this.code = ""; }
@@ -29,7 +28,7 @@ export class TechnicalWindowComponent {
       <div class="technical-window-main">
         ${productQuoteHeaderShell({ className: "technical-window-header", search: SEARCH_PROVIDER })}
         <div class="technical-window-toolbar">
-          <div class="technical-window-timeframes" data-role="ta-timeframe" role="group" aria-label="K 棒時間尺度"></div>
+          ${expandPickerHtml({ options: TIMEFRAME_BUTTONS, current: storedTimeframe() }, 'data-role="ta-timeframe" aria-label="K 棒時間尺度"')}
           <div class="technical-analysis-ohlcv" data-role="ta-ohlcv"></div>
         </div>
         <div class="technical-window-stage" data-role="ta-stage">${candleStageHtml()}</div>
@@ -42,7 +41,6 @@ export class TechnicalWindowComponent {
     this.root = root;
     const stage = root.querySelector('[data-role="ta-stage"]');
     this.candles = new TechnicalCandles({ root, stage, service: this.service, showDate: true, smaPeriods: [] });
-    root.querySelector('[data-role="ta-timeframe"]').innerHTML = timeframeButtons(this.candles.timeframe);
     bindProductQuoteHeaders(root);
     this.cleanup.push(registerProductQuoteSearchProvider(SEARCH_PROVIDER, {
       suggest: (text, options) => suggestShioajiProducts(text, { ...options, listed: new Set(this.items.map((item) => item.code)) }),

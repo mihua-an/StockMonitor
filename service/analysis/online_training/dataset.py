@@ -26,7 +26,6 @@ import os
 import subprocess
 import threading
 import time
-import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -38,9 +37,11 @@ if TYPE_CHECKING:
     import pandas as pd
 
 from service.analysis.inference.contract import ContractError, load_horizon_authority
-from service.analysis.online_training.cleanup import remove_tree
+from service.analysis.online_training.cleanup import (STAGING_MARK, discard_dead_staging, is_staging, published_dir,
+                                                      remove_tree, samples_staging_file)
 from service.analysis.online_training.labels import LABEL_POLICY, label, label_columns
 from service.platform import project_root as process_paths
+from service.platform.child_process import NO_CONSOLE
 from service.platform.native_binaries import analysis_runtime_job_binary
 import logging
 from service.platform.failure_record import record_failure
@@ -70,7 +71,8 @@ def export_workers(dates: int) -> int:
 
 def _git_commit() -> str | None:
     try:
-        out = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, cwd=process_paths.PROJECT_ROOT, timeout=10)
+        out = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, cwd=process_paths.PROJECT_ROOT, timeout=10,
+                             creationflags=NO_CONSOLE)
         return out.stdout.strip() or None
     except (OSError, subprocess.SubprocessError) as exc:
         record_failure(_failure_log, "reading the git commit for the dataset manifest", exc)
@@ -119,7 +121,7 @@ class RustFeatureExporter:
         if not self.binary.is_file():
             raise ContractError(f"analysis_runtime binary not found: {self.binary}")
         process = subprocess.Popen([str(self.binary), *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                   text=True, encoding="utf-8", errors="replace")
+                                   text=True, encoding="utf-8", errors="replace", creationflags=NO_CONSOLE)
         stdout: list[str] = []
         stderr: list[str] = []
 
@@ -217,7 +219,7 @@ def stored_shards(shard_root: Path, date: str | None = None) -> list[tuple[str, 
     """Every complete shard (its manifest written), of one date or all, as (date, directory, manifest)."""
     found = []
     for manifest_path in sorted(Path(shard_root).glob(f"{date or '*'}/*/manifest.json")):
-        if ".tmp-" in manifest_path.parent.name:
+        if is_staging(manifest_path.parent):
             continue
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -314,39 +316,9 @@ class OnlineDatasetBuilder:
         self.exporter = exporter or RustFeatureExporter()
 
     def discard_dead_staging(self) -> list[str]:
-        """Remove the staging left by a job that ended mid-write (stopped by force, crashed): every ``*.tmp-<pid>``
-        shard or dataset directory and ``.samples-<pid>-*.parquet.tmp`` whose process is gone. A live writer's (another
-        job still running) is kept. Returns what was removed."""
-        from service.platform.process_observer import ProcessTableUnavailable, process_exists
-
-        candidates = [*self.out_root.glob("*.tmp-*"), *self.shard_root.glob("*/*.tmp-*"),
-                      *self.out_root.glob(".samples-*.parquet.tmp")]
-        removed = []
-        for path in candidates:
-            name = path.name
-            owner = name.split("-")[1] if name.startswith(".samples-") else name.rsplit(".tmp-", 1)[-1]
-            if not owner.isdigit() or int(owner) == os.getpid():
-                continue   # not an error: not a staging name of this layout, or this job's own
-            try:
-                if process_exists(int(owner)):
-                    continue   # not an error: its writer is still running
-            except ProcessTableUnavailable as exc:
-                record_failure(_failure_log, "listing processes before removing training staging", exc)
-                return removed
-            if path.is_dir():
-                gone = remove_tree(path, "the staging of an ended training job")
-            else:
-                try:
-                    path.unlink()
-                    gone = True
-                except FileNotFoundError:   # not an error: already gone
-                    gone = True
-                except OSError as exc:
-                    record_failure(_failure_log, f"removing the staging of an ended training job {path}", exc)
-                    gone = False
-            if gone:
-                removed.append(str(path))
-        return removed
+        """The staging of ended jobs under the datasets and their shards, removed (cleanup.discard_dead_staging)."""
+        return discard_dead_staging([*self.out_root.glob(f"*{STAGING_MARK}*"), *self.shard_root.glob(f"*/*{STAGING_MARK}*"),
+                                     *self.out_root.glob(".samples-*.parquet.tmp")])
 
     def shard_id(self, date: str, horizons: tuple[int, ...], spec: dict[str, Any], entries: list) -> str:
         """Everything a date's shard is computed from."""
@@ -373,15 +345,9 @@ class OnlineDatasetBuilder:
         directory = self.shard_root / date / shard_id
         if not entries:
             raise _NoTrainingData(date)
-        staging = directory.with_name(f"{shard_id}.tmp-{os.getpid()}")
-        remove_tree(staging, "a leftover shard staging directory")   # one that stays makes mkdir below fail
-        staging.mkdir(parents=True)
-        try:
+        with published_dir(directory, "shard") as staging:
             manifest = self.exporter.export(historical_root=self.historical_root, date=date, horizons=horizons, out=staging,
                                             on_progress=on_progress)
-            os.replace(staging, directory)
-        finally:
-            remove_tree(staging, "a shard staging directory")
         return directory, manifest, False
 
     def build(self, trading_dates: Iterable[str], *, horizons_minutes: Iterable[int] | None = None,
@@ -397,7 +363,7 @@ class OnlineDatasetBuilder:
         shards, skipped = [], []
         label_states: dict[str, dict[str, int]] = {f"{m}m": {} for m in horizons}
         self.out_root.mkdir(parents=True, exist_ok=True)
-        samples = _SampleWriter(self.out_root / f".samples-{os.getpid()}-{uuid.uuid4().hex[:8]}.parquet.tmp",
+        samples = _SampleWriter(samples_staging_file(self.out_root),
                                 [col for m in horizons for col in label_columns(m)])
         try:
             dataset_id, manifest = self._build_samples(dates, horizons, spec, entries_of=partition_fingerprint, samples=samples,
@@ -408,16 +374,10 @@ class OnlineDatasetBuilder:
             directory = self.out_root / dataset_id
             if manifest is None:
                 return read_manifest(directory)
-            staging = directory.with_name(f"{dataset_id}.tmp-{os.getpid()}")
-            remove_tree(staging, "a leftover dataset staging directory")   # one that stays makes mkdir below fail
-            staging.mkdir(parents=True)
-            try:
+            with published_dir(directory, "dataset") as staging:
                 os.replace(samples.path, staging / "samples.parquet")
                 manifest["samples_sha256"] = _file_sha256(staging / "samples.parquet")
                 (staging / MANIFEST_FILE).write_text(json.dumps(manifest, indent=2, default=str), encoding="utf-8")
-                os.replace(staging, directory)
-            finally:
-                remove_tree(staging, "a dataset staging directory")
             return manifest
         finally:
             samples.discard()

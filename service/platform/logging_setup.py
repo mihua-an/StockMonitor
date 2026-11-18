@@ -15,7 +15,9 @@ var, code change, etc.) to quiet noisy output without touching call sites.
 Third-party wire loggers are pinned to WARNING on top of that default. They were never
 `print()` call sites, so quieting them regresses nothing -- but at DEBUG the `websockets`
 loggers emit one line per frame in BOTH directions on the daemons' Rust-ingress sockets,
-thousands of lines a second at a normal intraday event rate.
+thousands of lines a second at a normal intraday event rate. The HTTP client loggers (`urllib3`, which `requests`
+uses, and `requests` itself) are pinned for another reason: at DEBUG `urllib3.connectionpool` writes every request
+line, which put the Apps Script deployment URL and Google's redirect `user_content_key` into app_api.log.
 
 The process's error log (var/logs/<run>/error-<source>.log) is service/platform/error_logging.py's mirror: it
 copies a line by its LEVEL (ERROR/CRITICAL/FATAL), with a narrow fallback for level-less
@@ -30,7 +32,8 @@ _CONFIGURED = False
 
 # Per-frame wire logging from third-party transports: see this module's docstring for the
 # measured log sizes. max(level, WARNING) keeps an explicitly-raised level (e.g. ERROR) intact.
-NOISY_WIRE_LOGGERS = ("websockets", "websockets.client", "websockets.server", "websockets.protocol")
+NOISY_WIRE_LOGGERS = ("websockets", "websockets.client", "websockets.server", "websockets.protocol", "urllib3",
+                      "requests")
 
 
 def configure_logging(level: int = logging.DEBUG) -> None:

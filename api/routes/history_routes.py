@@ -1,15 +1,32 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any
 import logging
 from fastapi import APIRouter
 from service.platform.http.errors import ServiceUnavailableError, ValidationError
 from service.platform.http.safe_json_response import SafeJSONResponse
 from api.routes.dependencies import DataCatalog, DayTradeLedger, ProviderApp, ReplayService
+from service.market.history.technical_history import valid_code
+from service.market.shared.session_identity_contract import iso_trading_date
 
 logger = logging.getLogger(__name__)
+
+
+def product_code(value: Any) -> str:
+    """A K-bar request's product code as the K-bar store names its file (valid_code), else the caller's 400."""
+    code = str(value or "").strip().upper()
+    if not valid_code(code):
+        raise ValidationError("invalid code")
+    return code
+
+
+def _daemon_app(runtime: ProviderApp, method: str):
+    """The provider runtime when it answers `method` (the Market Daemon's K-bar calls), else 503 while it starts."""
+    app = runtime.app
+    if app is None or not hasattr(app, method):
+        raise ServiceUnavailableError("Market Daemon client 尚未初始化", classification="MONITOR_RUNTIME_NOT_READY")
+    return app
 
 
 @dataclass(frozen=True)
@@ -73,28 +90,19 @@ def create_history_router(deps: HistoryRouteDependencies) -> APIRouter:
             raise ValidationError("invalid code, market, session, resolution or date")
         return {"ok": True, **result}
 
-    def older_kbars_app():
-        app = runtime.app
-        if app is None or not hasattr(app, "request_older_kbars"):
-            raise ServiceUnavailableError("Market Daemon client 尚未初始化", classification="MONITOR_RUNTIME_NOT_READY")
-        return app
-
     @router.post('/api/history/kline/older')
     def request_older_kline(payload: dict[str, Any]):
         """技術分析 scrolled to its oldest local bar: earlier bars from the broker, into the store /api/history/kline reads."""
-        code = str((payload or {}).get("code") or "").strip().upper()
-        before = str((payload or {}).get("before") or "")
+        code = product_code((payload or {}).get("code"))
         try:
-            datetime.strptime(before, "%Y-%m-%d")
+            before = iso_trading_date((payload or {}).get("before") or "")
         except ValueError:
             raise ValidationError("invalid date")
-        if not code:
-            raise ValidationError("invalid code")
-        return older_kbars_app().request_older_kbars(code, before)
+        return _daemon_app(runtime, "request_older_kbars").request_older_kbars(code, before)
 
     @router.get('/api/history/kline/older')
     def older_kline_status(code: str):
-        return older_kbars_app().older_kbars_status(code)
+        return _daemon_app(runtime, "older_kbars_status").older_kbars_status(product_code(code))
 
     @router.get('/api/history/stocks')
     def get_history_stocks(date: str, summary: bool = True):
@@ -192,23 +200,19 @@ def create_data_center_router(deps: DataCenterRouteDependencies) -> APIRouter:
 
     @router.post('/api/data-center/kbars/preview')
     def preview_kbar_download(payload: dict[str, Any]):
-        app = runtime.app
-        if app is None or not hasattr(app, "preview_kbar_download"):
-            raise ServiceUnavailableError("Market Daemon client 尚未初始化", classification="MONITOR_RUNTIME_NOT_READY")
-        return app.preview_kbar_download(dict(payload or {}))
+        # The code is checked here as for the older-K-bar routes: a code the store cannot name is the caller's 400,
+        # not a provider failure (the daemon refuses it too, but its 400 reaches this process only as a failed call).
+        body = {**dict(payload or {}), "code": product_code((payload or {}).get("code"))}
+        return _daemon_app(runtime, "preview_kbar_download").preview_kbar_download(body)
 
     @router.post('/api/data-center/kbars/jobs')
     def create_kbar_download_job(payload: dict[str, Any]):
-        app = runtime.app
-        if app is None or not hasattr(app, "create_kbar_download_job"):
-            raise ServiceUnavailableError("Market Daemon client 尚未初始化", classification="MONITOR_RUNTIME_NOT_READY")
-        return app.create_kbar_download_job(dict(payload or {}))
+        body = {**dict(payload or {}), "code": product_code((payload or {}).get("code"))}
+        return _daemon_app(runtime, "create_kbar_download_job").create_kbar_download_job(body)
 
     @router.get('/api/data-center/kbars/jobs')
     def list_kbar_download_jobs(limit: int = 50):
-        app = runtime.app
-        if app is None or not hasattr(app, "list_kbar_download_jobs"):
-            raise ServiceUnavailableError("Market Daemon client 尚未初始化", classification="MONITOR_RUNTIME_NOT_READY")
+        app = _daemon_app(runtime, "list_kbar_download_jobs")
         try:
             return app.list_kbar_download_jobs(limit)
         except Exception as exc:
@@ -223,16 +227,10 @@ def create_data_center_router(deps: DataCenterRouteDependencies) -> APIRouter:
 
     @router.get('/api/data-center/kbars/jobs/{job_id}')
     def get_kbar_download_job(job_id: str):
-        app = runtime.app
-        if app is None or not hasattr(app, "get_kbar_download_job"):
-            raise ServiceUnavailableError("Market Daemon client 尚未初始化", classification="MONITOR_RUNTIME_NOT_READY")
-        return app.get_kbar_download_job(job_id)
+        return _daemon_app(runtime, "get_kbar_download_job").get_kbar_download_job(job_id)
 
     @router.post('/api/data-center/kbars/jobs/{job_id}/action')
     def action_kbar_download_job(job_id: str, payload: dict[str, Any]):
-        app = runtime.app
-        if app is None or not hasattr(app, "action_kbar_download_job"):
-            raise ServiceUnavailableError("Market Daemon client 尚未初始化", classification="MONITOR_RUNTIME_NOT_READY")
-        return app.action_kbar_download_job(job_id, str((payload or {}).get("action") or ""))
+        return _daemon_app(runtime, "action_kbar_download_job").action_kbar_download_job(job_id, str((payload or {}).get("action") or ""))
 
     return router

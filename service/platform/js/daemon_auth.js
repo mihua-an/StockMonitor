@@ -1,11 +1,9 @@
 "use strict";
 
-// Shared by BOTH ui/main (Electron, for its direct-to-daemon
-// trade-detail read path) and health/ (the Service Controller,
-// which owns daemon lifecycle and needs the same bearer token to talk to
-// them). The token file itself is already process-identity-agnostic --
-// first writer wins, any process may read it -- so moving this here is a
-// pure location change with no behavior change.
+// The role tokens under AUTH_ROOT. Health is their only minter in the App: it creates each one (first writer wins)
+// and, on a full start -- no process of an earlier Health still running -- replaces every one (renewRoleTokens).
+// Electron main and the web gateway only read, at each use, so they follow a renewal without being restarted. A
+// process started by hand without Health (a developer tool, a test) still creates the file it needs.
 
 const { createHash, randomBytes } = require("crypto");
 const { resolveVarPaths } = require("../../../config/js/var_paths");
@@ -61,38 +59,59 @@ function tokenDigest(token) {
   return createHash("sha256").update(String(token), "utf8").digest("hex");
 }
 
+// A new token in place of the one in `tokenFile`: written beside it and renamed over it, so a reader sees either the
+// old token or the new one, never an empty or half-written file.
+function renewLocalToken({ fs, path, tokenFile }) {
+  fs.mkdirSync(path.dirname(tokenFile), { recursive: true });
+  const temp = `${tokenFile}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
+  fs.writeFileSync(temp, randomBytes(32).toString("hex"), { encoding: "ascii", flag: "wx", mode: 0o600 });
+  try { fs.renameSync(temp, tokenFile); } catch (error) {
+    try { fs.rmSync(temp, { force: true }); } catch (cleanup) { console.warn("[removing a token temp file] failed", cleanup); }
+    throw error;
+  }
+}
+
+// The role token files of these helpers, in one place: Health renews exactly these (and the market_runtime role
+// tokens, service/platform/js/runtime_credentials.js).
+const ROLE_TOKEN_FILES = {
+  daemon: ["STOCK_MONITOR_DAEMON_TOKEN_FILE", "daemon_auth_token"],
+  management: ["STOCK_MONITOR_MANAGEMENT_TOKEN_FILE", "management_auth_token"],
+  controller: ["STOCK_MONITOR_CONTROLLER_TOKEN_FILE", "controller_auth_token"],
+  client: ["STOCK_MONITOR_CLIENT_TOKEN_FILE", "client_auth_token"],
+};
+function roleTokenFile({ path, processRef }, role) {
+  const [overrideEnv, fileName] = ROLE_TOKEN_FILES[role];
+  return authTokenFile({ path, processRef }, overrideEnv, fileName);
+}
+function renewRoleTokens({ fs, path, processRef = process }) {
+  for (const role of Object.keys(ROLE_TOKEN_FILES)) renewLocalToken({ fs, path, tokenFile: roleTokenFile({ path, processRef }, role) });
+}
+
 function createDaemonAuthentication({ fs, path, processRef = process }) {
-  return loadOrCreateLocalToken({ fs, path, tokenFile: authTokenFile({ path, processRef }, "STOCK_MONITOR_DAEMON_TOKEN_FILE", "daemon_auth_token") });
+  return loadOrCreateLocalToken({ fs, path, tokenFile: roleTokenFile({ path, processRef }, "daemon") });
 }
 
 // The Service Controller's own loopback HTTP control API needs its own
 // bearer token so an arbitrary local process cannot call ensure/stop/restart/
-// shutdown on it. Electron reads the same file to authenticate as a client
-// (see ui/main/controller_client.js); only the Controller ever writes it.
+// shutdown on it. Electron reads the same file at each call (ui/main/controller_client.js); only Health writes it.
 function createControllerAuthentication({ fs, path, processRef = process }) {
-  return loadOrCreateLocalToken({ fs, path, tokenFile: authTokenFile({ path, processRef }, "STOCK_MONITOR_CONTROLLER_TOKEN_FILE", "controller_auth_token") });
+  return loadOrCreateLocalToken({ fs, path, tokenFile: roleTokenFile({ path, processRef }, "controller") });
 }
 
-// Electron-side helper: read (never create) the Controller's token so a
-// missing Controller process produces a clear "not running yet" error
-// instead of Electron accidentally minting a second token file.
+// Electron-side helpers: read (never create) a token Health mints, at each use. A missing one means Health has not
+// started yet (Electron minting it would make a token no API was given the digest of); a renewed one (Health's full
+// start) is what the next use reads.
 function readControllerToken({ fs, path, processRef = process }) {
-  return readTokenFile(fs, authTokenFile({ path, processRef }, "STOCK_MONITOR_CONTROLLER_TOKEN_FILE", "controller_auth_token"));
+  return readTokenFile(fs, roleTokenFile({ path, processRef }, "controller"));
+}
+function readClientToken({ fs, path, processRef = process }) {
+  return readTokenFile(fs, roleTokenFile({ path, processRef }, "client"));
 }
 
-// The FastAPI backend's own per-launch client token (api/client_auth.py's
-// ClientAuthenticationMiddleware, STOCK_MONITOR_CLIENT_TOKEN). The backend is spawned
-// by the Controller, not by Electron, so this cannot be a token Electron mints for
-// itself in its own process: the Controller's separate process tree could not reach
-// it, the spawned backend's STOCK_MONITOR_CLIENT_TOKEN would be empty and the
-// middleware would reject every authenticated request. Both the Controller
-// (when it spawns/injects env for the backend) and Electron (when it talks
-// to the backend, and when it asks the Controller to reuse an
-// already-running backend from an earlier session) must resolve the exact
-// same value, so this uses the same first-writer-wins token-file mechanism
-// as the daemon and Controller tokens above.
+// The business APIs' client token (api/client_auth.py's ClientAuthenticationMiddleware checks its digest). Health
+// mints it and hands each API only the digest; Electron main and the web gateway attach it (readClientToken).
 function createClientAuthentication({ fs, path, processRef = process }) {
-  return loadOrCreateLocalToken({ fs, path, tokenFile: authTokenFile({ path, processRef }, "STOCK_MONITOR_CLIENT_TOKEN_FILE", "client_auth_token") });
+  return loadOrCreateLocalToken({ fs, path, tokenFile: roleTokenFile({ path, processRef }, "client") });
 }
 
 // Health's own credential toward the processes it manages: the business APIs' /api/service/* routes
@@ -100,7 +119,7 @@ function createClientAuthentication({ fs, path, processRef = process }) {
 // APIs and daemons receive its digest. With the daemon token instead, any API (which holds the
 // daemon token to read market data) could stop another API, and the daemons could stop the APIs.
 function createManagementAuthentication({ fs, path, processRef = process }) {
-  return loadOrCreateLocalToken({ fs, path, tokenFile: authTokenFile({ path, processRef }, "STOCK_MONITOR_MANAGEMENT_TOKEN_FILE", "management_auth_token") });
+  return loadOrCreateLocalToken({ fs, path, tokenFile: roleTokenFile({ path, processRef }, "management") });
 }
 
 // Health's client toward a provider daemon: stopping it is a management act (the daemon accepts only the management
@@ -116,6 +135,7 @@ function providerClientFetch({ daemonAuth, managementAuth }) {
 }
 
 module.exports = {
-  createDaemonAuthentication, createControllerAuthentication, readControllerToken, createClientAuthentication,
+  createDaemonAuthentication, createControllerAuthentication, readControllerToken, readClientToken, createClientAuthentication,
   createManagementAuthentication, tokenDigest, providerClientFetch, loadOrCreateLocalToken, readTokenFile,
+  renewLocalToken, renewRoleTokens, roleTokenFile, ROLE_TOKEN_FILES,
 };

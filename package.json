@@ -37,6 +37,12 @@
   "build": {
     "beforePack": "scripts/tooling/audit_packaging.cjs",
     "afterPack": "scripts/tooling/compile_bytecode.cjs",
+    "electronFuses": {
+      "runAsNode": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true
+    },
     "asarUnpack": [
       "config/js/**/*",
       "health/**/*",
@@ -168,7 +174,6 @@
     "nsis": {
       "include": "packaging/installer.nsh",
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     }

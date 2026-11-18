@@ -53,24 +53,33 @@ assert.deepEqual(foldBars([
 // History's N-minute buckets are counted from the session start as B counts its fixed K: 09:00-09:04, 09:05-09:09...
 {
   const stock = [[[540, 810]]];
-  const day = { trading_date: "2026-11-05", timeframe: 1, bars: [
+  const day = { trading_date: "2026-11-05", timeframe: 1, segments: stock, bars: [
     [541, 100, 101, 99, 100.5, 3], [544, 100.5, 102, 100, 101, 4], [545, 101, 103, 100, 102, 5], [800, 90, 90, 90, 90, 1],
   ] };
-  assert.deepEqual(historyDayBars(day, "5", stock).map((bar) => [bar.key, bar.open, bar.high, bar.low, bar.close, bar.volume]), [
+  assert.deepEqual(historyDayBars(day, "5").map((bar) => [bar.key, bar.open, bar.high, bar.low, bar.close, bar.volume]), [
     ["2026-11-05|540", 100, 102, 99, 101, 7], ["2026-11-05|545", 101, 103, 100, 102, 5], ["2026-11-05|800", 90, 90, 90, 90, 1]]);
-  assert.deepEqual(historyDayBars(day, "60", stock).map((bar) => bar.label), ["09:00", "13:00"]);
-  assert.deepEqual(historyDayBars(day, "3", stock).map((bar) => bar.minute), [540, 543, 798], "3 minutes comes from the 1-minute rows");
+  assert.deepEqual(historyDayBars(day, "60").map((bar) => bar.label), ["09:00", "13:00"]);
+  assert.deepEqual(historyDayBars(day, "3").map((bar) => bar.minute), [540, 543, 798], "3 minutes comes from the 1-minute rows");
 
   // A day aged to a coarser timeframe shows only the timeframes that timeframe divides.
-  const aged = { trading_date: "2026-08-05", timeframe: 5, bars: [[540, 1, 2, 1, 2, 3], [545, 2, 3, 2, 3, 4], [555, 3, 3, 3, 3, 5]] };
-  assert.deepEqual(historyDayBars(aged, "1", stock), []);
-  assert.deepEqual(historyDayBars(aged, "3", stock), [], "no 3-minute candles from 5-minute rows");
-  assert.deepEqual(historyDayBars(aged, "5", stock).map((bar) => bar.minute), [540, 545, 555]);
-  assert.deepEqual(historyDayBars(aged, "15", stock).map((bar) => [bar.minute, bar.open, bar.close, bar.volume]), [[540, 1, 3, 7], [555, 3, 3, 5]]);
+  const aged = { trading_date: "2026-08-05", timeframe: 5, segments: stock, bars: [[540, 1, 2, 1, 2, 3], [545, 2, 3, 2, 3, 4], [555, 3, 3, 3, 3, 5]] };
+  assert.deepEqual(historyDayBars(aged, "1"), []);
+  assert.deepEqual(historyDayBars(aged, "3"), [], "no 3-minute candles from 5-minute rows");
+  assert.deepEqual(historyDayBars(aged, "5").map((bar) => bar.minute), [540, 545, 555]);
+  assert.deepEqual(historyDayBars(aged, "15").map((bar) => [bar.minute, bar.open, bar.close, bar.volume]), [[540, 1, 3, 7], [555, 3, 3, 5]]);
 
   // A bar counts trading minutes: the lunch break does not shift it (Rust B's buckets, kbar_store.rs).
-  const lunch = { trading_date: "2026-11-05", timeframe: 1, bars: [[719, 1, 1, 1, 1, 1], [780, 2, 2, 2, 2, 1], [810, 3, 3, 3, 3, 1]] };
-  assert.deepEqual(historyDayBars(lunch, "60", [[[570, 719], [780, 969]]]).map((bar) => [bar.minute, bar.volume]), [[690, 2], [810, 1]]);
+  const lunch = { trading_date: "2026-11-05", timeframe: 1, segments: [[[570, 719], [780, 969]]],
+    bars: [[719, 1, 1, 1, 1, 1], [780, 2, 2, 2, 2, 1], [810, 3, 3, 3, 3, 1]] };
+  assert.deepEqual(historyDayBars(lunch, "60").map((bar) => [bar.minute, bar.volume]), [[690, 2], [810, 1]]);
+}
+
+// A US half day's 60-minute candles are cut on that day's own sessions (REGULAR 09:30-12:59, POST 13:00-16:59), as
+// Rust B folds the day (kbar_store.rs on calendar.rs half-day segments): the whole-day POST would start at 16:00.
+{
+  const half = { trading_date: "2026-11-27", timeframe: 1, segments: [[[570, 779]], [[780, 1019]]],
+    bars: [[750, 1, 1, 1, 1, 1], [779, 2, 2, 2, 2, 1], [780, 3, 3, 3, 3, 1], [839, 4, 4, 4, 4, 1], [840, 5, 5, 5, 5, 1]] };
+  assert.deepEqual(historyDayBars(half, "60").map((bar) => [bar.minute, bar.volume]), [[750, 2], [780, 2], [840, 1]]);
 }
 
 // Weekly and monthly from daily bars, today folded into the week and month it belongs to.
@@ -90,8 +99,8 @@ assert.deepEqual(foldBars([
 {
   const asked = [];
   const answers = [
-    { segments: [[[540, 810]]], days: [{ trading_date: "2026-11-05", timeframe: 1, bars: [[540, 1, 1, 1, 1, 1]] }], next_before: "2026-11-05" },
-    { segments: [[[540, 810]]], days: [{ trading_date: "2026-11-04", timeframe: 1, bars: [[540, 2, 2, 2, 2, 2]] }], next_before: null },
+    { days: [{ trading_date: "2026-11-05", timeframe: 1, segments: [[[540, 810]]], bars: [[540, 1, 1, 1, 1, 1]] }], next_before: "2026-11-05" },
+    { days: [{ trading_date: "2026-11-04", timeframe: 1, segments: [[[540, 810]]], bars: [[540, 2, 2, 2, 2, 2]] }], next_before: null },
   ];
   const history = new TechnicalHistory(async (query) => { asked.push(query); return answers.shift(); });
   history.reset("2330", "2026-11-06");

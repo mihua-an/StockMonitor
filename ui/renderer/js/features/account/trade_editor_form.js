@@ -51,7 +51,11 @@ export function marketDateText(market, now = new Date()) {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
-/** The form's markup for `variant`; every id starts with `idPrefix`. */
+/**
+ * The form's markup for `variant`; every id starts with `idPrefix`. The modal (帳務) and the window (新增交易) share the
+ * fields, the fill rows and the actions' layout; the frame around them is each variant's own class -- the modal's card
+ * and the window's flat sheet (windows/trade.css) -- so neither overrides the other.
+ */
 export function tradeEditorMarkup({ idPrefix, variant = "modal" }) {
   const id = (name) => `${idPrefix}${name}`;
   const windowed = variant === "window";
@@ -60,21 +64,21 @@ export function tradeEditorMarkup({ idPrefix, variant = "modal" }) {
         <button id="${id("CloseBtn")}" class="account-trade-modal-close" type="button" aria-label="關閉">×</button>
       </div>`;
   const dialogAttrs = windowed
-    ? 'class="account-trade-modal-dialog trade-window-dialog"'
+    ? 'class="trade-window-dialog"'
     : `class="account-trade-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="${id("EditorTitle")}"`;
   const backdrop = windowed ? "" : '<div class="account-trade-modal-backdrop" data-trade-editor-close></div>';
   return `${backdrop}<section ${dialogAttrs}>
       ${header}
-      <div class="account-trade-modal-body${windowed ? " trade-window-content" : ""}">
+      <div class="${windowed ? "trade-window-content" : "account-trade-modal-body"}">
         <input id="${id("Id")}" type="hidden" />
-        <div class="finance-form-grid account-trade-form-grid${windowed ? " trade-window-form-grid" : ""}">
+        <div class="finance-form-grid ${windowed ? "trade-window-form-grid" : "account-trade-form-grid"}">
           <label class="finance-field"><span>交易日期</span><input id="${id("Date")}" class="search" type="date" /></label>
           <label class="finance-field"><span>市場</span><select id="${id("Market")}" class="search"><option value="台股">台股</option><option value="美股">美股</option></select></label>
           <label class="finance-field"><span>交易類型</span><select id="${id("Action")}" class="search"><option value="買進">買進</option><option value="賣出">賣出</option></select></label>
           <label class="finance-field"><span>股號</span><input id="${id("Code")}" class="search" type="text" placeholder="例如 2337 / NVDA" autocomplete="off" /></label>
         </div>
 
-        <div class="account-trade-fills-section${windowed ? " trade-window-fills-section" : ""}">
+        <div class="account-trade-fills-section">
           <div class="account-trade-fills-heading">
             <span id="${id("QtyHeading")}">買進股數</span>
             <span>價格</span>
@@ -84,12 +88,12 @@ export function tradeEditorMarkup({ idPrefix, variant = "modal" }) {
         </div>
 
         <label class="finance-field account-trade-time-field"><span>交易時間（台灣時間）</span><input id="${id("Time")}" class="search" type="text" inputmode="numeric" maxlength="5" placeholder="HHMM" autocomplete="off" /></label>
-        ${windowed ? `<div id="${id("Message")}" class="trade-window-global-message muted trade-window-message"></div>` : ""}
+        ${windowed ? `<div id="${id("Message")}" class="trade-window-global-message muted"></div>` : ""}
       </div>
 
-      <div class="account-trade-modal-footer${windowed ? " trade-window-footer" : ""}">
+      <div class="account-trade-actions ${windowed ? "trade-window-footer" : "account-trade-modal-footer"}">
         <button id="${id("DeleteBtn")}" class="btn danger" type="button" hidden>刪除</button>
-        <div class="account-trade-modal-footer-right">
+        <div class="account-trade-actions-right">
           <button id="${id("ResetBtn")}" class="btn secondary" type="button">清空</button>
           <button id="${id("CancelBtn")}" class="btn secondary" type="button">${windowed ? "關閉" : "取消"}</button>
           <button id="${id("SubmitBtn")}" class="btn primary account-trade-submit-btn" type="button">送出</button>
@@ -232,7 +236,6 @@ export class TradeEditor {
     const totalQty = (this.collectFills({ allowIncomplete: true }) || []).reduce((sum, fill) => sum + Number(fill.qty || 0), 0);
     const enabled = market === "美股" || (market === "台股" && totalQty >= 1000);
     time.disabled = !enabled;
-    time.classList.toggle("disabled", !enabled);
     if (!enabled) time.value = "";
   }
 

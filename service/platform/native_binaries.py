@@ -14,13 +14,17 @@ start.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
+import subprocess
 import threading
 import uuid
 from pathlib import Path
+from typing import Any
 
 from service.platform import project_root as process_paths
+from service.platform.child_process import NO_CONSOLE
 
 ANALYSIS_RUNTIME_ENV = "STOCK_MONITOR_ANALYSIS_RUNTIME_EXE"
 MARKET_RUNTIME_RELEASE_ENV = "STOCK_MONITOR_A_RELEASE"
@@ -92,6 +96,42 @@ def job_binary(source: Path, directory: Path | None = None) -> Path:
         if not target.is_file():
             raise
     return target
+
+
+class NativeJobError(RuntimeError):
+    """A one-shot B run that gave no answer: it could not start, ran past its time or printed no result line. The
+    message carries the end of its stderr; the caller that catches it records it (one record per failure)."""
+
+
+STDERR_TAIL_CHARS = 300
+
+
+def run_job(args: list[str], timeout: float, *, binary: Path | None = None) -> dict[str, Any]:
+    """One B job (``--gap-report``, ``--verify-partitions``, ``--import-kbars``, ...): its answer, the JSON object on the
+    last stdout line (runtime/startup.rs prints exactly one per job, ``{"ok": false, "error": ...}`` when it fails, and
+    exits non-zero then). Text is UTF-8 both ways. ``binary``: the B to run, by default the job copy. A job that streams
+    progress while it runs (``--export-features``) reads its process itself (online_training/dataset.py)."""
+    executable = Path(binary) if binary is not None else analysis_runtime_job_binary()
+    command = [str(executable), *map(str, args)]
+    name = str(args[0]) if args else "(no mode)"
+    try:
+        done = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                              timeout=timeout, check=False, creationflags=NO_CONSOLE)
+    except subprocess.TimeoutExpired as exc:
+        raise NativeJobError(f"analysis_runtime {name} ran past {timeout:g} s") from exc
+    except OSError as exc:
+        raise NativeJobError(f"analysis_runtime {name} could not start: {exc}") from exc
+    lines = (done.stdout or "").strip().splitlines()
+    tail = (done.stderr or "").strip()[-STDERR_TAIL_CHARS:]
+    try:
+        answer = json.loads(lines[-1]) if lines else None
+    except ValueError as exc:
+        raise NativeJobError(f"analysis_runtime {name} exited {done.returncode} with an unreadable result line: {tail}") from exc
+    if not isinstance(answer, dict):
+        raise NativeJobError(f"analysis_runtime {name} exited {done.returncode} without a result: {tail}")
+    if done.returncode != 0 and answer.get("ok") is not False:
+        raise NativeJobError(f"analysis_runtime {name} exited {done.returncode} after a result that is not a failure: {tail}")
+    return answer
 
 
 def analysis_runtime_job_binary() -> Path:

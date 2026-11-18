@@ -11,8 +11,6 @@ const authorizeEvent = createIpcAuthorizer({
   fromWebContents: (wc) => wc === sender ? win : null,
 });
 const form = {
-  prefill_url: "https://docs.google.com/forms/d/e/TEST/viewform",
-  mapping: Object.fromEntries(["trade_date", "market", "action", "code", "trade_info", "trade_time"].map((k, i) => [k, `entry.${i}`])),
   trade: { trade_date: "2026-09-19", market: "台股", action: "買進", code: "2330", trade_info: "1@100", trade_time: "12:00", trade_id: null },
 };
 let counter = { effects: 0 };
@@ -37,9 +35,10 @@ for (const url of ["https://evil.example/", root + "trade_window.html?fake", roo
 }
 sender.mainFrame.url = root + "trade_window.html";
 for (const payload of [null, [], {}, { ...form, trade: { ...form.trade, code: "<b>" } },
-  { ...form, prefill_url: "http://docs.google.com/forms/test" }, { ...form, mapping: [] },
   { ...form, trade: { ...form.trade, trade_date: "2026-02-30" } },
-  { ...form, prefill_url: "https://docs.google.com@evil.example/forms/test" }]) denied(() => submit(payload));
+  // Where the trade goes is main's to read from the saved settings: a page cannot name a form or a mapping.
+  { ...form, prefill_url: "https://docs.google.com/forms/d/e/TEST/viewform" },
+  { ...form, mapping: Object.fromEntries(Object.keys(form.trade).map((k, i) => [k, `entry.${i}`])) }]) denied(() => submit(payload));
 sender.isDestroyed = () => true; denied(() => submit()); sender.isDestroyed = () => false;
 win.webContents = {}; denied(() => submit()); win.webContents = sender;
 win.isDestroyed = () => true; denied(() => submit()); win.isDestroyed = () => false;

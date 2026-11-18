@@ -7,12 +7,9 @@ from pathlib import Path
 from typing import Any, Callable
 import logging
 from service.platform.failure_record import record_failure
+from service.market.futu.clock import utc_now
 
 _failure_log = logging.getLogger(__name__)
-
-
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
 def _clean_value(value: Any) -> Any:
@@ -192,7 +189,7 @@ class FutuSecurityMasterLifecycle:
             sdk = self._sdk_provider()
             markets = getattr(sdk, "Market")
             security_type = getattr(sdk, "SecurityType")
-            updated_at = _utc_now()
+            updated_at = utc_now()
             today = updated_at[:10]
             with self._lock:
                 self.cc_attempted_day = today
