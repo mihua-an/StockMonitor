@@ -4,10 +4,13 @@ The steps are read from .github/workflows/ci.yml each time, so this follows the 
 `run:` step runs in order with its own `env:` and `working-directory:`, under Git's bash with the same
 `-eo pipefail` GitHub uses. What it changes on purpose:
 
-  - the setup steps (`uses:` actions and the dependency installs named in SETUP_STEPS) are skipped: this checkout
-    already has its Python packages and node_modules, and reinstalling them would change the machine. Instead the
-    installed Python packages are checked against the locks CI installs (scripts/tooling/lock_dependencies.py
-    --check-profile), so the tests and the lint (ruff is in requirements/test.lock) run with CI's exact versions;
+  - the setup steps (`uses:` actions and the dependency installs named in SETUP_STEPS) are not run as written. The
+    Python one is run into a virtual environment of its own (CI_VENV, made from this Python with no site-packages
+    of the machine, reused while the locks and this Python are the same), and every step runs with that
+    environment's python first on PATH: the tests and the lint (ruff is in requirements/test.lock) see exactly the
+    packages CI installs. A package this machine has but the locks do not (httpx, the broker SDKs) is missing
+    there as on CI -- checking only the locks' own versions let a test that imported starlette's TestClient (it
+    needs httpx) pass here and fail on CI. node_modules is this checkout's own (`npm ci` is what made it);
   - every step runs even after one fails (CI stops at the first), so one local run lists every failure at once;
   - every Electron process gets the CI machine (scripts/tooling/ci_machine.cjs through NODE_OPTIONS): reduced motion
     and a 1024x768 screen, as GitHub's runner has. Without it a UI test that depends on this machine's large screen or
@@ -28,8 +31,10 @@ Exit 0 only when every step that ran passed.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -41,10 +46,12 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 CI_MACHINE = ROOT / "scripts" / "tooling" / "ci_machine.cjs"
-LOCK_TOOL = ROOT / "scripts" / "tooling" / "lock_dependencies.py"
 PYTHON_SETUP_STEP = "Python dependencies (hash-checked locks)"
 SETUP_STEPS = (PYTHON_SETUP_STEP, "Node dependencies")
 LOCK_FILE = re.compile(r"-r\s+requirements/([a-z_]+)\.lock\b")
+# The Python environment the steps run in: only what the workflow's Python setup step installs (var/ is not in git).
+CI_VENV = ROOT / "var" / "ci" / "python"
+CI_VENV_KEY = CI_VENV / "ci-locks.sha256"
 
 
 @dataclass
@@ -81,13 +88,38 @@ def installed_lock_profiles(workflow: Path = WORKFLOW) -> list[str]:
     raise SystemExit(f"{workflow} has no step named {PYTHON_SETUP_STEP!r}")
 
 
-def check_installed_locks(profiles: list[str]) -> bool:
-    """This Python has exactly the pins of the locks CI installs (offline: lock_dependencies.py --check-profile)."""
-    ok = True
+def venv_python(venv: Path = CI_VENV) -> Path:
+    return venv / ("Scripts" if os.name == "nt" else "bin") / ("python.exe" if os.name == "nt" else "python")
+
+
+def locks_key(profiles: list[str]) -> str:
+    """What the environment was made from: this Python's version and every lock file's bytes."""
+    digest = hashlib.sha256(sys.version.encode("utf-8"))
     for profile in profiles:
-        result = subprocess.run([sys.executable, str(LOCK_TOOL), "--check-profile", profile])
-        ok = ok and result.returncode == 0
-    return ok
+        digest.update(profile.encode("utf-8"))
+        digest.update((ROOT / "requirements" / f"{profile}.lock").read_bytes())
+    return digest.hexdigest()
+
+
+def prepare_ci_python(profiles: list[str], venv: Path = CI_VENV) -> Path | None:
+    """The bin folder of a virtual environment holding exactly the locks CI installs, made the way CI makes it
+    (`pip install --require-hashes -r <lock> ...`); None when it could not be made (the output says why)."""
+    key = locks_key(profiles)
+    marker = venv / CI_VENV_KEY.name
+    if venv_python(venv).is_file() and marker.is_file() and marker.read_text(encoding="utf-8").strip() == key:
+        print(f"reusing {venv} (same locks)", flush=True)
+        return venv_python(venv).parent
+    if venv.exists():
+        shutil.rmtree(venv)
+    if subprocess.run([sys.executable, "-m", "venv", str(venv)]).returncode != 0:
+        return None
+    install = [str(venv_python(venv)), "-m", "pip", "install", "--disable-pip-version-check", "--require-hashes"]
+    for profile in profiles:
+        install += ["-r", f"requirements/{profile}.lock"]
+    if subprocess.run(install, cwd=ROOT).returncode != 0:
+        return None
+    marker.write_text(key + "\n", encoding="utf-8")
+    return venv_python(venv).parent
 
 
 def find_bash() -> str:
@@ -108,17 +140,23 @@ def is_app_checkout(root: Path) -> bool:
     return root.name == "StockMonitor" and (root.parent / "stock_monitor.bat").is_file()
 
 
-def step_env(step: Step) -> dict[str, str]:
-    """The environment a step runs in: the workflow's, and every Electron process given the CI machine."""
+def step_env(step: Step, python_bin: Path | None = None) -> dict[str, str]:
+    """The environment a step runs in: the workflow's, the CI Python environment's python first on PATH, and every
+    Electron process given the CI machine."""
     env = {**os.environ, **step.env, "GITHUB_WORKSPACE": ROOT.as_posix(), "CI": "true"}
+    if python_bin is not None:
+        env["PATH"] = str(python_bin) + os.pathsep + env.get("PATH", "")
+        env["VIRTUAL_ENV"] = str(python_bin.parent)
+        env.pop("PYTHONHOME", None)
+        env.pop("PYTHONPATH", None)
     env["NODE_OPTIONS"] = (env.get("NODE_OPTIONS", "") + f' --require "{CI_MACHINE.as_posix()}"').strip()
     return env
 
 
-def run_step(step: Step, bash: str) -> bool:
+def run_step(step: Step, bash: str, python_bin: Path) -> bool:
     cwd = ROOT / step.working_directory if step.working_directory else ROOT
     return subprocess.run([bash, "--noprofile", "--norc", "-eo", "pipefail", "-c", step.script], cwd=cwd,
-                          env=step_env(step)).returncode == 0
+                          env=step_env(step, python_bin)).returncode == 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -147,15 +185,20 @@ def main(argv: list[str] | None = None) -> int:
     bash = find_bash()
     results: list[tuple[str, bool, float]] = []
     profiles = installed_lock_profiles()
-    check_name = f"installed Python packages = {', '.join(f'{p}.lock' for p in profiles)}"
+    check_name = f"CI Python environment ({', '.join(f'{p}.lock' for p in profiles)} only)"
     print(f"\n===== {check_name} =====", flush=True)
     started = time.monotonic()
-    results.append((check_name, check_installed_locks(profiles), time.monotonic() - started))
+    python_bin = prepare_ci_python(profiles)
+    results.append((check_name, python_bin is not None, time.monotonic() - started))
     print(f"----- {check_name}: {'PASS' if results[-1][1] else 'FAIL'}", flush=True)
+    planned = len(steps)
+    if python_bin is None:
+        # The steps would run with this machine's packages, not CI's: their results would say nothing.
+        steps = []
     for step in steps:
         print(f"\n===== {step.name} =====", flush=True)
         started = time.monotonic()
-        ok = run_step(step, bash)
+        ok = run_step(step, bash, python_bin)
         results.append((step.name, ok, time.monotonic() - started))
         print(f"----- {step.name}: {'PASS' if ok else 'FAIL'} ({results[-1][2]:.0f}s)", flush=True)
         if not ok and args.fail_fast:
@@ -164,7 +207,7 @@ def main(argv: list[str] | None = None) -> int:
     print("\n===== summary =====")
     for name, ok, seconds in results:
         print(f"  {'PASS' if ok else 'FAIL'}  {name}  ({seconds:.0f}s)")
-    not_run = len(steps) + 1 - len(results)
+    not_run = planned + 1 - len(results)
     if not_run:
         print(f"  ({not_run} step(s) not run after --fail-fast)")
     failed = [name for name, ok, _ in results if not ok]

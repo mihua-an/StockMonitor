@@ -9,12 +9,12 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 from backend.shioaji.routes.history_routes import HistoryRouteDependencies, create_history_router
 from service.market.shioaji import history_download
 from service.market.shioaji.history_download import KBarDownloadManager
 from service.platform.http.errors import register_error_handlers
+from tests.asgi_client import AsgiClient
 from tests.support.kbar_download_fakes import FakeAPI, FakeRepository
 
 QUOTA = {"bytes": 0, "limit_bytes": 10**9, "remaining_bytes": 10**9}
@@ -71,12 +71,12 @@ def test_the_daemon_answers_a_refused_code_with_400(tmp_path):
     app = FastAPI()
     register_error_handlers(app)
     app.include_router(create_history_router(deps))
-    client = TestClient(app)
     body = {"code": "..\\..\\x", "start_date": "2026-11-02", "end_date": "2026-11-06"}
-    assert client.post("/v1/history/kbars/preview", json=body).status_code == 400
-    assert client.post("/v1/history/kbars/jobs", json=body).status_code == 400
-    assert client.post("/v1/history/kbars/older", json={"code": "../x", "before": "2026-11-06"}).status_code == 400
-    assert client.get("/v1/history/kbars/older", params={"code": "../x"}).status_code == 400
+    with AsgiClient(app) as client:
+        assert client.post("/v1/history/kbars/preview", json=body).status_code == 400
+        assert client.post("/v1/history/kbars/jobs", json=body).status_code == 400
+        assert client.post("/v1/history/kbars/older", json={"code": "../x", "before": "2026-11-06"}).status_code == 400
+        assert client.get("/v1/history/kbars/older?code=../x").status_code == 400
 
 
 def test_app_api_answers_a_refused_code_with_400_before_calling_the_daemon():
@@ -91,10 +91,11 @@ def test_app_api_answers_a_refused_code_with_400_before_calling_the_daemon():
     register_error_handlers(app)
     app.include_router(create_data_center_router(DataCenterRouteDependencies(runtime=SimpleNamespace(app=daemon),
                                                                              data_center=None)))
-    client = TestClient(app)
-    for path in ("/api/data-center/kbars/preview", "/api/data-center/kbars/jobs"):
-        for code in ("../X", "A B", "X" * 40, ""):
-            assert client.post(path, json={"code": code, "start_date": "2026-11-02"}).status_code == 400, (path, code)
-    assert calls == []
-    assert client.post("/api/data-center/kbars/preview", json={"code": " 2330 ", "start_date": "2026-11-02"}).status_code == 200
+    with AsgiClient(app) as client:
+        for path in ("/api/data-center/kbars/preview", "/api/data-center/kbars/jobs"):
+            for code in ("../X", "A B", "X" * 40, ""):
+                assert client.post(path, json={"code": code, "start_date": "2026-11-02"}).status_code == 400, (path, code)
+        assert calls == []
+        assert client.post("/api/data-center/kbars/preview",
+                           json={"code": " 2330 ", "start_date": "2026-11-02"}).status_code == 200
     assert calls == [("preview", {"code": "2330", "start_date": "2026-11-02"})]
