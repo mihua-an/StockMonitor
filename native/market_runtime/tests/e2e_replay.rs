@@ -163,10 +163,14 @@ fn a_day_not_materialized_yet_is_replayed_from_the_wal() {
         event["exchange_ts_ns"] = json!(base + seq as i64 * 1_000_000_000);
         event
     };
+    // A print's durable sequence is its own (the market clock's records take sequences too), so each wait is for the
+    // print's sequence as its ack names it, not for a count of prints.
+    let durable = |ack: Value| ack["durable_sequence"].as_u64().expect("a stored print names its durable sequence");
+    let mut through = 0;
     for seq in 1..=3 {
-        ingest(&mut provider, print(seq));
+        through = durable(ingest(&mut provider, print(seq)));
     }
-    await_synced(&mut provider, 3);
+    await_synced(&mut provider, through);
     let open = |viewer: &mut Ws| {
         viewer.send(json!({"type": "replay.open", "payload": {"market": "STK", "code": "2330", "trading_date": "2026-09-29", "session": "DAY"}}));
         viewer.await_type("replay.opened")["payload"].clone()
@@ -185,18 +189,18 @@ fn a_day_not_materialized_yet_is_replayed_from_the_wal() {
     let manifest_path = root.join("data").join("replay-provisional").join("source=shioaji").join("market=STK")
         .join("trading_date=2026-09-29").join("session=DAY").join("2330").join("manifest.json");
     let manifest = || serde_json::from_str::<Value>(&std::fs::read_to_string(&manifest_path).unwrap()).unwrap();
-    assert_eq!(manifest()["live_through"], 3, "{}", manifest());
+    assert_eq!(manifest()["live_through"], through, "{}", manifest());
     let written = std::fs::metadata(&manifest_path).unwrap().modified().unwrap();
     let reopened = open(&mut viewer);
     assert_eq!(reopened["status"]["total"], 3);
     assert_eq!(std::fs::metadata(&manifest_path).unwrap().modified().unwrap(), written, "nothing new: the partition is not written again");
     close(&mut viewer, &reopened);
 
-    ingest(&mut provider, print(4));
-    await_synced(&mut provider, 4);
+    let through = durable(ingest(&mut provider, print(4)));
+    await_synced(&mut provider, through);
     let again = open(&mut viewer);
     assert_eq!(again["status"]["total"], 4, "opened again, the replay holds the print that came since: {again}");
-    assert_eq!(manifest()["live_through"], 4, "written again through the new print");
+    assert_eq!(manifest()["live_through"], through, "written again through the new print");
     // Nothing is written into the historical store: the WAL's copy is Market Runtime's own.
     assert!(!root.join("historical").join("source=shioaji").exists(), "the historical store is the materializer's alone");
     daemon.shutdown();
@@ -211,12 +215,14 @@ fn a_wal_partition_is_read_again_as_it_is_after_a_restart() {
     let daemon = Daemon::start_in(root.clone(), root.join("data"), &["--historical-dir", &historical]);
     let mut provider = daemon.client(SHIOAJI);
     let base = 1_790_647_200_000_000_000i64; // 2026-09-29 10:00 Taipei, inside the day session
+    let mut through = 0;
     for seq in 1..=3u64 {
         let mut event = trade("shioaji", "STK", "2330", "DAY", seq, 1_000_000 + seq as i64);
         event["exchange_ts_ns"] = json!(base + seq as i64 * 1_000_000_000);
-        ingest(&mut provider, event);
+        // The print's own durable sequence (the market clock's records take sequences too).
+        through = ingest(&mut provider, event)["durable_sequence"].as_u64().expect("a stored print names its durable sequence");
     }
-    await_synced(&mut provider, 3);
+    await_synced(&mut provider, through);
     let open = |viewer: &mut Ws| {
         viewer.send(json!({"type": "replay.open", "payload": {"market": "STK", "code": "2330", "trading_date": "2026-09-29", "session": "DAY"}}));
         let opened = viewer.await_type("replay.opened")["payload"].clone();
