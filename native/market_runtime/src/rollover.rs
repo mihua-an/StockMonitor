@@ -771,13 +771,14 @@ fn futures_span(session: &str) -> Option<(i32, i32)> {
 }
 
 /// Where Taipei-local (`day`, `minute`) is relative to a partition dated `date` spanning [first, last] partition
-/// minutes (past 1440 = the next calendar day): PREOPEN before `first` on its own date, LIVE inside, CLOSED otherwise.
-fn partition_phase(date: &str, first: i32, last: i32, day: i64, minute: i32) -> &'static str {
+/// minutes (past 1440 = the next calendar day): PREOPEN from the session's pre-open minute (`group`) to `first` on its
+/// own date, LIVE inside, CLOSED otherwise -- the hours before the pre-open are not 盤前試撮.
+fn partition_phase(group: OpeningGroup, date: &str, first: i32, last: i32, day: i64, minute: i32) -> &'static str {
     let Some(start) = day_number(date) else { return "CLOSED" };
     let at = (day - start) * 1440 + minute as i64;
     if (first as i64..=last as i64).contains(&at) {
         "LIVE"
-    } else if (0..first as i64).contains(&at) {
+    } else if (group.preopen_minute() as i64..first as i64).contains(&at) {
         "PREOPEN"
     } else {
         "CLOSED"
@@ -804,13 +805,13 @@ pub fn futures_sessions(calendar: &TradingCalendar, opened: &Opened, now_ns: i64
     let window = |date: &str, first: i32, last: i32| -> Option<(String, String)> {
         Some((taipei_stamp(taipei_minute_ns(date, first)?), taipei_stamp(taipei_minute_ns(date, last)?)))
     };
-    let day_phase = partition_phase(&day, day_first, day_last, today, minute);
-    let night_phase = partition_phase(&night, night_first, night_last, today, minute);
+    let day_phase = partition_phase(OpeningGroup::Day, &day, day_first, day_last, today, minute);
+    let night_phase = partition_phase(OpeningGroup::Night, &night, night_first, night_last, today, minute);
     let after_night = date_of(calendar.trading_day_on_or_after(day_number(&night)? + 1));
     let full_date = if after_night > day { after_night.clone() } else { day.clone() };
     let full_night = calendar.previous_trading_day(&full_date)?;
     let full_night_phase = if full_night == night { night_phase } else { "CLOSED" };
-    let full_day_phase = if full_date == day { day_phase } else { partition_phase(&full_date, day_first, day_last, today, minute) };
+    let full_day_phase = if full_date == day { day_phase } else { partition_phase(OpeningGroup::Day, &full_date, day_first, day_last, today, minute) };
     let full_phase = if full_night_phase == "LIVE" || full_day_phase == "LIVE" {
         "LIVE"
     } else if full_night_phase == "PREOPEN" || full_day_phase == "PREOPEN" {
@@ -1276,6 +1277,12 @@ mod tests {
         let thursday = opened("2026-10-08", "2026-10-08");
         assert_eq!(tab(&thursday, (2026, 10, 9), 12 * 60, "FULL").0, "2026-10-12");
         assert_eq!(tab(&thursday, (2026, 10, 9), 12 * 60, "NIGHT").1, "CLOSED");
+        // Before the 08:30 pre-open, 全日 already points at today's day session but it is not 盤前試撮: Monday 01:37
+        // after Friday's night, and a weekday 06:00 after the night closed.
+        let friday = opened("2026-10-02", "2026-10-02");
+        assert_eq!(tab(&friday, (2026, 10, 5), 60 + 37, "FULL"), ("2026-10-05".into(), "CLOSED".into(), "2026-10-02:NIGHT,2026-10-05:DAY".into()));
+        assert_eq!(tab(&evening, (2026, 10, 7), 6 * 60, "FULL").1, "CLOSED");
+        assert_eq!(tab(&evening, (2026, 10, 7), 8 * 60 + 30, "FULL").1, "PREOPEN");
     }
 
     #[test]
