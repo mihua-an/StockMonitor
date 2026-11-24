@@ -42,45 +42,8 @@
   background: var(--blue-500-a13);
 }
 
-/* ===== 帳務's frame: 設定's category nav and page title (components/settings.css); the ledger under the views ===== */
-.account-page {
-  overflow: hidden;
-}
-
-/* 實際｜模擬: the segmented choice at the bottom of the nav, below the views. */
-.account-mode-seg {
-  margin-top: auto;
-}
-
-.account-directory-separator {
-  height: 1px;
-  margin: 8px 6px;
-  background: var(--pane-border);
-}
-
-/* The page's column: its title over the content scroll; both share one centred width. */
-.account-main-pane {
-  --account-content-max: 1180px;
-  min-width: 0;
-  min-height: 0;
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  overflow: hidden;
-}
-
-.account-subtitle {
-  font-size: 13px;
-  color: var(--slate-400);
-}
-
-/* The title row is settings-page-head; the account's actions wrap right-aligned on a narrow window. */
-.account-header-actions {
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
 .account-load-error-banner {
-  max-width: var(--account-content-max);
+  max-width: var(--page-frame-max);
   margin: 0 auto 12px;
   padding: 10px 16px;
   border-radius: 12px;
@@ -100,21 +63,6 @@
 
 .account-notice-text {
   min-width: 0;
-}
-
-/* 實際帳務's scroll area: no top padding, so a sticky title sits flush with the top. */
-.account-content-scroll {
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  scroll-behavior: smooth;
-}
-
-.account-content-scroll > .account-view {
-  max-width: var(--account-content-max);
-  margin: 0 auto;
-  padding: 0 24px 60px;
-  box-sizing: border-box;
 }
 
 /* A number at a row's end (資金, 績效亮點, 當沖數據). */
@@ -217,21 +165,7 @@
   text-align: center;
 }
 
-@media (max-width: 760px) {
-  .account-page-header {
-    flex-wrap: wrap;
-  }
-}
-
 /* ===== Actual Account analytics center ===== */
-.account-view[hidden] {
-  display: none;
-}
-
-.account-view.active {
-  display: block;
-}
-
 .account-analysis-table-wrap {
   max-height: calc(100vh - 260px);
 }
@@ -1423,32 +1357,8 @@
   background-color: var(--row-expanded-bg);
 }
 
-/* A main table view (個股數據 / 每日明細 / 配對明細 / 交易資料) gives the whole remaining height to its table card, whose
-   body scrolls; the page itself does not. */
-.account-content-scroll.account-table-workspace-active {
-  overflow: hidden;
-}
-
-.account-view.active:is(
-  [data-account-view-panel="stockStats"],
-  [data-account-view-panel="daily"],
-  [data-account-view-panel="pairs"],
-  [data-account-view-panel="trades"]
-) {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  padding-bottom: 24px;
-  overflow: hidden;
-  box-sizing: border-box;
-}
-
-.account-view.active:is(
-  [data-account-view-panel="stockStats"],
-  [data-account-view-panel="daily"],
-  [data-account-view-panel="pairs"],
-  [data-account-view-panel="trades"]
-) > .finance-table-wrap {
+/* A view that is one table (個股數據 / 每日明細 / 配對明細 / 交易資料): the table's card takes the view's height. */
+[data-account-view-panel].active.is-fill > .finance-table-wrap {
   flex: 1 1 auto;
   max-height: none;
 }
@@ -1464,7 +1374,7 @@
    that add it (55/59px, --actual-account-sticky-header-height) count it twice and push 總覽 / 多單 / 空單 down.
    The tabs belong to the daytrade content scroll itself, so their sticky origin
    must be the top of that scroll viewport. */
-.account-page .account-view[data-account-view-panel="daytrade"] > .account-daytrade-tabs {
+.account-page [data-account-view-panel="daytrade"] > .account-daytrade-tabs {
   position: sticky;
   top: 0;
   z-index: 65;

@@ -20,7 +20,7 @@ function scenario() {
     </tbody></table></div></div>
     <div class="account-page"><table class="data-table finance-table"><tbody><tr><td id="profit" class="price-up">1</td><td id="loss" class="price-down">-1</td><td id="plainCell">0</td></tr><tr><td id="emptyCell" class="empty" colspan="3">無資料</td></tr></tbody></table></div>
     <div class="trend-info-row trend-stock-metrics"><div><b id="metric" class="price-up">1.0%</b><b id="metricPlain">--</b></div></div>
-    <table class="record-table trade-details-table"><tbody><tr class="trade-details-row"><td id="flat" class="price-flat">0</td><td id="record">x</td></tr></tbody></table>
+    <table class="record-table"><tbody><tr><td id="flat" class="price-flat">0</td><td id="record">x</td></tr></tbody></table>
     <div class="orderbook"><table class="orderbook-table"><tbody><tr><td><span id="book" class="orderbook-price-value price-up limit-up-price">10</span></td></tr></tbody></table></div>
     <div class="product-quote-header"><div class="product-quote-price-box"><div id="quote" class="quote-main-price price-down limit-down-price">9</div></div></div>`;
   const css = (id) => { const s = getComputedStyle(document.getElementById(id)); return [s.backgroundColor, s.color]; };

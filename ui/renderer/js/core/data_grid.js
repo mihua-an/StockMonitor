@@ -26,7 +26,6 @@ const GRID_RULES = [
   { selector: ".product-list-table-wrap", x: "auto", width: "fill", xRail: true },
   { selector: ".event-feed-table-wrap", x: "auto" },
   { selector: ".tick-details .tick-table-wrap", x: "hidden" },
-  { selector: ".trade-details-table-wrap", x: "auto" },
   { selector: ".account-page .finance-table-wrap", x: "auto", width: "fill" },
   // Final catch-all: every ordinary table-wrap with a real thead/tbody uses the
   // same template. upgradeStandardDataGrid safely skips non-table wrappers.

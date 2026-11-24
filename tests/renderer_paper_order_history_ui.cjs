@@ -48,7 +48,7 @@ async function scenario(base) {
   const subscribeOrders = (fn) => { listener = fn; fn({ revision: 1 }); return () => { listener = null; unsubscribed += 1; }; };
 
   const main = document.querySelector("main");
-  main.innerHTML = '<section id="history" class="account-view account-orders-view" style="width:1100px"></section>';
+  main.innerHTML = '<section id="history" class="page-frame-view account-orders-view" style="width:1100px"></section>';
   const host = document.getElementById("history");
   const view = createPaperOrderHistoryView({ host, get, subscribeOrders, now: () => now });
   view.show();

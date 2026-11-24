@@ -1,12 +1,10 @@
 const { makeTempDir } = require("./support/temp_dirs.cjs");
-// The expandable record rows in a real Chromium (run with Electron): 資料中心's dates and a date's categories (the
-// page's own code on the real data_center.html and a fake app_api) and 帳務 個股數據 (on the real account.html) are one
-// component (data_grid.js expandCellHtml / expandDetailRowHtml, data-grid.css). Checked: a click on the row opens and
-// closes it (no separate button); the caret, the open row's marking and its font size (13px, the data table's), and the
-// detail row's cell -- background, padding, line, font size -- and the tables' stripes compute the same on both pages.
-// 資料中心 第五版 (user 10-28): the date row's 產業筆數 and 補救事件, the expanded date's 補救事件 line and its categories in
-// order, 期貨指數 opening to 日盤／夜盤, 收盤整理 (a failure reads only its retry time), and a category's name on the same
-// centre line as the date above it.
+const { fixViewport } = require("./support/fixed_viewport.cjs");
+// The expandable record rows in a real Chromium (run with Electron): a day's categories in 資料中心 (the page's own code on
+// the real data_center.html and a fake app_api) and 帳務 個股數據 (on the real account.html) are one component
+// (data_grid.js expandCellHtml / expandDetailRowHtml, data-grid.css). Checked: a click on the row opens and closes it;
+// the caret, the open row's marking and its font size, and the tables' stripes compute the same on both pages; a day's
+// categories in order, 期貨指數 opening to 日盤／夜盤, 收盤整理 (a failure reads only its retry time).
 const { app, BrowserWindow } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
@@ -61,9 +59,10 @@ async function scenario(base, dataCenterHtml, accountHtml) {
   };
   const same = (what, a, b) => { if (JSON.stringify(a) !== JSON.stringify(b)) fail(`${what}: ${JSON.stringify(a)} vs ${JSON.stringify(b)}`); };
 
-  // 資料中心: the dates, then one date's categories with 期貨指數 open.
+  // 資料中心: the days, then one day's categories with 期貨指數 open.
   const main = document.querySelector("main");
   main.innerHTML = dataCenterHtml;
+  (await import(`${base}js/core/page_frame.js`)).hydratePageFrames(document);
   const page = await import(`${base}js/pages/data_center.js`);
   page.initDataCenterPage();
   // A failed read of the dates: the table says so (never a 載入中 that never ends), and the next read fills it.
@@ -75,42 +74,33 @@ async function scenario(base, dataCenterHtml, accountHtml) {
   window.__datesFail = false;
   await page.refreshDataCenter();
   if (dailyText().includes("讀取失敗")) fail("a later read replaces the failure");
-  if (document.querySelector(".dc-expand-btn, .dc-expand-cell")) fail("資料中心 has no separate expand button or column");
-  const dateRow = document.querySelector("tr.dc-daily-row");
-  if (!dateRow?.classList.contains("record-expand-row")) fail("a date row is a record-expand-row");
   const cellsOf = (row) => [...row.cells].map((cell) => cell.textContent.replace(/\s+/g, " ").trim());
-  same("the date row", cellsOf(dateRow), ["›2026-10-27", "完整", "1", "100", "200", "3,000", "1,200", "2.0 KB"]);
-  same("完整 no / unknown", [...document.querySelectorAll("tr.dc-daily-row")].slice(1).map((row) => cellsOf(row)[1]), ["不完整", "--"]);
-  same("the 完整 header beside 日期", [...document.querySelectorAll(".dc-daily-overview-table > thead th")].slice(0, 2).map((th) => th.textContent), ["日期", "完整"]);
-  const closedCaret = caretStyle(dateRow);
-  dateRow.click();
+  const recent = [...document.querySelectorAll("[data-open-day]")];
+  same("a recent day", cellsOf(recent[0]), ["10/27（週二）", "完整", "1", "100", "2.0 KB", "--", "--"]);
+  same("完整 no / unknown", recent.slice(1).map((row) => cellsOf(row)[1]), ["不完整", "--"]);
+  recent[0].click();
   await wait(50);
-  const dateDetail = document.querySelector("tr.dc-date-detail-row");
-  if (dateDetail.hidden || !dateRow.classList.contains("expanded")) fail("a click on the date row opens it");
-  if (dateDetail.textContent.includes("補救事件")) fail("補救事件 is no longer shown under a date (user 10-28)");
-  if (dateDetail.querySelector(".dc-summary-card, .dc-main-row")) fail("no cards and no product rows under a date");
-  const categoryRows = () => [...dateDetail.querySelectorAll(".dc-category-table > tbody > tr")].filter((row) => !row.hidden).map(cellsOf);
+  if (document.querySelector('[data-dc-view="day-data"]').hidden) fail("a click on a recent day opens it");
+  const dayPanel = document.getElementById("dataCenterDayCategories");
+  const categoryRows = () => [...dayPanel.querySelectorAll(".dc-category-table > tbody > tr")].filter((row) => !row.hidden).map(cellsOf);
   same("the categories", categoryRows(), [
     ["加權指數", "1", "--", "--", "5,402", "1.0 MB", "完成"],
     ["›期貨指數", "1", "--", "412,330", "41,876", "82.0 MB", "完成"],
     ["產業指數", "14", "--", "--", "61,420", "9.3 MB", "完成"],
     ["上市股票", "58", "251,220", "1,402,110", "--", "1.3 GB", "完成"],
     ["上櫃股票", "18", "86,186", "210,194", "--", "400.5 MB", "14:52 重試"]]);
-  if (dateDetail.querySelector(".dc-category-table > tbody").textContent.includes("失敗")) fail("a failure waiting for its retry reads only the retry time");
-  const futuresRow = dateDetail.querySelector('tr[data-dc-category="futures"]');
+  same("the day's closes", [...document.querySelectorAll("#dataCenterDayClosing tbody tr")].map((row) => cellsOf(row).slice(0, 2)),
+    [["台股日盤", "完成"], ["指數", "完成"], ["期貨日盤", "完成"], ["期貨夜盤", "完成"]]);
+  const futuresRow = dayPanel.querySelector('tr[data-dc-category="futures"]');
+  const closedCaret = caretStyle(futuresRow);
   futuresRow.click();
   await wait(50);
   if (!futuresRow.classList.contains("expanded")) fail("a click on 期貨指數 opens it");
   same("期貨指數 open", categoryRows().slice(1, 4).map((row) => row[0]), ["›期貨指數", "日盤", "夜盤"]);
-  // A category's name and the date above it share one centre line.
   const centre = (element) => { const box = element.getBoundingClientRect(); return Math.round(box.left + box.width / 2); };
-  const dateCentre = centre(dateRow.cells[0].querySelector("b"));
-  for (const name of dateDetail.querySelectorAll(".dc-category-table > tbody > tr:not([hidden]) > td:first-child b, .dc-category-table > thead th:first-child .record-expand-label")) {
-    if (Math.abs(centre(name) - dateCentre) > 1) fail(`${name.textContent} is centred at ${centre(name)}, the date at ${dateCentre}`);
-  }
   // 日盤 / 夜盤 cells line up with 期貨指數's in every column.
   const textCentre = (cell) => { const range = document.createRange(); range.selectNodeContents(cell); return centre(range); };
-  for (const session of dateDetail.querySelectorAll("tr.dc-session-row:not([hidden])")) {
+  for (const session of dayPanel.querySelectorAll("tr.dc-session-row:not([hidden])")) {
     [...session.cells].forEach((cell, index) => {
       const above = futuresRow.cells[index];
       const label = (td) => td.querySelector(".record-expand-label") || td;
@@ -120,16 +110,13 @@ async function scenario(base, dataCenterHtml, accountHtml) {
   }
   // The second record row of each table (detail rows are not counted): no stripe on any table.
   const stripe = (table) => style([...table.tBodies[0].rows].filter((row) => !row.hasAttribute("data-row-detail"))[1], ["backgroundColor"]);
-  const dcStripes = [stripe(dateRow.closest("table")), stripe(futuresRow.closest("table"))];
-  const dc = {
-    dateRow: style(dateRow.cells[0], ["backgroundColor", "fontSize"]), dateCaret: caretStyle(dateRow),
-    categoryRow: style(futuresRow.cells[0], ["backgroundColor", "fontSize"]), categoryCaret: caretStyle(futuresRow),
-    dateDetail: style(dateDetail.cells[0], props),
-  };
-  same("an open caret turns down", closedCaret.transform === dc.dateCaret.transform ? "same" : "turned", "turned");
+  const dcStripe = stripe(futuresRow.closest("table"));
+  const dc = { categoryRow: style(futuresRow.cells[0], ["backgroundColor", "fontSize"]), categoryCaret: caretStyle(futuresRow) };
+  same("an open caret turns down", closedCaret.transform === dc.categoryCaret.transform ? "same" : "turned", "turned");
 
   // 帳務 個股數據 with its stock open.
   main.innerHTML = accountHtml;
+  (await import(`${base}js/core/page_frame.js`)).hydratePageFrames(document);
   document.querySelector('[data-account-view-panel="stockStats"]').hidden = false;
   const { account, actualAccountExpandedStockStats } = await import(`${base}js/features/account/account_state.js`);
   const { renderStockStats } = await import(`${base}js/features/account/stock_stats_view.js`);
@@ -150,13 +137,9 @@ async function scenario(base, dataCenterHtml, accountHtml) {
   // Both pages' tables are table cards (data-grid-variant="page"): their rows are parted by lines, not striped.
   const stockStripe = stripe(stockRow.closest("table"));
   same("個股數據's second row is not striped", stockStripe, { backgroundColor: "rgba(0, 0, 0, 0)" });
-  same("the rows (資料中心 dates / 個股數據)", dcStripes[0], stockStripe);
-  same("the rows (資料中心 categories / 個股數據)", dcStripes[1], stockStripe);
-  same("the open row's marking (資料中心 date / 個股數據)", dc.dateRow, stock.row);
+  same("the rows (資料中心 categories / 個股數據)", dcStripe, stockStripe);
   same("the open row's marking (資料中心 期貨指數 / 個股數據)", dc.categoryRow, stock.row);
-  same("the open caret (資料中心 date / 個股數據)", dc.dateCaret, stock.caret);
   same("the open caret (資料中心 期貨指數 / 個股數據)", dc.categoryCaret, stock.caret);
-  same("the detail cell (資料中心 date / 個股數據)", dc.dateDetail, stock.detail);
   for (const side of ["Top", "Right", "Bottom", "Left"]) if (stock.detail[`padding${side}`] !== "0px") fail(`the detail cell has no padding: ${JSON.stringify(stock.detail)}`);
   page.disposeDataCenterPage();
   return { ok: true };
@@ -165,6 +148,7 @@ async function scenario(base, dataCenterHtml, accountHtml) {
 app.whenReady().then(async () => {
   const win = new BrowserWindow({ show: false, width: 1600, height: 1000, webPreferences: { sandbox: false, backgroundThrottling: false } });
   await win.loadURL(pathToFileURL(path.join(__dirname, "fixtures", "renderer_ui_geometry.html")).href);
+  await fixViewport(win, 1600, 1000);
   const renderer = path.join(__dirname, "..", "ui", "renderer");
   const base = pathToFileURL(renderer + path.sep).href;
   const dataCenterHtml = fs.readFileSync(path.join(renderer, "pages", "data_center.html"), "utf8");

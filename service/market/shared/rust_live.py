@@ -217,6 +217,13 @@ class RustEventSink(Protocol):
         """Try to admit ``event`` without blocking; False means it was NOT admitted."""
         ...
 
+    def publish_with_verdict(self, event: RustLiveEvent, on_verdict: Callable[[bool, str | None], None]) -> bool:
+        """``publish``, and Market Runtime's own answer for this event told to ``on_verdict(accepted, reason)`` once,
+        from the sender thread. True only says the event was queued: a publisher that must know whether Market
+        Runtime took it (a reference sent once per trading day) waits for the verdict. False: not queued, and no
+        verdict comes; none comes either when the sink stops first (the process is ending)."""
+        ...
+
     def stop_admission(self) -> None:
         ...
 
@@ -297,6 +304,9 @@ class RustDaemonEventSink:
         self._transport_errors = 0
         self._last_error: str | None = None
         self._last_rejection: dict[str, Any] | None = None
+        # Publishers waiting for Market Runtime's answer to one event (publish_with_verdict), by the event object:
+        # the same object travels the queue, the batch and any resend until it is answered.
+        self._verdicts: dict[int, Callable[[bool, str | None], None]] = {}
         # The WAL failure last recorded while events were held (recorded once per reason).
         self._wal_failed_seen: str | None = None
         self._pending = 0
@@ -566,6 +576,27 @@ class RustDaemonEventSink:
                                    sequence=event.sequence, accepted=True, observed_epoch_ns=event.arrival_ns)
         return True
 
+    def publish_with_verdict(self, event: RustLiveEvent, on_verdict: Callable[[bool, str | None], None]) -> bool:
+        # Registered before the event is queued: the sender may answer it before publish returns.
+        with self._lock:
+            self._verdicts[id(event)] = on_verdict
+        if self.publish(event):
+            return True
+        with self._lock:
+            self._verdicts.pop(id(event), None)
+        return False
+
+    def _tell_verdict(self, event: RustLiveEvent, accepted: bool, reason: str | None) -> None:
+        """Market Runtime answered ``event`` for good: its publisher, when one waits (publish_with_verdict), is told."""
+        with self._lock:
+            on_verdict = self._verdicts.pop(id(event), None)
+        if on_verdict is None:
+            return
+        try:
+            on_verdict(accepted, reason)
+        except Exception as exc:
+            record_failure(_log, f"telling the publisher of {event.market}:{event.code} {event.event_type} its verdict", exc)
+
     def stop_admission(self) -> None:
         with self._lock:
             self._accepting = False
@@ -640,6 +671,7 @@ class RustDaemonEventSink:
                     instance: str | None = None) -> bool:
         """Record one per-event ack. False: stored and not yet reported on disk -- the event is held."""
         if bool(ack.get("accepted")):
+            self._tell_verdict(event, True, None)
             # `live_only` (盤前試撮, a never-stored market): applied and shown, never written -- nothing to wait for.
             # A stored event is final only once a watermark of the same Rust A process passes its durable sequence.
             if ack.get("storage") != "live_only":
@@ -652,6 +684,7 @@ class RustDaemonEventSink:
         reason = str(ack.get("reason") or "Rust event rejected")[:500]
         if resent and "RejectedSequence" in reason:
             # Applied before the connection dropped; the resend is a duplicate, not a loss.
+            self._tell_verdict(event, True, None)
             self._untrack(event)
             with self._lock:
                 self._duplicate_after_retry += 1
@@ -660,6 +693,7 @@ class RustDaemonEventSink:
             return True
         if reason == "PARTITION_CLOSED":
             # not an error: the session was sealed by its owner; Market Runtime counts and logs the refusal
+            self._tell_verdict(event, False, reason)
             self._untrack(event)
             with self._lock:
                 self._closed_partition += 1
@@ -677,6 +711,7 @@ class RustDaemonEventSink:
             }
         _ledger().pulse_hot_fields(DataFlowStage.MARKET_RUNTIME_ACKED, lane=event.event_type, symbol=event.code,
                                    sequence=event.sequence, accepted=False, error=reason)
+        self._tell_verdict(event, False, reason)
         return True
 
     def _confirm(self, event: RustLiveEvent) -> None:

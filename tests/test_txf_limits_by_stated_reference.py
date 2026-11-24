@@ -33,6 +33,27 @@ def _frozen(at: datetime):
     return FrozenNow
 
 
+class Sink:
+    """The provider's queue to Market Runtime: `queued` says whether the queue takes an event, `verdict` what Market
+    Runtime answers it -- (True, None), (False, reason), or None for no answer yet (kept in `waiting`)."""
+
+    def __init__(self):
+        self.events, self.queued, self.verdict, self.waiting = [], True, (True, None), []
+
+    def publish(self, event):
+        return True                     # the market events (quotes): not what these tests look at
+
+    def publish_with_verdict(self, event, on_verdict):
+        if not self.queued:
+            return False
+        self.events.append(event)
+        if self.verdict is None:
+            self.waiting.append(on_verdict)
+        else:
+            on_verdict(*self.verdict)   # the sender may answer before publish returns
+        return True
+
+
 class Clock:
     def __init__(self):
         self.t = 1000.0
@@ -45,8 +66,7 @@ def _broker(monkeypatch, at=datetime(2026, 11, 7, 3, 0), info=None):
     monkeypatch.setattr(module, "datetime", _frozen(at))
     clock = Clock()
     monkeypatch.setattr(module.time, "monotonic", clock.monotonic)
-    sink = MagicMock()
-    sink.publish.return_value = True        # the ingress admits every event
+    sink = Sink()                           # Market Runtime accepts every event
     broker = module.ShioajiBrokerService(event_sink=sink, credential_service=MagicMock())
     reads = []
 
@@ -79,14 +99,14 @@ def test_the_nights_limits_are_published_for_its_trading_date_though_the_contrac
     broker, sink, reads, recovery, _ = _broker(monkeypatch)
     broker.note_txf_stated_reference(39652 * SCALE, _ns(datetime(2026, 11, 7, 2, 59)))
     broker._refresh_txf_limits()
-    events = [call.args[0] for call in sink.publish.call_args_list]
+    events = sink.events
     assert [(e.describes_trading_date, e.time_quality, e.event_type, e.data) for e in events] == [
         ("2026-11-09", "backend_clock", "reference", {"limit_up": 43617 * SCALE, "limit_down": 35687 * SCALE})]
     assert not {"trading_date", "session"} & set(events[0].as_dict()), "Market Runtime files it under both sessions"
     assert broker._txf_limits_summary()["state"] == "PUBLISHED"
     assert broker._txf_limits_summary()["contract"] == "TXFK6"
     broker._refresh_txf_limits()
-    assert sink.publish.call_count == 1 and reads == ["TXFR1"], "published once per trading date, read once"
+    assert len(sink.events) == 1 and reads == ["TXFR1"], "published once per trading date, read once"
     assert recovery == [("succeeded", None)]
 
 
@@ -96,14 +116,14 @@ def test_nothing_is_read_before_a_quote_of_the_trading_date_states_its_reference
     broker._refresh_txf_limits()
     broker.note_txf_stated_reference(39500 * SCALE, _ns(datetime(2026, 11, 6, 13, 44)))
     broker._refresh_txf_limits()
-    assert reads == [] and sink.publish.call_count == 0 and recovery == []
+    assert reads == [] and len(sink.events) == 0 and recovery == []
     assert broker._txf_limits_summary() == {"state": "WAITING_QUOTE", "trading_date": "2026-11-09", "refetch_open": False}
 
 
 def test_a_closure_with_no_quote_publishes_nothing(monkeypatch):
     broker, sink, reads, _, _ = _broker(monkeypatch, at=datetime(2026, 10, 9, 10, 0), info=_info(update_date="2026/10/08"))
     broker._refresh_txf_limits()
-    assert sink.publish.call_count == 0 and reads == []
+    assert len(sink.events) == 0 and reads == []
 
 
 def test_a_contract_not_updated_yet_is_read_again_and_its_wait_recorded(monkeypatch, caplog):
@@ -112,7 +132,7 @@ def test_a_contract_not_updated_yet_is_read_again_and_its_wait_recorded(monkeypa
     broker.note_txf_stated_reference(39652 * SCALE, _ns(datetime(2026, 11, 7, 2, 59)))
     broker._refresh_txf_limits()
     broker._refresh_txf_limits()
-    assert sink.publish.call_count == 0 and reads == ["TXFR1"], "asked again only after the retry interval"
+    assert len(sink.events) == 0 and reads == ["TXFR1"], "asked again only after the retry interval"
     state = broker._txf_limits_summary()
     assert (state["state"], state["contract_reference"], state["stated_reference"]) == (
         "REFERENCE_MISMATCH", 39500 * SCALE, 39652 * SCALE)
@@ -121,7 +141,7 @@ def test_a_contract_not_updated_yet_is_read_again_and_its_wait_recorded(monkeypa
     broker.info = _info()
     clock.t += module.ShioajiBrokerService.TXF_LIMITS_RETRY_S
     broker._refresh_txf_limits()
-    assert sink.publish.call_args.args[0].describes_trading_date == "2026-11-09"
+    assert sink.events[-1].describes_trading_date == "2026-11-09"
     assert recovery[-1] == ("succeeded", None)
 
 
@@ -131,7 +151,7 @@ def test_a_failed_read_is_recorded_and_never_raised_into_the_session_loop(monkey
     broker.note_txf_stated_reference(39652 * SCALE, _ns(datetime(2026, 11, 7, 2, 59)))
     broker._refresh_txf_limits()
     assert broker._txf_limits_summary()["state"] == "UNAVAILABLE"
-    assert recovery == [("failed", "txf_limits_unavailable")] and sink.publish.call_count == 0
+    assert recovery == [("failed", "txf_limits_unavailable")] and len(sink.events) == 0
 
 
 def test_limits_the_ingress_refused_are_published_again_and_keep_the_reference_recovery_open(monkeypatch):
@@ -141,17 +161,45 @@ def test_limits_the_ingress_refused_are_published_again_and_keep_the_reference_r
         failed=lambda trigger, detail=None: outcomes.append(("failed", tuple(detail.get("pending", ())))),
         finish=lambda outcome, detail=None: outcomes.append((outcome, ())))
     broker.note_txf_stated_reference(39652 * SCALE, _ns(datetime(2026, 11, 7, 2, 59)))
-    sink.publish.return_value = False                 # refused (queue full)
+    sink.queued = False                               # the queue did not take it (full)
     broker._refresh_txf_limits()
     assert outcomes == [("failed", ("limits:TXFK6:2026-11-09",))]
     assert broker._txf_limits_summary()["state"] == "PUBLISH_FAILED" and recovery == []
-    sink.publish.return_value = True
+    sink.queued = True
     clock.t += module.ShioajiBrokerService.TXF_LIMITS_RETRY_S
     broker._refresh_txf_limits()
     assert outcomes[-1] == ("succeeded", ()), "closed once the refused limits are in"
     clock.t += module.ShioajiBrokerService.TXF_LIMITS_RETRY_S
     broker._refresh_txf_limits()
-    assert sink.publish.call_count == 2, "nothing more once admitted"
+    assert len(sink.events) == 1, "the queue never took the first: one sent, nothing more once accepted"
+
+
+def test_limits_market_runtime_refused_are_not_published_and_are_sent_again(monkeypatch, caplog):
+    # 11-23 night: the queue took the limits, Market Runtime refused them (a stale sequence), and the provider -- on
+    # the queue's word -- said PUBLISHED and never sent them again: 漲停 was never shown.
+    broker, sink, _, recovery, clock = _broker(monkeypatch)
+    outcomes = []
+    broker._reference_publish_recovery = SimpleNamespace(
+        failed=lambda trigger, detail=None: outcomes.append(("failed", tuple(detail.get("pending", ())))),
+        finish=lambda outcome, detail=None: outcomes.append((outcome, ())))
+    broker.note_txf_stated_reference(39652 * SCALE, _ns(datetime(2026, 11, 7, 2, 59)))
+    sink.verdict = None
+    broker._refresh_txf_limits()
+    assert broker._txf_limits_summary()["state"] == "SENT", "queued is not published"
+    clock.t += module.ShioajiBrokerService.TXF_LIMITS_RETRY_S
+    broker._refresh_txf_limits()
+    assert len(sink.events) == 1, "not sent again while Market Runtime's answer is pending"
+    sink.waiting.pop()(False, "RejectedSequence")
+    state = broker._txf_limits_summary()
+    assert state["state"] == "PUBLISH_FAILED" and "RejectedSequence" in state["reason"]
+    assert outcomes == [("failed", ("limits:TXFK6:2026-11-09",))]
+    assert "TXF limits PUBLISH_FAILED" in caplog.text, "the refusal is logged"
+    sink.verdict = (True, None)
+    clock.t += module.ShioajiBrokerService.TXF_LIMITS_RETRY_S
+    broker._refresh_txf_limits()
+    assert len(sink.events) == 2, "sent again"
+    assert broker._txf_limits_summary()["state"] == "PUBLISHED"
+    assert outcomes[-1] == ("succeeded", ()) and recovery[-1] == ("succeeded", None)
 
 
 def test_a_real_futures_quote_hands_its_stated_reference_to_the_session(monkeypatch):

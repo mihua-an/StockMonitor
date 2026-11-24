@@ -1,16 +1,14 @@
 // 歷史回放: the view models the replay dashboard's components read -- Market Runtime's replay for the order book, ticks,
 // 價量, flow and trend (engine_replay.js), the recorded event tape and the trade details (split out of pages/history.js).
-import { replayHistoryContext } from "../../core/dashboard_context.js";
+import { pickedHistoryDate } from "./picked_date.js";
 import { normalizeHistoryEvents } from "../../core/event_feed_format.js";
 import { withMarketRead } from "../../core/market_read_adapters.js";
 import { pairNetAtPrice } from "../../core/trade_costs.js";
-import { $ } from "../../core/utility.js";
 import { recordedEventsAtReplayTime } from "./history_event_markers.js";
 import { historyPage, historyState } from "./history_state.js";
-import { normalizeHistoryTradeScope } from "./trade_pager.js";
 import { activeHistoryTradeForCurrent, getHistoryStockName, historyTradeEntryPrice, historyTradeReplayStatus } from "./history_values.js";
 import { historyEngineTrendViewModel } from "./engine_controller.js";
-import { getHistoryTradePageState } from "./trade_pages.js";
+import { historyTradeDate, historyTradeDates, historyTradeRows } from "./trade_list.js";
 
 /** The open replay of the selected product, or null. */
 function openReplay() {
@@ -115,7 +113,7 @@ export function buildReplayEventFeedViewModel() {
     availability: "AVAILABLE",
     rows: replayEventRows(),
     dates: Array.isArray(historyState.dates) ? historyState.dates : [],
-    activeDate: String($("historyDateSelect")?.value || historyState.selectedDate || "").slice(0, 10),
+    activeDate: pickedHistoryDate(),
     selectedSymbol: historyState.selectedCode,
     selectedName: getHistoryStockName(historyState.selectedCode),
     selectedEventKey: historyState.selectedEventKey,
@@ -124,26 +122,17 @@ export function buildReplayEventFeedViewModel() {
 }
 
 export function buildReplayTradeDetailsViewModel() {
-  const tradeState = historyState.tradeDetails;
-  const scope = normalizeHistoryTradeScope(tradeState.scope);
-  const pageState = getHistoryTradePageState(scope);
+  const state = historyState.tradeDetails;
   return {
-    availability: pageState.loading || pageState.rows.length ? "AVAILABLE" : "UNAVAILABLE",
-    rows: Array.isArray(pageState.rows) ? pageState.rows : [],
-    scope,
-    page: pageState.page,
-    pageSize: tradeState.pageSize,
-    totalCount: pageState.totalCount,
-    totalPages: pageState.totalPages,
-    hasPrev: pageState.hasPrev,
-    hasNext: pageState.hasNext,
-    prevCursor: pageState.prevCursor,
-    nextCursor: pageState.nextCursor,
-    loading: pageState.loading,
-    selectedDate: String($("historyDateSelect")?.value || historyState.selectedDate || "").slice(0, 10),
-    selectedSymbol: replayHistoryContext.symbolStore.getSelectedSymbol() || historyState.selectedCode,
-    selectedName: getHistoryStockName(replayHistoryContext.symbolStore.getSelectedSymbol() || historyState.selectedCode),
+    availability: state.loading || state.rows.length ? "AVAILABLE" : "UNAVAILABLE",
+    rows: historyTradeRows(),
+    scope: state.scope,
+    query: state.query,
+    date: historyTradeDate(),
+    dates: historyTradeDates(),
+    loading: state.loading,
+    loaded: state.loadedAt > 0,
+    error: state.error,
     selectedTradeId: historyState.selectedDaytradeId,
-    emptyText: pageState.error || "",
   };
 }

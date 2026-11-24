@@ -39,8 +39,9 @@ export function shell(variant = "auto") {
  *
  * 個股走勢 and 技術分析 (which wraps 個股走勢) share one order:
  *   prediction -- A分上漲 | A分下跌 | B分上漲 | B分下跌 (the two horizons chosen in settings)
- *   stock      -- 昨收 最高 漲幅 漲停 / 開盤 最低 振幅 跌停 (two lines of four), 個股走勢
- *   session    -- 昨收 最高 漲幅 / 開盤 最低 振幅 (two lines of three), 期貨走勢 and 加權走勢: no limit prices
+ *   stock      -- 昨收 最高 漲幅 漲停 / 開盤 最低 振幅 跌停 (two lines of four), 個股走勢 and 期貨走勢 (the
+ *                 contract's official limits, user 11-23)
+ *   session    -- 昨收 最高 漲幅 / 開盤 最低 振幅 (two lines of three), 加權走勢 and 產業指數: no limit prices
  *   market     -- 上漲 下跌 漲停 跌停 平盤, the exchange-wide breadth every Shioaji trend shows
  * 期貨走勢 and 加權走勢 have no model predictions (the models are per stock): their session facts, then the
  * breadth row. 產業指數 ("sector") has the same two rows, but its breadth row shows the counts of that index's own
@@ -52,7 +53,8 @@ export function shell(variant = "auto") {
  */
 export function secondaryRowKinds(variant = "auto") {
   if (variant === "stock") return ["prediction", "stock", "market"];
-  if (variant === "futures" || variant === "market" || variant === "sector") return ["session", "market"];
+  if (variant === "futures") return ["stock", "market"];
+  if (variant === "market" || variant === "sector") return ["session", "market"];
   return ["market"];
 }
 
@@ -80,7 +82,7 @@ export function stockInfoTapeHtml() {
       </div>`;
 }
 
-// 期貨走勢 / 加權走勢: the same facts without limit prices, two lines of three:
+// 加權走勢 / 產業指數: the same facts without limit prices, two lines of three:
 //   昨收 | 最高 | 漲幅
 //   開盤 | 最低 | 振幅
 export function sessionInfoTapeHtml() {

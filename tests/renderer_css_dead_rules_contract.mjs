@@ -14,7 +14,6 @@ assert.doesNotMatch(productList, /product-list-selected-row td \{\s*outline-colo
 
 const account = css("pages/account.css");
 assert.doesNotMatch(account, /\.account-market-switch\.is-invisible/, "base.css .is-invisible already hides it");
-assert.equal(count(account, /^\.account-content-scroll \{/gm), 1, "the account scroll area is one rule");
 assert.equal(count(account, /^\.account-daytrade-period-grid \{/gm), 1, "the period grid is one rule (outside its media query)");
 
 assert.doesNotMatch(js("features/account/trade_editor_form.js"), /classList\.toggle\("disabled"/, "no class that no rule reads");

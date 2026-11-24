@@ -5,14 +5,20 @@
 //   node  = pane | split
 //   pane  = { kind: "pane", id, size, componentIds: [...], activeComponentId }
 //   split = { kind: "split", id, dir: "row" | "column", size, children: [node, ...] }
+//   pinned = { kind: "pane", id, size: 0, pinned: true }: an element of the page that stands in a row at a width of its
+//   own (歷史回放's 商品列). No tab joins it and it never moves; the panes beside it share what it leaves.
 //   size: the node's share of its parent (the children of a split sum to 1; the root's is 1).
 //
 // A pane whose last tab leaves disappears and its neighbours take its room, unless it is the only pane there is (it
 // then offers the add-feature page). A split left with one child is replaced by that child.
-import { newPaneId } from "./pane_layout.js";
-
 const EPSILON = 1e-6;
 const clone = (value) => JSON.parse(JSON.stringify(value));
+
+let paneSequence = 0;
+export function newPaneId(now = Date.now()) {
+  paneSequence = (paneSequence + 1) % 1e6;
+  return `pane-${now.toString(36)}-${paneSequence.toString(36)}`;
+}
 
 let splitSequence = 0;
 function newSplitId(now = Date.now()) {
@@ -37,8 +43,9 @@ function collapse(node) {
   return node;
 }
 
-/** Repair anything stored or edited: every component once, sizes that sum to 1, no split of fewer than two children. */
-export function normalizeTree(raw, { isKnown = () => true } = {}) {
+/** Repair anything stored or edited: every component once, sizes that sum to 1, no split of fewer than two children;
+ *  `isPinned(id)`: the pinned elements the page has. */
+export function normalizeTree(raw, { isKnown = () => true, isPinned = () => false } = {}) {
   const seen = new Set();
   const read = (input) => {
     if (input?.kind === "split") {
@@ -46,6 +53,12 @@ export function normalizeTree(raw, { isKnown = () => true } = {}) {
         size: Number(input.size) || 0, children: (Array.isArray(input.children) ? input.children : []).map(read).filter(Boolean) };
     }
     if (input?.kind !== "pane") return null;
+    if (input.pinned) {
+      const id = String(input.id || "");
+      if (seen.has(id) || !isPinned(id)) return null;
+      seen.add(id);
+      return { kind: "pane", id, size: 0, pinned: true, componentIds: [], activeComponentId: "" };
+    }
     const componentIds = [];
     for (const id of Array.isArray(input.componentIds) ? input.componentIds : []) {
       const key = String(id || "");
@@ -61,9 +74,9 @@ export function normalizeTree(raw, { isKnown = () => true } = {}) {
   return tree;
 }
 
-/** Every pane, in reading order. */
+/** Every pane of tabs, in reading order (a pinned element is none). */
 export function treePanes(node, out = []) {
-  if (node.kind === "pane") out.push(node);
+  if (node.kind === "pane") { if (!node.pinned) out.push(node); }
   else node.children.forEach((child) => treePanes(child, out));
   return out;
 }
@@ -96,7 +109,7 @@ function detach(tree, componentId) {
 
 function prune(tree) {
   const drop = (node) => {
-    if (node.kind === "pane") return node.componentIds.length ? node : null;
+    if (node.kind === "pane") return node.pinned || node.componentIds.length ? node : null;
     node.children = node.children.map(drop).filter(Boolean);
     return node.children.length ? node : null;
   };
@@ -105,6 +118,15 @@ function prune(tree) {
   result.size = 1;
   return result;
 }
+
+/** Whether every pinned element still stands in a row with panes beside it. */
+export function pinnedInPlace(node, parent = null) {
+  if (node.kind === "split") return node.children.every((child) => pinnedInPlace(child, node));
+  return !node.pinned || (parent?.dir === "row" && parent.children.some((child) => !child.pinned));
+}
+
+// An edit that would leave a pinned element without its row is not made.
+const keepPinned = (input, edited) => (pinnedInPlace(edited) ? edited : input);
 
 /** A tab joins pane `paneId` at `index` (end when null) and becomes its active tab. */
 export function moveTreeTab(input, componentId, paneId, index = null) {
@@ -117,7 +139,7 @@ export function moveTreeTab(input, componentId, paneId, index = null) {
   const at = adjusted == null ? target.componentIds.length : Math.max(0, Math.min(target.componentIds.length, adjusted));
   target.componentIds.splice(at, 0, componentId);
   target.activeComponentId = componentId;
-  return prune(tree);
+  return keepPinned(input, prune(tree));
 }
 
 /** A tab opens a new pane on `edge` ("left" | "right" | "top" | "bottom") of `paneId`, taking half of that pane. */
@@ -135,13 +157,13 @@ export function splitTreePane(input, componentId, paneId, edge, { newId = null }
     fresh.size = target.size / 2;
     target.size /= 2;
     parent.children.splice(parent.children.indexOf(target) + (before ? 0 : 1), 0, fresh);
-    return prune(tree);
+    return keepPinned(input, prune(tree));
   }
   const split = { kind: "split", id: newSplitId(), dir, size: target.size, children: before ? [fresh, target] : [target, fresh] };
   target.size = 0.5;
   if (!parent) { split.size = 1; return prune(split); }
   parent.children[parent.children.indexOf(target)] = split;
-  return prune(tree);
+  return keepPinned(input, prune(tree));
 }
 
 /** A pane's tab list changed in place (closed, reordered, added from its own chooser, activated). */
@@ -151,7 +173,7 @@ export function setTreePaneTabs(input, paneId, componentIds, activeComponentId) 
   if (!target) return input;
   target.componentIds = [...componentIds];
   target.activeComponentId = componentIds.includes(activeComponentId) ? activeComponentId : componentIds[0] || "";
-  return prune(tree);
+  return keepPinned(input, prune(tree));
 }
 
 /** New shares for the children of one split. */
@@ -160,12 +182,12 @@ export function resizeTreeSplit(input, splitId, sizes) {
   const find = (node) => (node.kind !== "split" ? null : node.id === splitId ? node : node.children.map(find).find(Boolean) || null);
   const split = find(tree);
   if (!split || split.children.length !== sizes.length) return input;
-  split.children.forEach((child, index) => { child.size = Number(sizes[index]) || 0; });
+  split.children.forEach((child, index) => { child.size = child.pinned ? 0 : Number(sizes[index]) || 0; });
   normalizeSizes(split.children);
   return tree;
 }
 
-/** The rows-of-panes layout of 即時報價 (pane_layout.js) as a tree: the same panes, tabs and shares. */
+/** A stored rows-of-panes layout (歷史回放's lower row) as a tree: the same panes, tabs and shares. */
 export function treeFromRows(layout) {
   const rows = (layout?.rows || []).map((row) => {
     const panes = (row.panes || []).map((pane) => ({ kind: "pane", id: String(pane.id), size: Number(pane.size) || 0,
@@ -173,4 +195,22 @@ export function treeFromRows(layout) {
     return { kind: "split", id: `split-${row.id}`, dir: "row", size: Number(row.size) || 0, children: panes };
   });
   return normalizeTree({ kind: "split", id: "split-rows", dir: "column", size: 1, children: rows });
+}
+
+/** Integer pixel extents for shares of `total` pixels minus the gaps: cumulative rounding, so every edge lands on a
+ *  whole pixel (a half-pixel edge renders as a blurred, lighter frame line) and the extents sum to the space exactly.
+ *  `fixed`: the px of the items with a width of their own (null: a share of the rest). */
+export function pixelExtents(sizes, total, gap = 0, fixed = []) {
+  const held = sizes.reduce((sum, _size, index) => sum + (fixed[index] ?? 0), 0);
+  const space = Math.max(0, Math.floor(total) - gap * Math.max(0, sizes.length - 1) - held);
+  const sum = sizes.reduce((a, size, index) => a + (fixed[index] == null ? size : 0), 0) || 1;
+  let acc = 0, prev = 0;
+  return sizes.map((size, index) => {
+    if (fixed[index] != null) return fixed[index];
+    acc += size / sum;
+    const edge = Math.round(acc * space);
+    const extent = edge - prev;
+    prev = edge;
+    return extent;
+  });
 }

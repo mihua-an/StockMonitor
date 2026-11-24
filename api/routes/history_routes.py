@@ -127,33 +127,10 @@ def create_history_router(deps: HistoryRouteDependencies) -> APIRouter:
             raise ValidationError("invalid date")
 
     @router.get('/api/history/daytrades')
-    def get_history_daytrades(
-        scope: str | None = None,
-        date: str | None = None,
-        code: str | None = None,
-        page: int = 1,
-        page_size: int = 50,
-        direction: str = "jump",
-        cursor: str | None = None,
-        request_id: str | None = None,
-    ):
-        """Paginated paired day-trade history.
-
-        The Renderer sends an explicit scope:
-        overview = all historical paired day trades, today = Replay date,
-        symbol = current Replay symbol. Every scope remains bounded by page_size.
-        """
-        result = actual_account_service.get_daytrade_history_page(
-            scope=scope,
-            realized_date=date,
-            code=code,
-            market="台股",
-            page=page,
-            page_size=page_size,
-            direction=direction,
-            cursor=cursor,
-        )
-        return {"ok": True, "request_id": str(request_id or ""), **result}
+    def get_history_daytrades():
+        """Every paired day trade of 台股, newest first."""
+        items = actual_account_service.get_daytrade_history(market="台股")
+        return {"ok": True, "count": len(items), "items": items}
 
     @router.get('/api/history/daytrade-markers')
     def get_history_daytrade_markers(date: str, code: str):

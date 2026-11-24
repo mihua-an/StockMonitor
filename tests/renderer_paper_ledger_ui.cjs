@@ -190,7 +190,7 @@ async function scenario(base, pricePolicy) {
   if (cellsOf(pair) !== "華邦電|2,000|142|144|3,242" || colour(pair.cells[4].firstElementChild) !== red) fail(`a pair: ${cellsOf(pair)}`);
   pair.click();
   await wait(450);
-  const pairRows = [...host.querySelectorAll('tr[data-detail-key="r:7"] .paper-ledger-pair tr')].map((r) => [...r.cells].map((c) => c.textContent).join("|"));
+  const pairRows = [...host.querySelectorAll('tr[data-detail-key="r:7"] .ledger-pair tr')].map((r) => [...r.cells].map((c) => c.textContent).join("|"));
   if (pairRows.join(";") !== "|買入|賣出;時間|09:33|09:05;單價|142|144;價金|284,162|287,404;報酬率|1.14%") fail(`the opened pair: ${pairRows.join(";")}`);
   $('[data-ledger-tab="orders"]').click();
   await settle();
@@ -253,9 +253,9 @@ async function scenario(base, pricePolicy) {
     && editTop('[data-role="ledger-amount"]') < editTop('[data-ledger-action="confirm"]'))) fail("刪改 runs 買賣報價, 刪單 / 改價, the row, 確認 from the top");
   if (text('[data-role="ledger-amount-label"]') !== "張數" || text('[data-role="ledger-amount-note"]') !== "剩 2 張") fail(`the row's name: ${text('[data-role="ledger-amount-label"]')} ${text('[data-role="ledger-amount-note"]')}`);
   if ($('[data-role="ledger-edit"] .order-ticket-facts')) fail("no line under 取消 / 確認 (使用者 11-11)");
-  if (getComputedStyle($('[data-role="ledger-edit"] .paper-ledger-card')).backgroundColor !== getComputedStyle($('[data-role="ledger-order"] .paper-ledger-card')).backgroundColor) fail("刪改's card has 下單's look");
+  if (getComputedStyle($('[data-role="ledger-edit"] .ledger-card')).backgroundColor !== getComputedStyle($('[data-role="ledger-order"] .ledger-card')).backgroundColor) fail("刪改's card has 下單's look");
   // 刪單 / 改價 and 委託・成交 / 已實現 are 28px, the title row's height and the search box's (使用者 11-11).
-  for (const [sel, what] of [[".paper-ledger-modes", "刪單 / 改價"], ['[data-role="ledger-tabs"]', "委託・成交 / 已實現"], [".paper-ledger-head .product-quote-code-input", "the search box"]]) {
+  for (const [sel, what] of [[".paper-ledger-modes", "刪單 / 改價"], ['[data-role="ledger-tabs"]', "委託・成交 / 已實現"], [".ledger-head .product-quote-code-input", "the search box"]]) {
     const height = $(sel).getBoundingClientRect().height;
     if (Math.abs(height - 28) > 0.5) fail(`${what} is 28px: ${height}`);
   }
@@ -335,7 +335,7 @@ async function orderFlow(base) {
   const posts = window.__ledgerPosts;
   const $ = (sel) => host.querySelector(sel);
   const text = (sel) => $(sel)?.textContent.trim();
-  const input = $(".paper-ledger-head .product-quote-code-input");
+  const input = $(".ledger-head .product-quote-code-input");
   if (!input) fail("委託's title row holds the search box");
   const search = async (q) => {
     input.focus();
@@ -347,7 +347,7 @@ async function orderFlow(base) {
     await wait(60);
     await settle();
   };
-  const head = input.closest(".paper-ledger-head").getBoundingClientRect(), box = input.getBoundingClientRect();
+  const head = input.closest(".ledger-head").getBoundingClientRect(), box = input.getBoundingClientRect();
   if (head.right - box.right > 12 || box.width < 120) fail(`the box sits wide at the row's end: ${box.right} of ${head.right}, ${box.width} px`);
   // The first book of a stock may carry no price yet (10-27 live: 價格 stayed empty): 價格 fills from the next one.
   const { withMarketRead } = await import(`${base}js/core/market_read_adapters.js`);
@@ -368,7 +368,7 @@ async function orderFlow(base) {
   if (getComputedStyle(identity).display !== "none" || !$('[data-role="order-book"] .product-quote-price-box').getBoundingClientRect().width) fail("the product row is 價格 and 漲跌 only");
   // 委託・成交's column titles are as tall as 下單's product row beside them (user 10-27).
   const productRow = $('[data-role="order-book"] .product-quote-header').getBoundingClientRect().height;
-  const heads = [...host.querySelectorAll(".paper-ledger-table > thead > tr")].filter((tr) => tr.getClientRects().length).map((tr) => tr.getBoundingClientRect().height);
+  const heads = [...host.querySelectorAll(".ledger-table > thead > tr")].filter((tr) => tr.getClientRects().length).map((tr) => tr.getBoundingClientRect().height);
   if (heads.length !== 1 || heads.some((h) => Math.abs(h - productRow) > 0.5)) fail(`the column titles are ${heads} px, the product row ${productRow} px`);
   if (!text('[data-role="order-title"]').includes("2303 聯電")) fail(`the title names the stock: ${text('[data-role="order-title"]')}`);
   const price = $('[data-ticket="price"]'), qty = $('[data-ticket="qty"]');

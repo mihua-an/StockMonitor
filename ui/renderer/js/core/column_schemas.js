@@ -37,18 +37,6 @@ export const TICK_DETAILS_COLUMNS = tickDetailsColumns();
 // (its text and the cell's padding beside the scrollbar), taken from the other columns when the pane is narrow.
 export const FUTU_TICK_DETAILS_COLUMNS = tickDetailsColumns({ minWidth: 80, hardMinWidth: 80 });
 
-export const TRADE_DETAILS_COLUMNS = defineColumnSchema(withCapabilities([
-  { id: "date", title: "日期", width: 82, minWidth: 70, flex: 1.2 },
-  { id: "code", title: "股號", width: 58, minWidth: 48, flex: 0.9 },
-  { id: "name", title: "股名", width: 72, minWidth: 58, flex: 1.15 },
-  { id: "direction", title: "方向", width: 54, minWidth: 42, flex: 0.7 },
-  { id: "entry", title: "進場", width: 62, minWidth: 52, flex: 0.9 },
-  { id: "exit", title: "出場", width: 62, minWidth: 52, flex: 0.9 },
-  { id: "buy", title: "買進", width: 66, minWidth: 54, flex: 0.9 },
-  { id: "sell", title: "賣出", width: 66, minWidth: 54, flex: 0.9 },
-  { id: "profit", title: "損益", width: 74, minWidth: 60, flex: 1.0 },
-], { divider: false, sortable: false, resizable: true }), { id: "tradeDetails" });
-
 export const ACCOUNT_STOCK_NORMAL_TRADE_COLUMNS = defineColumnSchema(withCapabilities([
   { id: "date", title: "日期" }, { id: "qty", title: "股數" }, { id: "entry", title: "進場" },
   { id: "exit", title: "出場" }, { id: "hold", title: "持有" }, { id: "buy", title: "買進" },
@@ -246,7 +234,7 @@ export const TRAINING_MODEL_REGISTRY_COLUMNS = defineColumnSchema([
 ].map(([id,title])=>({id,title})), { id: "trainingModelRegistry" });
 
 export const COLUMN_SCHEMA_REGISTRY = Object.freeze(new Map([
-  EVENT_FEED_COLUMNS, TICK_DETAILS_COLUMNS, TRADE_DETAILS_COLUMNS, 
+  EVENT_FEED_COLUMNS, TICK_DETAILS_COLUMNS,
   ACCOUNT_STOCK_NORMAL_TRADE_COLUMNS, ACCOUNT_STOCK_DAYTRADE_COLUMNS, ACCOUNT_DAYTRADE_DETAIL_COLUMNS, REALTIME_QUOTE_COLUMNS, REALTIME_HOLDING_COLUMNS,
   ACCOUNT_HOLDINGS_COLUMNS, ACCOUNT_STOCK_STATS_COLUMNS, ACCOUNT_DAILY_COLUMNS, ACCOUNT_RANKING_COLUMNS,
   ACCOUNT_DIRECTION_REPORT_COLUMNS, ACCOUNT_RAW_TRADES_COLUMNS, ACCOUNT_PAIR_COLUMNS,

@@ -210,6 +210,7 @@ industryIndexStore.subscribe(() => {
 //   points    -- every partition's minutes, narrowed to the tab's window;
 //   price     -- the partition that traded last (after midnight, the next calendar day's);
 //   reference -- the partition that carries one with its source (a night and its day share one 基準價);
+//   漲停 / 跌停 -- the contract's official limits Market Runtime holds for the partition the price is from;
 //   open / high / low -- the tab's own session(s): 開盤 is the partition that opened first (全日's night), 最高 / 最低
 //              the extremes of every partition's Market Runtime summary (each partition is one business session).
 export function txfDisplay(session = activeTxfSession) {
@@ -254,6 +255,8 @@ export function txfDisplay(session = activeTxfSession) {
     low: lows.length ? Math.min(...lows) : null,
     current: priced?.shown.current ?? null,
     indicative: Boolean(priced?.shown.indicative),
+    limit_up: positiveNumberOrNull(priced?.summary.limit_up),
+    limit_down: positiveNumberOrNull(priced?.summary.limit_down),
     // Market Runtime's 漲跌 of that price (wire.rs `summary`).
     change: priced?.shown.change ?? null,
     change_pct: priced?.shown.changePct ?? null,

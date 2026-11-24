@@ -74,3 +74,37 @@ def test_models_serves_the_constant_baseline_a_slot_s_winner_had_to_beat(tmp_pat
         registry=lambda: _Dirs(slots, tmp_path), worker_status=lambda: None, enabled_minutes=lambda: (30,)))
     served = {slot["key"]: slot for slot in app.models()["slots"]}["30m_down"]
     assert served["baseline_log_loss"] == 0.698 and served["champion_state"] == "BELOW_BASELINE"
+
+
+def test_each_days_part_in_the_models(tmp_path, monkeypatch):
+    report = {"run_id": "run-1", "split": {"kind": "by_date", "train": ["2026-11-19"], "validation": ["2026-11-20"], "test": ["2026-11-18"]},
+              "dataset": {"dataset_id": "ods-1"}}
+    monkeypatch.setattr(training_application.training_job, "latest_run_report", lambda: report)
+    monkeypatch.setattr(training_application.TrainingApplication, "today",
+                        lambda self: {"window": {"trained_dates": ["2026-11-20", "2026-11-23"], "test_only_dates": ["2026-11-18"]}})
+    monkeypatch.setattr(training_application.TrainingApplication, "_dataset", staticmethod(
+        lambda report, minutes: {"shards": [{"trading_date": "2026-11-19", "samples": 93412}]}))
+    by_date = {"2026-11-19": {"samples": 10, "positives": 3, "called": 2, "hits": 1}}
+    slots = {"3m_up": {"champion": "m", "validation": {"by_date": by_date}},
+             "3m_down": {"champion": "older", "validation": {}}, "5m_up": {"champion": None, "validation": None}}
+    app = training_application.TrainingApplication(training_application.TrainingDependencies(
+        registry=lambda: _Dirs(slots, tmp_path), worker_status=lambda: None, enabled_minutes=lambda: (3,)))
+    days = app.days()["days"]
+    assert days["2026-11-19"] == {"use": "train", "next": None, "samples": 93412, "models": [{"key": "3m_up", **by_date["2026-11-19"]}]}
+    assert (days["2026-11-18"]["use"], days["2026-11-18"]["next"]) == ("test", "test")
+    assert (days["2026-11-20"]["use"], days["2026-11-20"]["next"]) == ("validation", "train")
+    assert (days["2026-11-23"]["use"], days["2026-11-23"]["next"], days["2026-11-23"]["models"]) == (None, "train", [])
+
+
+def test_a_run_s_winner_is_counted_per_date():
+    import numpy as np
+    import pandas as pd
+
+    from service.analysis.online_training.trainer import _by_date
+
+    parts = {"train": pd.DataFrame({"trading_date": ["a", "a", "b"]}), "test": pd.DataFrame({"trading_date": ["c"]})}
+    y = {"train": np.array([1, 0, 1]), "test": np.array([0])}
+    p = {"train": np.array([0.9, 0.6, 0.2]), "test": np.array([0.1])}
+    assert _by_date(parts, y, p) == {"a": {"samples": 2, "positives": 1, "called": 2, "hits": 1},
+                                     "b": {"samples": 1, "positives": 1, "called": 0, "hits": 0},
+                                     "c": {"samples": 1, "positives": 0, "called": 0, "hits": 0}}

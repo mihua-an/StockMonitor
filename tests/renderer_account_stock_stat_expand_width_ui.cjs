@@ -30,7 +30,8 @@ async function scenario(base, accountHtml) {
   };
   const main = document.querySelector("main");
   main.innerHTML = accountHtml;
-  document.querySelectorAll(".account-view[data-account-view-panel]").forEach((panel) => {
+  (await import(`${base}js/core/page_frame.js`)).hydratePageFrames(document);
+  document.querySelectorAll(".page-frame-view[data-account-view-panel]").forEach((panel) => {
     const on = panel.dataset.accountViewPanel === "stockStats";
     panel.hidden = !on;
     panel.classList.toggle("active", on);

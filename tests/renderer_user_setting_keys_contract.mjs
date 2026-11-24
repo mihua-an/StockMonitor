@@ -11,10 +11,10 @@ const STORED = [
   "actualAccountDaytradeEntrySortKey", "actualAccountDaytradeHoldSortDirection", "actualAccountDaytradeHoldSortKey",
   "actualAccountPairSortDirection", "actualAccountPairSortKey", "actualAccountStockSortDirection", "actualAccountStockSortKey",
   "actualHoldingsQuoteColumnsV1", "globalTradeAction", "historyReplayPaneLayout", "historyReplayWorkspaceLayout", "historyTickDetailsColumnWidthsV2",
-  "historyTradeRecordsColumnWidthsV1", "marketDiagnostics", "monitorScreenLayouts",
+  "marketDiagnostics", "monitorScreenLayouts",
   "monitorQuoteColumnWidthsV2:", "moomooSelectedCodeV1:", "moomooTrendSessionV1", "moomooWatchPageActiveV1",
   "realtimeIndustryIndex", "realtimeProductSides", "realtimeTickDetailsColumnWidthsV3:", "settingsSection", "shioajiActiveWatchPageV1", "shioajiLiveEventWidthsV1",
-  "shioajiMarketPanelUiStateV1", "shioajiMonitorQuoteColumnsV1", "shioajiSlotLayoutConfigV9", "shioajiTrendOverlayV1:",
+  "shioajiMarketPanelUiStateV1", "shioajiMonitorQuoteColumnsV1", "shioajiTrendOverlayV1:",
   "stockmonitor.stockTrendEventMarkers.v1", "stockmonitor.trendFooterHorizons.v1", "technicalAnalysisTimeframeV1",
   "tickDetailsMinVolumeV1:", "workspace.members",
 ];

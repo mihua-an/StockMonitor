@@ -235,17 +235,19 @@ class ShioajiBrokerService:
         # The reference the newest TXF quote states (close - price_chg, price units) and its exchange time: which
         # trading date the contract's limits are for is read from it (_refresh_txf_limits).
         self._txf_stated_reference: tuple[int, int] | None = None
-        # Where the current trading date's TXF limits stand (PUBLISHED / WAITING_QUOTE / REFERENCE_MISMATCH /
+        # Where the current trading date's TXF limits stand (PUBLISHED / SENT / WAITING_QUOTE / REFERENCE_MISMATCH /
         # UNAVAILABLE / PUBLISH_FAILED), and when the contract was last read for them.
         self._txf_limits_state: dict[str, Any] = {}
         self._txf_limits_attempted = -1e9
         self._reference_stream_seq: dict[str, int] = {}
-        # (contract, trading date) of the TXF limits already handed to Market Runtime: published once per date.
-        # (contract, trading date, partition date, partition session) of every TXF limits reference Market Runtime's
-        # ingress ADMITTED: a partition whose publish was refused is published again on the next attempt.
+        # (contract, trading date) of the TXF limits Market Runtime ACCEPTED (its own verdict, not the queue's): published
+        # once per date; a refused one is published again on the next attempt.
         self._txf_limits_published: set[tuple[str, str]] = set()
-        # Per-stock 漲停/跌停 published to Market Runtime: code -> trading date published, and the last attempt.
+        # The trading date whose TXF limits were sent and await Market Runtime's verdict: not sent again meanwhile.
+        self._txf_limits_in_flight: str | None = None
+        # Per-stock 漲停/跌停 Market Runtime accepted: code -> trading date; codes sent and awaiting its verdict.
         self._stock_limits_published: dict[str, str] = {}
+        self._stock_limits_in_flight: dict[str, str] = {}
         self._stock_limits_attempted: dict[str, float] = {}
         self._stock_limits_worker: threading.Thread | None = None
         self._last_error: str | None = None
@@ -1433,7 +1435,7 @@ class ShioajiBrokerService:
             changed, self._txf_limits_state = self._txf_limits_state != entry, entry
         if not changed:
             return
-        level = logging.INFO if state in ("PUBLISHED", "WAITING_QUOTE") else logging.WARNING
+        level = logging.INFO if state in ("PUBLISHED", "SENT", "WAITING_QUOTE") else logging.WARNING
         logger.log(level, "[SHIOAJI] TXF limits %s: %s", state, {k: v for k, v in entry.items() if k != "state"})
 
     def _txf_limits_missing(self, state: str, trading_date: str, **detail: Any) -> None:
@@ -1470,8 +1472,9 @@ class ShioajiBrokerService:
             contract = self._txf_contract
             stated = self._txf_stated_reference
             published = any(key[1] == trading_date for key in self._txf_limits_published)
+            in_flight = self._txf_limits_in_flight == trading_date
             due = time.monotonic() - self._txf_limits_attempted >= self.TXF_LIMITS_RETRY_S
-        if contract is None or published:
+        if contract is None or published or in_flight:
             return
         if stated is None or self._txf_business_date(datetime.fromtimestamp(stated[1] / 1_000_000_000)) != trading_date:
             # not an error: no quote of this trading date has stated the reference the contract is matched to yet
@@ -1501,13 +1504,11 @@ class ShioajiBrokerService:
             self._txf_limits_missing("REFERENCE_MISMATCH", trading_date, contract=code, update_date=dated,
                                      contract_reference=reference_units, stated_reference=stated[0])
             return
-        if not self._publish_txf_reference(trading_date, code, float(limit_up), float(limit_down)):
+        detail = {"contract": code, "update_date": dated, "limit_up": float(limit_up), "limit_down": float(limit_down)}
+        if not self._publish_txf_reference(trading_date, code, float(limit_up), float(limit_down), detail):
             self._txf_limits_missing("PUBLISH_FAILED", trading_date, contract=code,
-                                     reason="Market Runtime's ingress did not admit the event")
+                                     reason="the provider's queue to Market Runtime did not take the event")
             return
-        self._txf_limit_state("PUBLISHED", trading_date=trading_date, contract=code, update_date=dated,
-                              limit_up=float(limit_up), limit_down=float(limit_down))
-        self._txf_limits_recovery.finish("succeeded", detail={"trading_date": trading_date, "contract": code})
 
     STOCK_LIMITS_RETRY_S = 600.0
 
@@ -1538,6 +1539,7 @@ class ShioajiBrokerService:
             contracts = dict(self._stock_contracts)
             due = [code for code in sorted({key.split(":")[1] for key in self._active_subscription_keys if key.startswith("STK:")})
                    if code in contracts and self._stock_limits_published.get(code) != today
+                   and self._stock_limits_in_flight.get(code) != today
                    and now - self._stock_limits_attempted.get(code, -1e9) >= self.STOCK_LIMITS_RETRY_S]
         if not due or self._api is None:
             return
@@ -1581,9 +1583,12 @@ class ShioajiBrokerService:
             with self._lock:
                 sequence = self._reference_stream_seq.get(code, 0) + 1
                 self._reference_stream_seq[code] = sequence
+                self._stock_limits_in_flight[code] = today
+            # SENT before the event can be answered: the verdict, from the sender thread, may come before publish returns.
+            self._stock_limit_state(code, "SENT", dated=today)
             now_ns = time.time_ns()
             try:
-                admitted = self.event_sink.publish(RustLiveEvent(
+                queued = self.event_sink.publish_with_verdict(RustLiveEvent(
                     source="shioaji", market="STK", code=code, generation=max(0, int(self._session_generation)), sequence=sequence,
                     event_type="reference", exchange_ts_ns=now_ns, arrival_ns=now_ns, time_quality="backend_clock",
                     describes_trading_date=today,
@@ -1591,20 +1596,35 @@ class ShioajiBrokerService:
                         "limit_up": price_to_units(float(limit_up), scale=self.price_scale),
                         "limit_down": price_to_units(float(limit_down), scale=self.price_scale),
                     },
-                ))
+                ), lambda accepted, reason, code=code: self._stock_limits_verdict(code, codes, today, accepted, reason))
             except Exception as exc:
                 record_failure(logger, f"publishing the limit prices of {code}", exc)
-                self._stock_limit_state(code, "PUBLISH_FAILED", reason=f"{type(exc).__name__}: {exc}"[:200])
+                queued, failure = False, f"{type(exc).__name__}: {exc}"[:200]
+            else:
+                failure = "the provider's queue to Market Runtime did not take the event"
+            # Published only once Market Runtime accepts it (_stock_limits_verdict): a refusal keeps the code waiting,
+            # so the next pass sends it again and the recovery stays open.
+            if not queued:
+                with self._lock:
+                    self._stock_limits_in_flight.pop(code, None)
+                self._stock_limit_state(code, "PUBLISH_FAILED", reason=failure)
                 continue
-            # Published only once Market Runtime's ingress admitted it: a refusal keeps the code waiting, so the
-            # next pass sends it again and the recovery stays open.
-            if admitted is not True:
-                self._stock_limit_state(code, "PUBLISH_FAILED", reason="Market Runtime's ingress did not admit the event")
-                continue
-            with self._lock:
-                self._stock_limits_published[code] = today
-            self._stock_limit_state(code, "PUBLISHED", dated=today)
             time.sleep(0.02)
+        self._settle_stock_limits_pass(codes, today)
+
+    def _stock_limits_verdict(self, code: str, codes: list[str], today: str, accepted: bool, reason: str | None) -> None:
+        """Market Runtime's answer to one stock's limits (sender thread): PUBLISHED, or PUBLISH_FAILED with its reason
+        and sent again on a later pass. The pass is settled once its last answer is in."""
+        with self._lock:
+            if self._stock_limits_in_flight.get(code) == today:
+                del self._stock_limits_in_flight[code]
+            if accepted:
+                self._stock_limits_published[code] = today
+        if accepted:
+            self._stock_limit_state(code, "PUBLISHED", dated=today)
+        else:
+            self._stock_limit_state(code, "PUBLISH_FAILED", reason=f"Market Runtime refused it: {reason or 'no reason given'}"[:300])
+            logger.warning("[SHIOAJI] stock limits of %s for %s refused by Market Runtime: %s", code, today, reason)
         self._settle_stock_limits_pass(codes, today)
 
     @staticmethod
@@ -1643,6 +1663,8 @@ class ShioajiBrokerService:
     def _settle_stock_limits_pass(self, codes: list[str], today: str) -> None:
         with self._lock:
             states = {code: dict(self._stock_limits_state.get(code) or {}) for code in codes}
+        if any(s.get("state") == "SENT" for s in states.values()):
+            return      # not an error: answers still to come; the last one settles the pass (_stock_limits_verdict)
         waiting = {code: s for code, s in states.items() if s.get("state") != "PUBLISHED"}
         if not waiting:
             self._stock_limits_recovery.finish("succeeded", detail={"codes": len(codes)})
@@ -1683,18 +1705,23 @@ class ShioajiBrokerService:
 
         return MarketSessionCalendar().upcoming_trading_date(at or datetime.now()).isoformat()
 
-    def _publish_txf_reference(self, dated: str, contract_code: str, limit_up: float, limit_down: float) -> bool:
-        """The contract's limits for trading date `dated` (_refresh_txf_limits), handed to Market Runtime: it holds and
+    def _publish_txf_reference(self, dated: str, contract_code: str, limit_up: float, limit_down: float,
+                               detail: dict[str, Any]) -> bool:
+        """The contract's limits for trading date `dated` (_refresh_txf_limits), sent to Market Runtime: it holds and
         serves them for the session, and FastAPI and the renderer read them there, never a copy of their own from the
-        daemon. Whether Market Runtime admitted them: once admitted they are not published again for that date.
+        daemon. Whether the queue to Market Runtime took them; Market Runtime's own verdict follows
+        (_txf_limits_verdict), and only its acceptance marks them published for that date.
         """
         # A trading date's limits hold for both of its sessions, the night that opened the trading day before and
         # the day: Market Runtime writes the one reference to both partitions (describes_trading_date).
         with self._lock:
             sequence = self._reference_stream_seq.get(self.TXF_CODE, 0) + 1
             self._reference_stream_seq[self.TXF_CODE] = sequence
+            self._txf_limits_in_flight = dated
+        # SENT before the event can be answered: the verdict, from the sender thread, may come before publish returns.
+        self._txf_limit_state("SENT", trading_date=dated, **detail)
         now_ns = time.time_ns()
-        admitted = self.event_sink.publish(RustLiveEvent(
+        queued = self.event_sink.publish_with_verdict(RustLiveEvent(
             source="shioaji", market="FUT", code=self.TXF_CODE,
             generation=max(0, int(self._session_generation)), sequence=sequence,
             event_type="reference", exchange_ts_ns=now_ns, arrival_ns=now_ns, time_quality="backend_clock",
@@ -1703,15 +1730,37 @@ class ShioajiBrokerService:
                 "limit_up": price_to_units(limit_up, scale=self.price_scale),
                 "limit_down": price_to_units(limit_down, scale=self.price_scale),
             },
-        ))
-        if not self._reference_admitted(admitted, ("limits", str(contract_code), str(dated)),
-                                        {"kind": "limits", "contract": contract_code, "trading_date": dated}):
-            return False
+        ), lambda accepted, reason: self._txf_limits_verdict(dated, contract_code, detail, accepted, reason))
+        if queued:
+            return True
         with self._lock:
-            self._txf_limits_published.add((contract_code, dated))
-            # Limits for an earlier trading date are never published again.
-            self._txf_limits_published = {key for key in self._txf_limits_published if key[1] >= dated}
-        return True
+            if self._txf_limits_in_flight == dated:
+                self._txf_limits_in_flight = None
+        self._reference_admitted(False, ("limits", str(contract_code), str(dated)),
+                                 {"kind": "limits", "contract": contract_code, "trading_date": dated, "reason": "queue"})
+        return False
+
+    def _txf_limits_verdict(self, dated: str, contract_code: str, detail: dict[str, Any], accepted: bool,
+                            reason: str | None) -> None:
+        """Market Runtime's answer to the limits of trading date `dated` (sender thread). Accepted: published for that
+        date. Refused: PUBLISH_FAILED with Market Runtime's reason, the reference recovery open, and sent again on the
+        next attempt (TXF_LIMITS_RETRY_S after this one)."""
+        identity = ("limits", str(contract_code), str(dated))
+        with self._lock:
+            if self._txf_limits_in_flight == dated:
+                self._txf_limits_in_flight = None
+            if accepted:
+                self._txf_limits_published.add((contract_code, dated))
+                # Limits for an earlier trading date are never published again.
+                self._txf_limits_published = {key for key in self._txf_limits_published if key[1] >= dated}
+        self._reference_admitted(accepted, identity, {"kind": "limits", "contract": contract_code, "trading_date": dated,
+                                                      **({} if accepted else {"reason": reason})})
+        if accepted:
+            self._txf_limit_state("PUBLISHED", trading_date=dated, **detail)
+            self._txf_limits_recovery.finish("succeeded", detail={"trading_date": dated, "contract": contract_code})
+            return
+        self._txf_limits_missing("PUBLISH_FAILED", dated, contract=contract_code,
+                                 reason=f"Market Runtime refused it: {reason or 'no reason given'}"[:300])
 
     def _subscribe_stream(self, identity: StreamIdentity) -> None:
         if not self.subscription_manager.is_allowed(identity):

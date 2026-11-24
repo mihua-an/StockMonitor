@@ -160,6 +160,16 @@ impl Payload {
             Self::Clock { .. } => "clock",
         }
     }
+
+    /// Whether this kind is ordered by its producer's sequence (stale and repeated events refused by it). A Reference
+    /// is not: it has several producers in one partition -- the provider's own reads (limits, 昨收, name, on its own
+    /// counter) and the 昨收 / 參考價 a print or quote states (`stated_reference`, carrying that print's or quote's
+    /// sequence) -- so their sequences share no order, and a provider's limits after the first stated reference were
+    /// refused as stale (TXF 漲停 never shown). Each Reference field is a fact absorbed by value; a repeat is dropped
+    /// by what the partition already holds (`partition_holds`) and a stale producer by its generation.
+    pub fn sequence_fenced(&self) -> bool {
+        !matches!(self, Self::Reference { .. })
+    }
 }
 
 /// Payload kinds of derived rows an older WAL layout carried in the raw stream. Refused as an older format.

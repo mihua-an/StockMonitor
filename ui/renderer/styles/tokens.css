@@ -65,9 +65,6 @@
   --paged-rail-width: var(--shared-row-rail-width);
   --paged-rail-height: 42px;
   --paged-rail-control-size: 14px;
-  --row-height-trade-record: 28px;
-  --row-height-trade-record-min: var(--row-height-trade-record);
-  --row-height-trade-record-max: calc(var(--row-height-trade-record) + 6px);
   --app-scrollbar-size: 6px;
   --app-scrollbar-thumb: rgba(148, 163, 184, .38);
   --app-scrollbar-thumb-hover: rgba(148, 163, 184, .64);
@@ -150,7 +147,6 @@
   --blue-800x-20: #263852;
   --blue-800x-22: #2b3b4c;
   --blue-800x-4: #15314d;
-  --blue-800x-7: #183a62;
   --blue-800x-8: #1b2940;
   --blue-800x-9: #1c2a38;
   --blue-800x-a45: rgba(38, 59, 87, 0.45);
@@ -204,9 +200,7 @@
   --sky-300x: #64c8f2;
   --sky-300x-2: #8fd3ee;
   --sky-300x-4: #9fb6cc;
-  --sky-300x-a22: rgba(80, 170, 255, 0.22);
   --sky-400: #38bdf8;
-  --sky-400-a04: rgba(56, 189, 248, 0.045);
   --sky-400-a08: rgba(56, 189, 248, 0.08);
   --sky-400-a14: rgba(56, 189, 248, 0.14);
   --sky-400-a18: rgba(56, 189, 248, 0.18);

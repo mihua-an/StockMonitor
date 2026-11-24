@@ -4,12 +4,6 @@
    only. Markup builders live in js/core/settings_ui.js. */
 
 /* ===== Frame: category nav on the left, one category at a time ===== */
-.settings-page {
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-}
-
 .settings-layout {
   display: grid;
   grid-template-columns: 168px minmax(0, 1fr);
@@ -21,13 +15,15 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 16px 10px;
+  min-height: 0;
+  padding: 10px;
+  overflow: hidden;
   border-right: 1px solid var(--blue-800x-19);
   background: var(--blue-900x-5);
 }
 
 .settings-nav h2 {
-  margin: 0 6px 12px;
+  margin: 0 6px 6px;
   font-size: 18px;
 }
 
@@ -67,7 +63,7 @@
   min-height: 0;
   overflow: auto;
   box-sizing: border-box;
-  padding: 18px max(10px, env(safe-area-inset-right)) 70px 22px;
+  padding: 0 max(10px, env(safe-area-inset-right)) 16px 22px;
   scrollbar-gutter: stable;
 }
 
@@ -78,7 +74,7 @@
   --settings-content-max: 712px;
   max-width: 900px;
   margin: 0 auto;
-  padding: 28px 24px 60px;
+  padding: 14px 24px 16px;
 }
 
 .settings-pagewrap.is-wide {
@@ -111,7 +107,7 @@
   margin: 0;
 }
 
-/* A full page's title row in 設定's look (資料中心, 模型中心, 帳務): outside the page's scroll area so it stays at the
+/* A full page's title row in 設定's look (資料中心, 帳務): outside the page's scroll area so it stays at the
    top, as wide as the centred column under it; its actions sit at the right. */
 .settings-page-head {
   flex: none;
@@ -121,7 +117,7 @@
   width: 100%;
   max-width: 1180px;
   margin: 0 auto;
-  padding: 22px 24px 18px;
+  padding: 14px 24px 10px;
   box-sizing: border-box;
 }
 
@@ -1144,22 +1140,4 @@
 
 .settings-toast .settings-link {
   font-weight: 600;
-}
-
-@media (max-width: 760px) {
-  .settings-layout {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-
-  .settings-nav {
-    flex-direction: row;
-    flex-wrap: wrap;
-    border-right: 0;
-    border-bottom: 1px solid var(--blue-800x-19);
-  }
-
-  .settings-nav h2 {
-    display: none;
-  }
 }

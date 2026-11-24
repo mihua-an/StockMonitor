@@ -53,7 +53,7 @@ const pageHtml = readFileSync(new URL("../ui/renderer/pages/history.html", impor
 assert.deepEqual([...pageHtml.matchAll(/data-history-shift="(-?\d+)"/g)].map((m) => Number(m[1])), [-30, -5, 5, 30],
   "« ‹ 播放 › »: 30 and 5 seconds back, 5 and 30 forward");
 assert.doesNotMatch(page, /stepHistoryEngine/, "no step-by-print path left");
-assert.match(page, /dateSelect\?\.addEventListener\("change", \(\) => \{\s*endHistoryEngineReplay\(\);/);
+assert.match(page, /export function selectHistoryDate\(value\) \{[\s\S]{0,200}?endHistoryEngineReplay\(\);/);
 assert.doesNotMatch(page, /trade_flow_replay|price_volume_replay/, "no flow / 價量 computed outside Market Runtime's replay");
 for (const [id, model] of [["orderbook", "buildReplayOrderbookViewModel"], ["tradeFlow", "buildReplayTradeFlowViewModel"],
   ["priceFlow", "buildReplayPriceFlowViewModel"], ["trendChart", "buildReplayTrendViewModel"], ["tickDetails", "buildReplayTickDetailsViewModel"]]) {

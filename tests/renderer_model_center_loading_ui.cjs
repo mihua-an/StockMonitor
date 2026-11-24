@@ -1,6 +1,6 @@
 const { makeTempDir } = require("./support/temp_dirs.cjs");
 // 模型中心 before its first answer, in a real Chromium (run with Electron): the page's own code on the real
-// training.html with a fake API that holds /api/training/models until released. Checked: the moment the page is
+// data_center.html with a fake API that holds /api/training/models until released. Checked: the moment the page is
 // entered every card shows the shared load-state component (載入中…), the answer's content replaces it, a failed
 // first answer turns the cards to 讀取失敗, and 帳務's placeholder is the same component with the same look.
 // Set MODEL_CENTER_LOADING_SHOT=<dir> to save a picture of the page while loading and after the answer.
@@ -40,6 +40,7 @@ async function enter(base, trainingHtml, cards, outcome) {
     return json({ ok: false, error: `unexpected ${url.pathname}` }, 404);
   };
   document.getElementById("pageContainer").innerHTML = trainingHtml;
+  (await import(`${base}js/core/page_frame.js`)).hydratePageFrames(document);
   const page = await import(`${base}js/pages/training.js`);
   page.bindTrainingEvents();
   window.__refresh = page.refreshTrainingStatus().catch((error) => String(error?.message || error));
@@ -73,7 +74,7 @@ app.whenReady().then(async () => {
   await win.loadURL(pathToFileURL(path.join(__dirname, "fixtures", "renderer_ui_geometry.html")).href);
   const renderer = path.join(__dirname, "..", "ui", "renderer");
   const base = pathToFileURL(renderer + path.sep).href;
-  const trainingHtml = fs.readFileSync(path.join(renderer, "pages", "training.html"), "utf8");
+  const trainingHtml = fs.readFileSync(path.join(renderer, "pages", "data_center.html"), "utf8");
   const run = (fn, ...args) => win.webContents.executeJavaScript(`(${fn.toString()})(${args.map((a) => JSON.stringify(a)).join(", ")})`);
   const shot = async (name) => {
     if (!shots) return;

@@ -1,0 +1,158 @@
+/* A ledger's list (core/components/ledger_list.js), in the settings look: a title row (tabs, a search box, a figure) above a
+ * rounded card holding a split data grid (data-grid.css) whose rows open under them -- 模擬帳務's 委託・成交, 已實現 and
+ * 未實現, and 歷史回放's 交易明細. */
+
+/* A card's title row, outside the card (the settings group title's look): the name or the tabs at the left, a figure,
+   the search box or a link at the right. One height for every title row. */
+.ledger-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  margin: 0 4px 4px;
+  color: var(--slate-400);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ledger-head-end {
+  margin-left: auto;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The tabs keep their own width; the search box takes what is left of the row. */
+.ledger-tabs {
+  flex: none;
+}
+
+.ledger-search-slot {
+  --product-quote-search-height: 28px;
+  flex: 0 1 140px;
+  min-width: 72px;
+}
+
+/* A card: the settings group's rounded card, holding one list or a panel. */
+.ledger-card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: 12px;
+  background: var(--slate-900);
+  overflow: hidden;
+}
+
+.ledger-card[hidden] {
+  display: none;
+}
+
+/* A list in a card: data-grid-variant="card" gives its title band and rows the card's colour (data-grid.css). */
+.ledger-table-wrap {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Each column a fixed share of the width (column_schemas.js), so the scrollbar never makes a row scroll sideways. The
+   column titles are as tall as 下單's product row beside them (user 10-27). */
+.ledger-table {
+  width: 100%;
+  table-layout: fixed;
+  --data-table-cell-padding-inline: 4px;
+  --data-table-head-height: var(--product-quote-header-height);
+  --data-table-head-padding-block: 0;
+}
+
+.ledger-table > thead > tr > th {
+  background: var(--slate-900);
+  color: var(--slate-400);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ledger-table > tbody > tr > td {
+  height: 32px;
+  padding-block: 0;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 股名: at the left, after the caret that turns down while the row is open. */
+.ledger-table > tbody > tr > td.ledger-name {
+  padding-left: 18px;
+  text-align: left;
+}
+
+.ledger-table > thead > tr > th:first-child {
+  padding-left: 18px;
+}
+
+.ledger-row {
+  cursor: pointer;
+}
+
+.ledger-row > td.ledger-name {
+  position: relative;
+}
+
+.ledger-row > td.ledger-name::before {
+  content: "›";
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  color: var(--slate-500);
+  transform: translateY(-50%);
+  transition: transform .32s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.ledger-row.expanded > td.ledger-name::before {
+  color: var(--slate-200);
+  transform: translateY(-50%) rotate(90deg);
+}
+
+.ledger-row.expanded > td,
+.ledger-row.selected > td {
+  background: var(--row-expanded-bg);
+}
+
+/* An opened pair: 買入 / 賣出 across the top, 時間 / 單價 / 價金 / 報酬率 down the side. */
+.ledger-pair {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-pair th,
+.ledger-pair td {
+  height: 26px;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+.ledger-pair thead th {
+  color: var(--slate-400);
+  font-weight: 600;
+  text-align: center;
+}
+
+.ledger-pair tbody th {
+  width: 30%;
+  padding-left: 18px;
+  color: var(--slate-400);
+  font-weight: 400;
+  text-align: left;
+}
+
+.ledger-pair td {
+  color: var(--slate-100);
+  text-align: center;
+}
+
+.ledger-pair tbody tr > * {
+  box-shadow: inset 0 1px 0 var(--pane-border);
+}

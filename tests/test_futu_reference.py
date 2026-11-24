@@ -14,10 +14,21 @@ class Clock:
         return self.t
 
 
-def make(now=datetime(2026, 10, 7, 15, 0, tzinfo=timezone.utc)):   # 11:00 ET: the regular session of 10-07
-    sent, clock = [], Clock()
-    publisher = FutuReferencePublisher(lambda code, date, data: sent.append((code, date, data)) or True,
-                                       now=lambda: now if not callable(now) else now(), monotonic=clock)
+def make(now=datetime(2026, 10, 7, 15, 0, tzinfo=timezone.utc), verdict=(True, None)):   # 11:00 ET: the regular session of 10-07
+    """`verdict`: Market Runtime's answer to every reference -- (True, None), (False, reason), or None for no answer
+    yet (the answers kept in `publisher.waiting`)."""
+    sent, clock, waiting = [], Clock(), []
+
+    def publish(code, date, data, on_verdict):
+        sent.append((code, date, data))
+        if verdict is None:
+            waiting.append(on_verdict)
+        else:
+            on_verdict(*verdict)   # the sender may answer before publish returns
+        return True
+
+    publisher = FutuReferencePublisher(publish, now=lambda: now if not callable(now) else now(), monotonic=clock)
+    publisher.waiting = waiting
     return publisher, sent, clock
 
 
@@ -102,6 +113,25 @@ def test_a_recheck_sends_only_a_changed_value():
     assert sent[-1][2] == {"prev_close": 4_851_000}
 
 
+def test_a_previous_close_market_runtime_refused_is_sent_again_and_one_pending_is_not(caplog):
+    # The queue's True was taken for Market Runtime's: a refused 昨收 was recorded as sent and, its value unchanged,
+    # never sent again. Only Market Runtime's acceptance records it now.
+    publisher, sent, clock = make(verdict=None)
+    snapshot = lambda codes: [{"code": "US.TSM", "prev_close_price": 482.3}]
+    assert publisher.run(snapshot, ["US.TSM"], no_kline) == 1
+    clock.t += REFRESH_SECONDS
+    assert publisher.run(snapshot, ["US.TSM"], no_kline) == 0, "the answer is pending: not sent twice"
+    publisher.waiting.pop()(False, "PARTITION_CLOSED")
+    assert (publisher.published, publisher.rejected) == (0, 1)
+    assert publisher.snapshot_status()["last_rejection"]["reason"] == "PARTITION_CLOSED"
+    assert "refused the 昨收 of US.TSM" in caplog.text
+    clock.t += REFRESH_SECONDS
+    assert publisher.run(snapshot, ["US.TSM"], no_kline) == 1, "sent again at the next check"
+    publisher.waiting.pop()(True, None)
+    clock.t += REFRESH_SECONDS
+    assert publisher.run(snapshot, ["US.TSM"], no_kline) == 0 and len(sent) == 2 and publisher.published == 1
+
+
 def test_a_failed_snapshot_waits_before_the_next_try_and_bad_rows_are_skipped():
     publisher, sent, clock = make()
 
@@ -126,13 +156,17 @@ def test_the_adapter_sends_a_reference_event_in_its_own_sequence():
     events = []
 
     class Sink:
-        def publish(self, event):
+        def publish_with_verdict(self, event, on_verdict):
             events.append(event)
+            on_verdict(True, None)
             return True
 
     adapter = FutuThinCallbackAdapter(Sink(), generation=lambda: 7)
-    assert adapter.publish_reference("us.tsm", "2026-10-07", {"prev_close": 4_823_000, "name": "台積電"})
-    assert adapter.publish_reference("US.TSM", "2026-10-07", {"prev_close": 4_851_000})
+    verdicts = []
+    assert adapter.publish_reference("us.tsm", "2026-10-07", {"prev_close": 4_823_000, "name": "台積電"},
+                                     lambda ok, reason: verdicts.append(ok))
+    assert adapter.publish_reference("US.TSM", "2026-10-07", {"prev_close": 4_851_000}, lambda ok, reason: verdicts.append(ok))
+    assert verdicts == [True, True], "Market Runtime's answers reach the publisher"
     first, second = events
     assert (first.event_type, first.code, first.market, first.describes_trading_date, first.generation) == ("reference", "US.TSM", "US", "2026-10-07", 7)
     assert (first.sequence, second.sequence) == (1, 2)

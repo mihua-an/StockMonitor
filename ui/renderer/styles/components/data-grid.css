@@ -419,6 +419,12 @@ th.canonical-title-cell {
   z-index: 24;
 }
 
+/* A pane whose list is scrolled by the wheel alone. */
+[data-list-rails="hidden"] .page-rail-compact,
+[data-list-rails="hidden"] .shared-discrete-row-rail {
+  display: none;
+}
+
 .page-scrollbar {
   flex: 1 1 auto;
   width: var(--paged-rail-width);

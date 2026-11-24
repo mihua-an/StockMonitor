@@ -20,7 +20,7 @@ assert.match(spinner, /animation:\s*loading-spin \.8s linear infinite/);
 assert.equal([...css.matchAll(/@keyframes\s+[\w-]*spin[\w-]*/g)].length, 1, "one spin keyframes");
 assert.ok(!/trend-loading-spinner|pair-replay-spinner|history-product-loading-spin/.test(css), "no spinner of a page's own");
 
-// The date menu: event-feed.css owns the look (歷史回放's values); 歷史回放 only places it.
+// The date menu: event-feed.css owns the look.
 const option = bodyOf(".event-feed-date-option");
 assert.match(option, /height:\s*27px/);
 assert.match(option, /font-variant-numeric:\s*tabular-nums/);
@@ -28,9 +28,9 @@ assert.ok(!/font-family/.test(option), "the app's font");
 assert.match(bodyOf(".event-feed-date-option:hover"), /var\(--surface-tab-active\)/);
 assert.match(bodyOf(".event-feed-date-option.active"), /var\(--sky-800x-7\)[\s\S]*font-weight:\s*800/);
 assert.ok(!/history-sidebar-date-option/.test(css), "no second option style");
-// One menu behaviour and option markup (core date_menu.js) for 歷史事件 and the 歷史回放 sidebar.
+// One menu behaviour and option markup (core date_menu.js) for every date menu.
 assert.match(read("js/core/components/date_menu.js"), /class="event-feed-date-option/);
-for (const user of ["js/features/history/date_picker.js", "js/core/components/event_feed_component.js"]) {
+for (const user of ["js/core/components/event_feed_component.js"]) {
   assert.match(read(user), /import \{ bindDateMenu, dateOptionsHtml \} from "[./]+(core\/)?components\/date_menu\.js"|import \{ bindDateMenu, dateOptionsHtml \} from "\.\/date_menu\.js"/, user);
   assert.ok(!/event-feed-date-option/.test(read(user)), `${user} draws no option of its own`);
 }

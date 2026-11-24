@@ -40,6 +40,8 @@ class AnalysisEventArchive:
         self.root = root or default_root()
         self._cache: OrderedDict[Path, tuple[tuple[int, int], list[dict[str, Any]], int]] = OrderedDict()
         self._lock = threading.Lock()
+        # Each day's counts by its file's signature: a past day is parsed for them once.
+        self._counts: dict[str, tuple[tuple[int, int], dict[str, int]]] = {}
 
     def _newest_first(self, path: Path) -> tuple[list[dict[str, Any]], int]:
         """The day's events newest first, and how many lines were damaged (not JSON, not an object, no event_id). A
@@ -92,6 +94,54 @@ class AnalysisEventArchive:
             while len(self._cache) > self.CACHE_DAYS:
                 self._cache.popitem(last=False)
         return events, damaged
+
+    LIST_FIELDS = ("event_id", "event_origin", "revision", "state", "trading_date", "trigger_minute", "triggered_at_ns", "code", "name",
+                   "label", "direction")
+
+    @classmethod
+    def list_record(cls, record: dict[str, Any]) -> dict[str, Any]:
+        """What a list of events shows of one (資料中心's 事件): its identity, time, product and label, 量比 and each model's
+        probability. A day's whole records are tens of megabytes."""
+        predictions = record.get("model_predictions")
+        return {**{key: record[key] for key in cls.LIST_FIELDS if key in record},
+                "detail": {"volume_ratio": (record.get("detail") or {}).get("volume_ratio")},
+                "model_predictions": {key: {"probability": entry.get("probability")} for key, entry in (predictions or {}).items()
+                                      if isinstance(entry, dict)}}
+
+    def counts(self, dates: list[str]) -> dict[str, dict[str, int]]:
+        """The named days' number of events, how many of them point up and down, and of how many products; a day without
+        an archive is absent. A day's records are read one at a time and only what is counted is kept (a day's archive
+        can be tens of megabytes), so this never fills the cache the event list reads from."""
+        out: dict[str, dict[str, int]] = {}
+        for date_text in {iso_trading_date(str(date).strip()) for date in dates}:
+            path = self.root / f"{date_text}.jsonl"
+            try:
+                stat = path.stat()
+            except FileNotFoundError:  # not an error: no archive for that day
+                continue
+            signature = (stat.st_size, stat.st_mtime_ns)
+            held = self._counts.get(date_text)
+            if held is None or held[0] != signature:
+                held = (signature, self._count_day(path))
+                self._counts[date_text] = held
+            out[date_text] = held[1]
+        return out
+
+    def _count_day(self, path: Path) -> dict[str, int]:
+        newest: dict[str, tuple[int, str, str]] = {}
+        with path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    record = json.loads(line)
+                except ValueError:  # not an error: a damaged line is recorded where the day's events are read (_newest_first)
+                    continue
+                event_id = str(record.get("event_id") or "") if isinstance(record, dict) else ""
+                revision = int(record.get("revision") or 0) if event_id else 0
+                if event_id and (event_id not in newest or revision >= newest[event_id][0]):
+                    newest[event_id] = (revision, str(record.get("direction") or "") if record.get("state") != "REVOKED" else "REVOKED", str(record.get("code") or ""))
+        shown = [(direction, code) for _revision, direction, code in newest.values() if direction != "REVOKED"]
+        return {"events": len(shown), "up": sum(d == "up" for d, _ in shown), "down": sum(d == "down" for d, _ in shown),
+                "codes": len({code for _, code in shown})}
 
     def read(self, date_text: str, limit: int = 500) -> dict[str, Any]:
         """One trading day's events. ValueError for a value that is not a trading date: it becomes a file name

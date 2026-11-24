@@ -1,5 +1,4 @@
-// Splitter dragging, shared by every resizable layout (即時報價's panes: pane_workspace.js; 歷史回放's workspace:
-// features/history/workspace_layout.js).
+// Splitter dragging, shared by every resizable layout (the pane workspaces: tree_workspace.js).
 //
 // beginSplitterDrag: one drag. The pointer is captured, the whole window shows the resize cursor and selects no text
 // while it lasts (layout/workspace.css: body.workspace-resizing, body[data-resize-cursor]), and the move / end
@@ -9,9 +8,9 @@
 // caller then puts back the sizes it had at the start and saves nothing.
 //
 // splitPair: the sizes of two neighbours after their common boundary moved, in whole px: the pair keeps its total
-// (rounded to a whole px), each side at least `min`; a pair too small to give both sides `min` does not move. Sizes are measured from what the layout itself sizes (gridTrackSizes for a CSS grid), never from a
-// child's border box: a child wider than its track (a border outside width: 100%) wrote 2 px more into every track
-// on every drag, and the panels crept (歷史回放, 10-19).
+// (rounded to a whole px), each side at least `min`; a pair too small to give both sides `min` does not move. Sizes are measured from what the layout itself sizes, never from a
+// child's border box: a child wider than what it was given (a border outside width: 100%) would add those px on every
+// drag, and the panels would creep.
 
 export function beginSplitterDrag(event, splitter, { axis = "x", onMove, onEnd, documentRef = globalThis.document } = {}) {
   event.preventDefault();
@@ -56,11 +55,4 @@ export function splitPair(starts, index, delta, min) {
   if (pair < 2 * min) return [start, pair - start];
   const first = Math.round(Math.max(min, Math.min(pair - min, starts[index] + delta)));
   return [first, pair - first];
-}
-
-/** A CSS grid's resolved track sizes in px along `axis` ("x": columns, "y": rows). */
-export function gridTrackSizes(element, axis = "x") {
-  const style = globalThis.getComputedStyle?.(element);
-  const tracks = String((axis === "x" ? style?.gridTemplateColumns : style?.gridTemplateRows) || "");
-  return tracks.split(/\s+/).map((value) => Number.parseFloat(value)).filter(Number.isFinite);
 }

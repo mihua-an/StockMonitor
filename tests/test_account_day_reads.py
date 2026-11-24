@@ -61,7 +61,7 @@ def test_a_pair_is_one_row_shape_everywhere_and_carries_the_ledgers_closing_term
     assert ledger.get_daytrade_analysis("台股")["pairs"] == day
     assert ledger.get_pairs("台股", "2317")["items"] == day
     assert ledger.get_realized(None, market="台股", realized_date="2026-10-15") == day
-    assert ledger.get_daytrade_history_page(scope="today", realized_date="2026-10-15")["items"] == day
+    assert ledger.get_daytrade_history("台股") == day
     assert ledger.get_daytrade_symbol_date_rows("2026-10-15", "2317") == day
     [pair] = day
     assert pair["closing_terms"] == {"amount_rounding": "floor", "fee_rate": "0.000855", "min_fee": "1", "fee_rounding": "ceil",

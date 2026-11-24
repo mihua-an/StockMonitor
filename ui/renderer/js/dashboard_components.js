@@ -119,13 +119,13 @@ export function registerDashboardComponents() {
     create: () => new TrendChartComponent(),
   });
 
-  // 歷史回放's 個股走勢: the trend surface in replay mode, in the page's top-left slot under its own 個股走勢 tab (its
+  // 歷史回放's 個股走勢: the trend surface in replay mode, under its own 個股走勢 tab (its
   // controls in that tab bar, as 即時報價's 個股走勢).
   componentRegistry.register({
     id: "replayTrend",
     title: "個股走勢",
     supportedHosts: ["inline"],
-    supportedSlots: ["replayPrimary"],
+    supportedSlots: CONFIGURABLE_SLOTS,
     supportedModes: ["replay"],
     requiredCapabilities: ["trend"],
     dataKey: "trendChart",

@@ -63,8 +63,9 @@ async function scenario(base, accountHtml, dataCenterHtml) {
 
   const main = document.querySelector("main");
   main.innerHTML = accountHtml;
-  document.querySelector(".account-main-pane").style.height = "1700px";
-  document.querySelectorAll(".account-view[data-account-view-panel]").forEach((panel) => {
+  (await import(`${base}js/core/page_frame.js`)).hydratePageFrames(document);
+  document.querySelector(".page-frame-main").style.height = "1700px";
+  document.querySelectorAll(".page-frame-view[data-account-view-panel]").forEach((panel) => {
     const on = panel.dataset.accountViewPanel === "daytrade";
     panel.hidden = !on;
     panel.classList.toggle("active", on);

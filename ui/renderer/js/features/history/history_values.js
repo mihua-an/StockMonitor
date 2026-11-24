@@ -1,6 +1,6 @@
 // 歷史回放: the replayed day's value helpers -- names, clock text and the trade under review (split out of pages/history.js).
+import { pickedHistoryDate } from "./picked_date.js";
 import { buildTradeInterval } from "../../core/trend/adapters.js";
-import { $ } from "../../core/utility.js";
 import { historyState } from "./history_state.js";
 import { parseExchangeClock } from "../../market_data/taipei_time.js";
 
@@ -49,7 +49,7 @@ export function setActiveHistoryTradeReview(pair) {
 export function activeHistoryTradeForCurrent() {
   const pair = historyState.activeTradeReview;
   if (!pair) return null;
-  const date = String($("historyDateSelect")?.value || historyState.selectedDate || "").slice(0, 10);
+  const date = pickedHistoryDate();
   const code = String(historyState.selectedCode || "");
   if (String(pair.realized_date || "").slice(0, 10) !== date) return null;
   if (String(pair.code || "") !== code) return null;
@@ -106,6 +106,6 @@ export function historySeriesUntil(rawPoints, timeText) {
 // events) awaits on its own; a reply for a date the user has already left must not be written into the
 // shared historyState, or date B shows A's market/futures/events.
 export function historyDateStillSelected(date) {
-  const selected = String($("historyDateSelect")?.value || historyState.selectedDate || "").slice(0, 10);
+  const selected = pickedHistoryDate();
   return selected === String(date || "").slice(0, 10);
 }

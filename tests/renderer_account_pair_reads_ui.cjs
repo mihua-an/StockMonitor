@@ -72,6 +72,8 @@ async function scenario(base, accountHtml) {
   };
 
   document.querySelector("main").innerHTML = accountHtml;
+
+  (await import(`${base}js/core/page_frame.js`)).hydratePageFrames(document);
   const { account, actualAccountExpandedStockStats } = await import(`${base}js/features/account/account_state.js`);
   const { renderStockStats } = await import(`${base}js/features/account/stock_stats_view.js`);
   const { renderDaytradeAnalysis } = await import(`${base}js/features/account/daytrade_view.js`);
@@ -177,10 +179,10 @@ async function scenario(base, accountHtml) {
   // The notice floats at the top as 設定's message does (user 11-01) and takes no room: the content scroll starts
   // under the header and keeps the remaining height whether a notice shows or not (the main pane's grid once gave
   // the notice its 1fr row and pushed the scroll into an implicit row below it).
-  const pane = document.querySelector(".account-main-pane");
+  const pane = document.querySelector(".page-frame-main");
   pane.style.height = "700px";
   const scroll = document.getElementById("actualAccountContentScroll");
-  const header = document.querySelector(".account-page-header");
+  const header = document.querySelector(".page-frame-head");
   const noticeBox = notice.getBoundingClientRect();
   const scrollBox = scroll.getBoundingClientRect();
   const paneBox = pane.getBoundingClientRect();

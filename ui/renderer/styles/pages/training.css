@@ -1,23 +1,6 @@
-/* 模型中心: training status, coverage and model cards. */
+/* 資料中心's 模型 (pages/training.js, pages/training/model_center_view.js): the model cards, in 設定's look. */
 
-.training-page-panel {
-  height: 100%;
-  min-height: 0;
-  padding: 0;
-  overflow: hidden;
-}
-
-/* Under the title row (.settings-page-head), which the panel keeps at its top: the page's only scroll viewport. */
-.training-scroll-area {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-bottom: 80px;
-  scrollbar-gutter: stable;
-}
-
-/* ===== Model Center + Retention Console + status diagnostics ===== */
+/* Why the models could not be read. */
 .model-center-warning {
   margin-bottom: 12px;
   display: grid;
@@ -46,19 +29,6 @@
 .model-center-warning-row.info {
   border-color: var(--blue-400-a28);
   color: var(--blue-300);
-}
-
-/* ===== 模型中心 (training.html / pages/training/model_center_view.js): 設定's look, one centred column ===== */
-.mc-wrap {
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 0 24px 60px;
-  box-sizing: border-box;
-}
-
-.mc-subtitle {
-  font-size: 13px;
-  color: var(--slate-400);
 }
 
 /* 上線模型: one tile per prediction, its AUC in one colour over a bar from 0.5 to 1.0. */

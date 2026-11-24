@@ -1,13 +1,10 @@
-import { createHistoryWorkspaceLayoutController } from "../features/history/workspace_layout.js";
-import { HISTORY_PANE_ROWS, HISTORY_PANE_SELECTOR, HISTORY_PANE_STORAGE_KEY, historyPaneDefaultLayout } from "../features/history/pane_defaults.js";
+import { HISTORY_STOCKS_PANE, HISTORY_STOCKS_WIDTH, HISTORY_WORKSPACE_SELECTOR, decorateHistoryPane, historyInitialTree, saveHistoryTree } from "../features/history/pane_defaults.js";
 import { apiGet, apiGetOk } from "../core/api.js";
 import { runUiTask } from "../core/ui_task.js";
-import { appState } from "../core/state.js";
 import { onApiOnline } from "../core/status.js";
 import { replayHistoryContext } from "../core/dashboard_context.js";
 import { eventFeedKey, normalizeHistoryEvents } from "../core/event_feed_format.js";
 import { registerProductQuoteSearchProvider } from "../core/components/product_quote_search.js";
-import { layoutStateStore } from "../core/layout_state_store.js";
 import {
   mountDashboardPage,
   destroyDashboardPage,
@@ -18,23 +15,17 @@ import { RowSnapController } from "../core/row_snap.js";
 import { bindBenchmarkOverlayControls } from "../core/benchmark_overlay_controls.js";
 
 import { installHistoryPageHooks, historyPage, historyQueries, historyState, historyTraceObj } from "../features/history/history_state.js";
-import { historyTradePageStateFresh, normalizeHistoryTradeScope } from "../features/history/trade_pager.js";
-import { cancelActiveHistoryTradeRequest, getHistoryTradePageState, loadHistoryDaytradeMarkerRows, loadHistoryTradeDetailsPage } from "../features/history/trade_pages.js";
+import { loadHistoryDaytradeMarkerRows, loadHistoryTrades } from "../features/history/trade_list.js";
 import { getHistoryStockName, historyDateStillSelected, isStockReplayProduct, normalizeHistoryClockText, setActiveHistoryTradeReview } from "../features/history/history_values.js";
 import { buildReplayEventFeedViewModel, buildReplayOrderbookViewModel, buildReplayPriceFlowViewModel, buildReplayTickDetailsViewModel, buildReplayTradeDetailsViewModel, buildReplayTradeFlowViewModel, buildReplayTrendViewModel } from "../features/history/replay_view_models.js";
 import { endHistoryEngineReplay, openHistoryEngine, pauseHistoryEngineReplay, seekHistoryEngine, startHistoryEngineReplay } from "../features/history/engine_controller.js";
 import { bindHistoryTimelineHover, clearHistoryTimeline, showHistoryTimelinePosition } from "../features/history/timeline.js";
 import { loadHistoryMarketSession, loadHistoryTxfSession } from "../features/history/market_session.js";
-import { bindHistoryDatePicker, ensureHistoryDateOption, setHistoryDateValue, syncHistoryDatePicker } from "../features/history/date_picker.js";
+import { ensureHistoryDateOption, pickedHistoryDate, setHistoryDateValue } from "../features/history/picked_date.js";
 import { renderHistoryStockList, scrollSelectedHistoryStockIntoView } from "../features/history/stock_list.js";
 import { cancelReplayTechnicalNotify, notifyReplayTechnicalKeyChange, replayTechnicalService, scheduleReplayTechnicalNotify } from "../features/history/replay_technical.js";
 
 const { getHistoryStockIndexCached, getHistoryStocksCached } = historyQueries;
-const historyWorkspaceLayoutController = createHistoryWorkspaceLayoutController({
-  documentRef: globalThis.document,
-  windowRef: globalThis.window,
-  layoutStore: layoutStateStore,
-});
 
 function setHistorySelectedCode(code) {
   const normalized = String(code || "").trim();
@@ -57,8 +48,10 @@ function invalidateReplayComponents(componentId = null) {
   if (!componentId || componentId === "trendChart") scheduleReplayTechnicalNotify();
 }
 
-// The replay chart (TrendChart, replay surface) and the parts of it this page fills.
-const replayChartPart = (roleName) => document.querySelector(`[data-component-slot="replayPrimary"] [data-role="${roleName}"]`);
+// The replay chart (TrendChart, replay surface) and the parts of it this page fills, in whichever pane shows it (its
+// controls are in that pane's tab bar); null while no pane does.
+const replayChartPart = (roleName) => document.querySelector('.history-workspace [data-component-id="replayTrend"]')
+  ?.closest("[data-pane-id]")?.querySelector(`[data-role="${roleName}"]`) ?? null;
 
 function setHistoryEmpty(message = "尚無歷史資料") {
   setHistoryChartLoading("stock", false);
@@ -68,10 +61,7 @@ function setHistoryEmpty(message = "尚無歷史資料") {
   historyState.replayCurrentTime = "";
   syncReplayContextTimestamp("");
   historyState.historyUnavailable = String(message || "");
-  syncHistoryDatePicker();
   renderHistoryStockList();
-  const replayDate = $("historyReplayDate");
-  if (replayDate) replayDate.textContent = "----";
   clearHistoryTimeline();
 
   historyState.intradayEvents = [];
@@ -94,7 +84,7 @@ function rerenderHistoryCurrentChart() {
 }
 
 export async function loadHistoryIntradayEvents() {
-  const date = $("historyDateSelect")?.value || "";
+  const date = pickedHistoryDate();
   if (!date) {
     historyState.intradayEvents = [];
     invalidateReplayComponents("eventFeed");
@@ -141,12 +131,8 @@ async function selectHistoryStock(code, options = {}) {
 
   stopHistoryPlayback();
   endHistoryEngineReplay();
-  cancelActiveHistoryTradeRequest();
   setHistorySelectedCode(nextCode);
   const markerPromise = loadHistoryDaytradeMarkerRows().catch((error) => console.warn("[history: loading day-trade markers] failed", error));
-  const tradePagePromise = historyState.tradeDetails.scope === "symbol"
-    ? loadHistoryTradeDetailsPage({ scope: "symbol" }).catch((error) => console.warn("[history: loading the symbol trade page] failed", error))
-    : Promise.resolve();
   renderHistoryStockList();
   scrollSelectedHistoryStockIntoView();
   let applied;
@@ -160,7 +146,7 @@ async function selectHistoryStock(code, options = {}) {
     throw error;
   }
   if (requestGeneration !== historyPage.productRequestGeneration || applied === false) return;
-  await Promise.allSettled([markerPromise, tradePagePromise]);
+  await markerPromise;
   if (requestGeneration !== historyPage.productRequestGeneration) return;
   invalidateReplayComponents();
   setHistoryStockLoading("");
@@ -184,6 +170,10 @@ function syncHistoryEventMarkerToggle() {
 const historyChartLoads = { stock: "", market: "" };
 function setHistoryChartLoading(kind, active, text = "歷史資料抓取中") {
   historyChartLoads[kind === "market" ? "market" : "stock"] = active ? text : "";
+  showHistoryChartLoading();
+}
+
+function showHistoryChartLoading() {
   const veil = replayChartPart("trend-loading");
   if (!veil) return;
   const shown = historyChartLoads.stock || historyChartLoads.market;
@@ -219,17 +209,29 @@ const historyProductQuoteSearch = {
 // « ‹ › » ↺, another stock or date) ends it and returns to browsing; 播放 starts it again from there. A day without a
 // recorded partition keeps the summary playback below.
 
-// The 加權 / 期貨 benchmark overlay toolbar of the replay trend.
+// The chart was mounted -- with the page, or in another pane its tab was moved to: its controls are bound to it and show
+// the page's state.
+function handleComponentActivate({ componentId }) {
+  if (componentId !== "replayTrend") return;
+  syncHistoryEventMarkerToggle();
+  bindHistoryBenchmarkOverlay();
+  bindHistoryEventMarkerToggles();
+  showHistoryChartLoading();
+}
+
+// The 加權 / 期貨 benchmark overlay toolbar of the replay trend: it keeps the overlays chosen when the chart moves to
+// another pane.
 function bindHistoryBenchmarkOverlay() {
+  const chosen = historyPage.benchmarkOverlayControls?.getState?.();
   const benchmarkHost = replayChartPart("trend-overlay-toolbar");
   historyPage.benchmarkOverlayControls?.destroy?.();
   historyPage.benchmarkOverlayControls = null;
   if (benchmarkHost) {
     historyPage.benchmarkOverlayControls = bindBenchmarkOverlayControls(benchmarkHost, {
-      initialState: { taiex: true, futures: false },
+      initialState: chosen || { taiex: true, futures: false },
       onSelect: (kind) => {
         rerenderHistoryCurrentChart();
-        const date = String(historyState.selectedDate || $("historyDateSelect")?.value || "").slice(0, 10);
+        const date = pickedHistoryDate();
         if (kind === "taiex" && !historyState.marketSession) void runUiTask("HISTORY_TAIEX_SESSION", () => loadHistoryMarketSession(date));
         if (kind === "futures" && !historyState.txfSession) void runUiTask("HISTORY_TXF_SESSION", () => loadHistoryTxfSession(date));
       },
@@ -238,7 +240,11 @@ function bindHistoryBenchmarkOverlay() {
 }
 
 // 交易時段事件 / 整個盤中事件: closing the first closes the second; opening the second opens the first.
+let eventMarkerToggles = null;   // the AbortController of the toggles bound now: a chart put back keeps its nodes
 function bindHistoryEventMarkerToggles() {
+  eventMarkerToggles?.abort();
+  eventMarkerToggles = new AbortController();
+  const { signal } = eventMarkerToggles;
   const tradeEventToggle = replayChartPart("history-trade-event-toggle");
   const allEventToggle = replayChartPart("history-all-event-toggle");
   tradeEventToggle?.addEventListener("click", () => {
@@ -248,7 +254,7 @@ function bindHistoryEventMarkerToggles() {
     if (!next) historyState.showAllEventMarkers = false;
     syncHistoryEventMarkerToggle();
     rerenderHistoryCurrentChart();
-  });
+  }, { signal });
 
   allEventToggle?.addEventListener("click", () => {
     const next = !historyState.showAllEventMarkers;
@@ -257,27 +263,30 @@ function bindHistoryEventMarkerToggles() {
     if (next) historyState.showTradeEventMarkers = true;
     syncHistoryEventMarkerToggle();
     rerenderHistoryCurrentChart();
-  });
+  }, { signal });
 }
 
-// Another date or product ends the replay and starts over at that selection.
-function bindHistorySelection(dateSelect, stockList) {
-  dateSelect?.addEventListener("change", () => {
-    endHistoryEngineReplay();
-    stopHistoryPlayback();
-    setActiveHistoryTradeReview(null);
-    historyState.replayAnchorTime = "";
-    historyState.replayAnchorDate = "";
-    historyState.replayAnchorCode = "";
-    historyState.selectedEventKey = "";
-    const date = String(dateSelect.value || "");
-    void runUiTask("HISTORY_DATE_SWITCH", async () => {
-      await loadHistoryStocks();
-      invalidateReplayComponents("eventFeed");
-      invalidateReplayComponents("tradeDetails");
-    }, { fallback: "切換日期失敗，請稍後再試", show: (text) => setHistoryProductLoading("error", text), isCurrent: () => historyDateStillSelected(date) });
-  });
+/** Another date (the page's day list) ends the replay and starts over on that day. */
+export function selectHistoryDate(value) {
+  const date = String(value || "").slice(0, 10);
+  if (!date || date === historyState.pickedDate) return;
+  setHistoryDateValue(date);
+  endHistoryEngineReplay();
+  stopHistoryPlayback();
+  setActiveHistoryTradeReview(null);
+  historyState.replayAnchorTime = "";
+  historyState.replayAnchorDate = "";
+  historyState.replayAnchorCode = "";
+  historyState.selectedEventKey = "";
+  void runUiTask("HISTORY_DATE_SWITCH", async () => {
+    await loadHistoryStocks();
+    invalidateReplayComponents("eventFeed");
+    invalidateReplayComponents("tradeDetails");
+  }, { fallback: "切換日期失敗，請稍後再試", show: (text) => setHistoryProductLoading("error", text), isCurrent: () => historyDateStillSelected(date) });
+}
 
+// Another product ends the replay and starts over at that selection.
+function bindHistorySelection(stockList) {
   stockList?.addEventListener("click", (event) => {
     const item = event.target.closest("[data-history-code]");
     if (!item || !stockList.contains(item)) return;
@@ -326,7 +335,7 @@ function bindHistoryTimeline() {
 
   resetBtn?.addEventListener("click", () => {
     stopHistoryPlayback();
-    const currentDate = String($("historyDateSelect")?.value || "");
+    const currentDate = pickedHistoryDate();
     const currentCode = String(historyState.selectedCode || "");
     const anchorMatches = historyState.replayAnchorTime
       && historyState.replayAnchorDate === currentDate
@@ -362,17 +371,20 @@ export function bindHistoryEvents() {
   configureReplayDashboardContext();
   replayHistoryContext.symbolStore.setSelectedSymbol(historyState.selectedCode || "");
   syncReplayContextTimestamp(historyState.replayCurrentTime || "");
+  const workspaceElement = document.querySelector(HISTORY_WORKSPACE_SELECTOR);
   mountDashboardPage({
     pageId: "history",
-    root: document,
     context: replayHistoryContext,
-    panes: {
-      selector: HISTORY_PANE_SELECTOR, storageKey: HISTORY_PANE_STORAGE_KEY, defaultLayout: historyPaneDefaultLayout,
-      rows: HISTORY_PANE_ROWS, fixedTabs: true,
+    selector: HISTORY_WORKSPACE_SELECTOR,
+    workspace: {
+      initialTree: historyInitialTree({ width: workspaceElement.clientWidth, height: workspaceElement.clientHeight }),
+      onChange: saveHistoryTree,
+      decoratePane: decorateHistoryPane,
+      fixedTabs: true,
+      pinned: { [HISTORY_STOCKS_PANE]: { element: document.querySelector(".history-stock-sidebar"), width: HISTORY_STOCKS_WIDTH } },
     },
   });
 
-  const dateSelect = $("historyDateSelect");
   const stockList = $("historyStockList");
 
   historyPage.stockRowSnap?.destroy?.();
@@ -382,13 +394,7 @@ export function bindHistoryEvents() {
     rowHeightVar: "--row-height-history-product",
   }).mount();
 
-  historyWorkspaceLayoutController.bind();
-  bindHistoryDatePicker();
-  syncHistoryEventMarkerToggle();
-
-  bindHistoryBenchmarkOverlay();
-  bindHistoryEventMarkerToggles();
-  bindHistorySelection(dateSelect, stockList);
+  bindHistorySelection(stockList);
   bindHistoryTimeline();
   bindHistorySpeedButtons();
 }
@@ -427,8 +433,6 @@ async function loadHistoryDates(visit) {
   syncHistoryEventMarkerToggle();
   historyPage.benchmarkOverlayControls?.select?.("taiex");
 
-  const dateSelect = $("historyDateSelect");
-
   const applyDatesAndLoad = async (dates) => {
     if (!current()) return false;
     historyState.dates = Array.isArray(dates) ? dates : [];
@@ -436,10 +440,8 @@ async function loadHistoryDates(visit) {
       setHistoryEmpty("找不到歷史 parquet");
       return false;
     }
-    const preferredDate = historyState.selectedDate && historyState.dates.includes(historyState.selectedDate)
-      ? historyState.selectedDate
-      : historyState.dates[0];
-    if (dateSelect) setHistoryDateValue(preferredDate);
+    const picked = pickedHistoryDate();
+    setHistoryDateValue(picked && historyState.dates.includes(picked) ? picked : historyState.dates[0]);
     await loadHistoryStocks();
     return true;
   };
@@ -453,7 +455,6 @@ async function loadHistoryDates(visit) {
         const fresh = Array.isArray(result?.dates) ? result.dates : [];
         if (!fresh.length || !current()) return;
         historyState.dates = fresh;
-        syncHistoryDatePicker();
       }).catch((error) => console.warn("[history: refreshing the date list] failed", error));
       return;
     }
@@ -467,7 +468,7 @@ async function loadHistoryDates(visit) {
     historyPage.reloadOnApiOnline?.();
     historyPage.reloadOnApiOnline = onApiOnline(() => {
       historyPage.reloadOnApiOnline = null;
-      if (appState.currentPage === "history") void runUiTask("HISTORY_RELOAD_ON_API_ONLINE", () => refreshHistoryPage());
+      void runUiTask("HISTORY_RELOAD_ON_API_ONLINE", () => refreshHistoryPage());
     });
   }
 }
@@ -504,9 +505,7 @@ export async function openHistoryReplay(options = {}) {
   const visit = historyPage.visit;
   await historyPage.dateLoad;
   if (visit !== historyPage.visit) return false;
-  const dateSelect = $("historyDateSelect");
-
-  if (!dateSelect || !date || !code) return false;
+  if (!date || !code) return false;
 
   stopHistoryPlayback();
   ensureHistoryDateOption(date);
@@ -526,22 +525,21 @@ export async function openHistoryReplay(options = {}) {
 }
 
 export function disposeHistoryPage() {
-  historyWorkspaceLayoutController.dispose();
   cancelReplayTechnicalNotify();
   historyPage.engine?.dispose();
   historyPage.engine = null;
   historyPage.unregisterProductQuoteSearch?.();
   historyPage.unregisterProductQuoteSearch = null;
-  cancelActiveHistoryTradeRequest();
   stopHistoryPlayback();
   historyPage.stockRowSnap?.destroy?.();
   historyPage.stockRowSnap = null;
+  eventMarkerToggles?.abort();
+  eventMarkerToggles = null;
   historyPage.benchmarkOverlayControls?.destroy?.();
   historyPage.benchmarkOverlayControls = null;
   // The product load in flight is fenced out, so nothing is loading any more: a row must not spin on the next visit.
   historyPage.productRequestGeneration += 1;
   historyState.loadingCode = "";
-  historyPage.datePickerCleanup?.();
   // A load that failed while FastAPI was down waits for it to come back; leaving the page ends that wait.
   historyPage.reloadOnApiOnline?.();
   historyPage.reloadOnApiOnline = null;
@@ -560,7 +558,7 @@ export function disposeHistoryPage() {
 // The product is not among the date's recordings (a 當沖 of a stock that was not watched that day): its panels say so and
 // the market stays at the requested time.
 function renderHistoryNoQuoteState(options = {}) {
-  const date = String(options.date || $("historyDateSelect")?.value || "").slice(0, 10);
+  const date = String(options.date || pickedHistoryDate()).slice(0, 10);
   const code = String(options.code || historyState.selectedCode || "");
   const name = String(options.name || getHistoryStockName(code) || "");
   const time = normalizeHistoryClockText(options.time)
@@ -574,8 +572,6 @@ function renderHistoryNoQuoteState(options = {}) {
   historyState.replayUnavailable = "這一天沒有這檔商品的報價";
   updateHistoryTimeLabel(time);
 
-  const replayDate = $("historyReplayDate");
-  if (replayDate) replayDate.textContent = date || "----";
   clearHistoryTimeline();
   renderHistoryStockList();
   invalidateReplayComponents();
@@ -616,17 +612,10 @@ function hydrateHistoryStockSummaries(date, requestGeneration) {
   });
 }
 
-// The trade-detail page and the 當沖 markers reload when the date / product they belong to changed.
+// The trade list and the 當沖 markers of the date / product shown.
 function reloadHistoryTradeLanes({ dateChanged, codeChanged }) {
-  const activeTradeScope = normalizeHistoryTradeScope(historyState.tradeDetails.scope);
-  const activeTradePage = getHistoryTradePageState(activeTradeScope);
-  const tradeContextChanged = (activeTradeScope === "today" && dateChanged) || (activeTradeScope === "symbol" && codeChanged);
-  const shouldReloadTradePage = tradeContextChanged || !historyTradePageStateFresh(activeTradePage);
   return [
-    shouldReloadTradePage
-      ? loadHistoryTradeDetailsPage({ scope: activeTradeScope, reset: tradeContextChanged })
-        .catch((error) => console.warn("[HISTORY] trade details load failed", error))
-      : Promise.resolve(),
+    loadHistoryTrades(),
     (dateChanged || codeChanged || !historyState.daytradeMarkerRows.length)
       ? loadHistoryDaytradeMarkerRows().catch((error) => console.warn("[HISTORY] daytrade markers load failed", error))
       : Promise.resolve(),
@@ -651,8 +640,7 @@ async function readHistoryStockIndex(date, requestGeneration) {
 
 async function loadHistoryStocks(options = {}) {
   const requestGeneration = ++historyPage.productRequestGeneration;
-  const dateSelect = $("historyDateSelect");
-  const date = String(dateSelect?.value || "").slice(0, 10);
+  const date = pickedHistoryDate();
   const requestedCode = String(options.targetCode || "");
   const requestedName = String(options.targetName || "");
   const initialTime = String(options.initialTime || "").trim();
@@ -664,11 +652,9 @@ async function loadHistoryStocks(options = {}) {
     return;
   }
   historyState.selectedDate = date;
+  if (previousDate !== date) historyState.tradeDetails.date = "";
   setHistoryProductLoading("loading", "讀取商品中");
-  syncHistoryDatePicker();
   setHistoryChartLoading("market", true, "大盤歷史資料抓取中");
-  const replayDate = $("historyReplayDate");
-  if (replayDate) replayDate.textContent = date;
 
   const background = startHistoryDayPreloads(date);
   const result = await readHistoryStockIndex(date, requestGeneration);
@@ -712,7 +698,7 @@ async function loadHistoryStocks(options = {}) {
 // took over or there is no replay; the panels then say why (replay_view_models.js).
 async function openHistoryProduct(options = {}) {
   const requestGeneration = Number(options.requestGeneration || historyPage.productRequestGeneration);
-  const date = String($("historyDateSelect")?.value || "").slice(0, 10);
+  const date = pickedHistoryDate();
   const code = String(historyState.selectedCode || "");
   if (!date || !code) {
     setHistoryEmpty();
@@ -724,8 +710,6 @@ async function openHistoryProduct(options = {}) {
   clearHistoryTimeline();
   notifyReplayTechnicalKeyChange();
   invalidateReplayComponents();
-  const replayDate = $("historyReplayDate");
-  if (replayDate) replayDate.textContent = date;
   renderHistoryStockList();
 
   setHistoryChartLoading("stock", true, "個股回放載入中");
@@ -776,10 +760,8 @@ async function handleReplayEventRowSelect(item) {
 
 async function handleReplayEventDateSelect(dateText) {
   const date = String(dateText || "").slice(0, 10);
-  const dateSelect = $("historyDateSelect");
-  if (!date || !dateSelect || date === String(dateSelect.value || "")) return;
+  if (!date || date === historyState.pickedDate) return;
   stopHistoryPlayback();
-  cancelActiveHistoryTradeRequest();
   setActiveHistoryTradeReview(null);
   historyState.replayAnchorTime = ""; historyState.replayAnchorDate = ""; historyState.replayAnchorCode = ""; historyState.selectedEventKey = "";
   setHistoryDateValue(date);
@@ -788,29 +770,11 @@ async function handleReplayEventDateSelect(dateText) {
   invalidateReplayComponents("tradeDetails");
 }
 
-async function handleReplayTradeScopeChange(scope) {
-  const normalized = normalizeHistoryTradeScope(scope);
-  cancelActiveHistoryTradeRequest();
-  historyState.tradeDetails.scope = normalized;
-  const pageState = getHistoryTradePageState(normalized);
+// 交易明細's narrowing changed: drawn from the pairs already read; they are read again when old.
+function narrowHistoryTrades(change) {
+  Object.assign(historyState.tradeDetails, change);
   invalidateReplayComponents("tradeDetails");
-  if (!historyTradePageStateFresh(pageState)) {
-    await loadHistoryTradeDetailsPage({
-      scope: normalized,
-      page: Math.max(1, Number(pageState.page) || 1),
-      direction: pageState.loaded ? "jump" : "first",
-    });
-  }
-}
-
-async function handleReplayTradePageRequest(request = {}) {
-  const scope = normalizeHistoryTradeScope(historyState.tradeDetails.scope);
-  await loadHistoryTradeDetailsPage({
-    scope,
-    page: Math.max(1, Number(request?.page) || 1),
-    direction: String(request?.direction || "jump"),
-    cursor: String(request?.cursor || ""),
-  });
+  void loadHistoryTrades();
 }
 
 async function handleReplayTradeDetailSelect(item) {
@@ -819,15 +783,13 @@ async function handleReplayTradeDetailSelect(item) {
   const name = String(item?.name || "");
   const entry = String(item?.entry_ref || "");
   if (!rowDate || !code) return;
-  const dateSelect = $("historyDateSelect");
-  if (!dateSelect) return;
   setActiveHistoryTradeReview(item);
   historyState.selectedDaytradeId = String(item?.id ?? "");
   historyState.selectedEventKey = "";
   historyState.replayAnchorTime = entry; historyState.replayAnchorDate = rowDate; historyState.replayAnchorCode = code;
   stopHistoryPlayback(); setHistoryTradeJumpLoading(true);
   try {
-    const previousDate = String(dateSelect.value || "");
+    const previousDate = pickedHistoryDate();
     ensureHistoryDateOption(rowDate);
     const codeExistsToday = historyState.stocks.some((stock) => String(stock?.code || "") === code);
     if (previousDate !== rowDate || !codeExistsToday) {
@@ -844,14 +806,17 @@ async function handleReplayTradeDetailSelect(item) {
 }
 
 function configureReplayDashboardContext() {
+  replayHistoryContext.services.dashboard = { onComponentActivate: handleComponentActivate };
   replayHistoryContext.services.eventFeed = {
     onRowSelect: (item) => handleReplayEventRowSelect(item).catch((error) => console.error("[HISTORY EVENT FEED] row select failed:", error)),
     onDateSelect: (date) => handleReplayEventDateSelect(date).catch((error) => console.error("[HISTORY EVENT FEED] date select failed:", error)),
   };
   replayHistoryContext.services.tradeDetails = {
     onRowSelect: (item) => handleReplayTradeDetailSelect(item).catch((error) => console.error("[HISTORY TRADE DETAILS] row select failed:", error)),
-    onScopeChange: (scope) => handleReplayTradeScopeChange(scope).catch((error) => console.error("[HISTORY TRADE DETAILS] scope change failed:", error)),
-    onPageRequest: (request) => handleReplayTradePageRequest(request).catch((error) => console.error("[HISTORY TRADE DETAILS] page request failed:", error)),
+    onScopeChange: (scope) => narrowHistoryTrades({ scope: scope === "today" ? "today" : "overview" }),
+    onQueryChange: (query) => narrowHistoryTrades({ query: String(query || "") }),
+    // A picked date is 今日's until the replayed day changes.
+    onDateSelect: (date) => narrowHistoryTrades({ scope: "today", date: String(date || "").slice(0, 10) }),
   };
   replayHistoryContext.services.technicalAnalysis = replayTechnicalService;
   // Every market panel shows Market Runtime's replay view (the live page's models), or why there is none.

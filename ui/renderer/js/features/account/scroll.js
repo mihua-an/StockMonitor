@@ -11,7 +11,7 @@ import { createExpandMotion } from "../../core/expand_motion.js";
 export function createAccountScrollController() {
   function syncStickyMetrics() {
     const page = document.querySelector(".account-page");
-    const header = document.querySelector(".account-page-header");
+    const header = document.querySelector(".account-page .page-frame-head");
     if (!page || !header) return;
     const headerHeight = Math.max(54, Math.ceil(header.getBoundingClientRect().height || 0));
     page.style.setProperty("--actual-account-sticky-header-height", `${headerHeight}px`);

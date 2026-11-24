@@ -1,6 +1,5 @@
 // The rows under an opening / closing block move with it, frame by frame, in a real Chromium (run with Electron)
 // (使用者 11-02 影片：收合時內容淡出、空位留著，最後下面的列一次跳上來). Traced per animation frame: the row under
-//   資料中心's date detail (a block in a detail row, its categories read when it opens),
 //   資料中心's 期貨指數 → 日盤／夜盤 (table rows themselves),
 //   帳務 每日明細's day (the page draws the table again when the day's trades arrive).
 // The row's last move before it rests must be small: it got there with the block, not in one jump at the end (a detail
@@ -54,20 +53,18 @@ async function dataCenter(base, html) {
     return json({ ok: true, items: [] });
   };
   document.querySelector("main").innerHTML = html;
+  (await import(`${base}js/core/page_frame.js`)).hydratePageFrames(document);
   const page = await import(`${base}js/pages/data_center.js`);
   page.initDataCenterPage();
   await page.refreshDataCenter();
-  await wait(100);
+  document.querySelector("[data-open-day]").click();
+  await wait(400);
   __TRACER__
-  const dateRow = () => document.querySelector("tr.dc-daily-row");
-  const nextDate = () => document.querySelectorAll("tr.dc-daily-row")[1];
   const futures = () => document.querySelector('tr[data-dc-category="futures"]');
-  const below = () => [...document.querySelectorAll(".dc-category-table > tbody > tr")].find((row) => row.textContent.includes("產業指數"));
+  const below = () => [...document.querySelectorAll("#dataCenterDayCategories tbody > tr")].find((row) => row.textContent.includes("產業指數"));
   return {
-    "資料中心 date opens (its categories read)": await trace(() => dateRow().click(), nextDate, 600),
     "資料中心 期貨指數 opens 日盤／夜盤": await trace(() => futures().click(), below, 520),
     "資料中心 期貨指數 closes": await trace(() => futures().click(), below, 450),
-    "資料中心 date closes": await trace(() => dateRow().click(), nextDate, 450),
   };
 }
 
@@ -86,8 +83,9 @@ async function accountDaily(base, html) {
     return json({ ok: true, items: [] });
   };
   document.querySelector("main").innerHTML = html;
-  document.querySelector(".account-main-pane").style.height = "900px";
-  document.querySelectorAll(".account-view[data-account-view-panel]").forEach((panel) => {
+  (await import(`${base}js/core/page_frame.js`)).hydratePageFrames(document);
+  document.querySelector(".page-frame-main").style.height = "900px";
+  document.querySelectorAll(".page-frame-view[data-account-view-panel]").forEach((panel) => {
     const on = panel.dataset.accountViewPanel === "daily";
     panel.hidden = !on;
     panel.classList.toggle("active", on);

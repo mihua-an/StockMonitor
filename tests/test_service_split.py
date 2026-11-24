@@ -272,7 +272,7 @@ def test_history_trade_list_reads_the_shared_account_ledger_in_app_api(isolated_
     from api.services import app_api
 
     with AppClient(app_api.build_app(port=1, client_token=CLIENT)) as client:
-        response = client.get("/api/history/daytrades?scope=today&date=2026-09-29", headers={"Authorization": f"Bearer {CLIENT}"})
+        response = client.get("/api/history/daytrades", headers={"Authorization": f"Bearer {CLIENT}"})
         body = response.json()
         assert response.status_code == 200, body
         assert "WRONG_SERVICE" not in str(body) and "belongs to actual_account_api" not in str(body), body

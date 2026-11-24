@@ -1,44 +1,115 @@
-<section class="data-center-page">
-  <div class="panel data-center-panel">
-    <!-- The title row stays at the top; only the area under it scrolls. -->
-    <div class="settings-page-head">
-      <h1 class="settings-page-title is-inline">資料中心</h1>
-      <span id="dataCenterDailyCacheState" class="dc-cache-state"></span>
-      <div class="settings-page-head-actions">
-        <div id="dataCenterMarket" class="settings-seg" role="tablist" aria-label="市場">
-          <button class="settings-seg-btn is-active" type="button" data-market="">全部</button>
-          <button class="settings-seg-btn" type="button" data-market="STK">股票</button>
-          <button class="settings-seg-btn" type="button" data-market="FUT">期貨</button>
-        </div>
-        <button id="dataCenterRefreshBtn" class="btn secondary" type="button">重新整理</button>
-      </div>
-    </div>
+<!-- 資料中心：總覽、回放、模型與每個交易日（資料｜事件｜回放）。外框由 core/page_frame.js 產生；回放是 pages/history.html。 -->
+<div class="data-center-page" data-page-frame="資料中心">
+  <div data-frame-part="nav">
+    <button class="is-active" data-dc-nav="overview">總覽</button>
+    <button data-dc-nav="replay">回放</button>
+    <button data-dc-nav="models">模型</button>
+    <hr>
+    <!-- 交易日，每天標「完整／不完整／今天」；清單自己捲動（features/data_center/days_view.js）。 -->
+    <div id="dataCenterDays" class="dc-days"></div>
+  </div>
 
-    <div class="dc-scroll-area">
-      <div class="dc-wrap">
-        <!-- 收盤整理: the next close to be materialized, from its close to the history written; 下次物化 one figure per row,
-             執行紀錄 under its own row, opened while a close is being materialized and closed when it is done
-             (features/data_center/closing_progress_view.js). -->
-        <div class="settings-group-title"><span>收盤整理</span></div>
-        <section class="settings-group dc-closing" aria-label="收盤整理">
-          <div id="dataCenterClosingSteps" class="job-steps"></div>
-          <div id="dataCenterClosingBar" class="job-progress" hidden></div>
-          <div id="dataCenterClosingNext" class="job-stats"></div>
-          <button id="dataCenterClosingLogToggle" class="job-log-toggle" type="button" aria-expanded="false"><span class="record-expand-chevron" aria-hidden="true">›</span><b>執行紀錄</b><span id="dataCenterClosingLogNote" class="job-log-toggle-note"></span></button>
-          <div id="dataCenterClosingLogPane" class="job-log-pane" hidden><div id="dataCenterClosingLog" class="job-log"></div></div>
-        </section>
-
-        <div class="settings-group-title"><span>上次物化</span></div>
-        <div id="dataCenterClosingHistory" class="dc-closing-history" data-grid-variant="page"></div>
-
-        <div class="settings-group-title"><span>每日資料</span><span class="settings-group-title-side">點一天看各類別；期貨指數可再展開到合約<span id="dataCenterLoading" class="data-center-loading" hidden>讀取資料目錄中...</span></span></div>
-        <section class="dc-daily-overview" data-grid-variant="page" aria-label="全部日期資料狀況">
-          <table class="data-table dc-daily-overview-table">
-            <thead><tr><th><span class="record-expand-label">日期</span></th><th>完整</th><th>商品數</th><th>成交筆數</th><th>五檔筆數</th><th>報價筆數</th><th>產業筆數</th><th>資料大小</th></tr></thead>
-            <tbody id="dataCenterDailyRows"><tr><td colspan="8" class="empty">載入中...</td></tr></tbody>
-          </table>
-        </section>
-      </div>
+  <div data-frame-part="head">
+    <h1 id="dataCenterTitle" class="settings-page-title is-inline">總覽</h1>
+    <span id="dataCenterSubtitle" class="page-frame-subtitle"></span>
+    <span id="modelCenterSubtitle" class="page-frame-subtitle" hidden></span>
+    <div class="settings-page-head-actions page-frame-actions">
+      <button id="dataCenterRefreshBtn" class="btn secondary" type="button" data-dc-action="overview">重新整理</button>
+      <button id="refreshTrainingBtn" class="btn secondary" type="button" data-dc-action="models" hidden>重新整理</button>
+      <button id="manualTrainBtn" class="btn primary" type="button" data-dc-action="models" hidden>重新訓練</button>
     </div>
   </div>
-</section>
+
+  <div data-frame-part="tabs" id="dataCenterDayTabs" class="settings-seg" role="tablist" aria-label="這天" hidden>
+    <button class="settings-seg-btn" type="button" data-day-tab="day-data">資料</button><button class="settings-seg-btn" type="button" data-day-tab="day-events">事件</button><button class="settings-seg-btn" type="button" data-day-tab="replay">回放</button>
+  </div>
+
+  <div data-frame-part="body" id="dataCenterScroll">
+    <!-- 總覽：今天的流程（收盤 → 收盤整理 → 模型訓練 → 上線）、兩個工作的現況、最近的交易日。 -->
+    <section class="page-frame-view active" data-dc-view="overview">
+      <div class="settings-group-title"><span>今天</span><span class="settings-group-title-side">收盤後依序執行</span></div>
+      <section class="settings-group" aria-label="今天的流程">
+        <div id="trainingPipeline" class="job-steps"></div>
+        <div id="dataCenterClosingNext" class="job-stats"></div>
+        <div id="trainingToday" class="job-stats"></div>
+      </section>
+
+      <div class="settings-group-title"><span>工作</span><span class="settings-group-title-side">收盤整理完成後才開始訓練</span></div>
+      <div class="settings-columns">
+        <!-- 收盤整理：下一次要整理的收盤；執行紀錄在進行中自動展開（features/data_center/closing_card.js）。 -->
+        <div>
+          <div class="settings-group-title"><span>收盤整理</span></div>
+          <section class="settings-group dc-closing" aria-label="收盤整理">
+            <div id="dataCenterClosingSteps" class="job-steps"></div>
+            <div id="dataCenterClosingBar" class="job-progress" hidden></div>
+            <div id="dataCenterClosingLast" class="job-stats"></div>
+            <button id="dataCenterClosingLogToggle" class="job-log-toggle" type="button" aria-expanded="false"><span class="record-expand-chevron" aria-hidden="true">›</span><b>執行紀錄</b><span id="dataCenterClosingLogNote" class="job-log-toggle-note"></span></button>
+            <div id="dataCenterClosingLogPane" class="job-log-pane" hidden><div id="dataCenterClosingLog" class="job-log"></div></div>
+          </section>
+        </div>
+        <div>
+          <div class="settings-group-title"><span>模型訓練</span></div>
+          <section class="settings-group mc-status" aria-label="模型訓練">
+            <div id="trainingSteps" class="job-steps"></div>
+            <div id="trainingBar" class="job-progress" hidden></div>
+            <div id="trainingProgress" class="job-stats" hidden></div>
+            <div id="trainingSummary" class="job-stats"></div>
+            <button id="trainingLogToggle" class="job-log-toggle" type="button" aria-expanded="false"><span class="record-expand-chevron" aria-hidden="true">›</span><b>執行紀錄</b><span id="trainingLogNote" class="job-log-toggle-note"></span></button>
+            <div id="trainingLogPane" class="job-log-pane" hidden><div id="trainingLog" class="job-log"></div></div>
+          </section>
+        </div>
+      </div>
+
+      <div class="settings-group-title"><span>最近的交易日</span><span class="settings-group-title-side">完整只看台股日盤；點一天看它的資料、事件與回放<span id="dataCenterLoading" class="data-center-loading" hidden>讀取中…</span></span></div>
+      <section class="dc-daily-overview" data-grid-variant="page" aria-label="最近的交易日">
+        <table class="data-table dc-daily-overview-table">
+          <thead><tr><th>日期</th><th>完整</th><th>商品數</th><th>成交筆數</th><th>資料大小</th><th>事件</th><th>模型用途</th></tr></thead>
+          <tbody id="dataCenterDailyRows"><tr><td colspan="7" class="empty">載入中...</td></tr></tbody>
+        </table>
+      </section>
+    </section>
+
+    <!-- 模型：上線模型、訓練用的交易日、兩種模型、特徵權重（pages/training.js）。 -->
+    <section class="page-frame-view" data-dc-view="models" hidden>
+      <div id="trainingWarningBar" class="model-center-warning" hidden></div>
+      <div class="settings-group-title">
+        <span>上線模型 · 驗證 AUC</span>
+        <div id="liveDirection" class="settings-seg" role="tablist" aria-label="方向">
+          <button class="settings-seg-btn is-active" type="button" data-direction="up">上漲</button>
+          <button class="settings-seg-btn" type="button" data-direction="down">下跌</button>
+        </div>
+      </div>
+      <div id="liveModelCards" class="settings-tiles is-5"></div>
+      <div class="settings-group-title"><span>用到的交易日</span><span class="settings-group-title-side">最近一次訓練</span></div>
+      <section id="dataCenterModelDays" class="settings-group" aria-label="用到的交易日"></section>
+      <div class="settings-group-title"><span>每個預測的兩種模型</span><span class="settings-group-title-side">點一列看 Logistic、LightGBM 與常數基準</span></div>
+      <div id="modelPairCards" class="settings-columns"></div>
+      <!-- 特徵權重: what the live 上漲 and 下跌 models of one horizon weigh most. -->
+      <div class="settings-group-title"><span>特徵權重</span><div id="importanceHorizons" class="settings-seg" role="tablist" aria-label="預測時間"></div></div>
+      <div id="importanceCards" class="settings-columns"></div>
+    </section>
+
+    <!-- 一個交易日：資料。 -->
+    <section class="page-frame-view" data-dc-view="day-data" hidden>
+      <div id="dataCenterDayTiles" class="settings-tiles" aria-label="這天的資料"></div>
+      <div class="settings-group-title"><span>收盤整理</span><span class="settings-group-title-side">這天完不完整只看台股日盤</span></div>
+      <div id="dataCenterDayClosing" data-grid-variant="page"></div>
+      <div class="settings-group-title"><span>類別</span></div>
+      <div id="dataCenterDayCategories"></div>
+      <div class="settings-group-title"><span>模型</span></div>
+      <section id="dataCenterDayUse" class="settings-group" aria-label="這天在模型裡的用途"></section>
+      <div id="dataCenterDayModels" class="dc-day-models" data-grid-variant="page" hidden></div>
+    </section>
+
+    <!-- 一個交易日：事件（Rust B 在這天發出的事件，按回放跳到那一刻）。 -->
+    <section class="page-frame-view" data-dc-view="day-events" hidden>
+      <div id="dataCenterEventTiles" class="settings-tiles" aria-label="這天的事件"></div>
+      <div class="settings-group-title"><span>事件</span><span class="settings-group-title-side">按一列的「回放」，從那一刻開始</span></div>
+      <div id="dataCenterEvents" data-grid-variant="page"></div>
+      <div id="dataCenterEventsEnd" aria-hidden="true"></div>
+    </section>
+  </div>
+
+  <!-- 一個交易日：回放（pages/history.html）。 -->
+  <div data-frame-part="stage" id="dataCenterReplay" hidden></div>
+</div>

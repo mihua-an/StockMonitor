@@ -1,7 +1,7 @@
 /** Original bounded read caches and single-flight, owned by one history feature. */
 import { taipeiDateKey, taipeiParts } from "../../market_data/taipei_time.js";
 
-export const HISTORY_TRADE_PAGE_CACHE_TTL_MS = 10000;
+const MARKER_CACHE_TTL_MS = 10000;
 // Today's stored data still changes: kept 5 s while the session (08:30 pre-open to 13:35 after the close auction) runs,
 // 30 s outside it. A past day never changes and is kept until evicted.
 export const HISTORY_TODAY_SESSION_TTL_MS = 5000;
@@ -26,23 +26,20 @@ const historyPendingRequests = {
   txfSessions: new Map(),
 };
 
-// Paired-trade pages are intentionally small and short-lived.
-// Keep only a few recently visited pages so 2330 → 2337 → 2330 feels instant,
-// without ever turning the Renderer into a full historical trade store.
-const HISTORY_TRADE_PAGE_CACHE_LIMIT = 12;
-const historyTradePageCache = new Map();
+// Keep only a few recently visited products' markers so 2330 → 2337 → 2330 feels instant.
+const MARKER_CACHE_LIMIT = 12;
 const historyDaytradeMarkerCache = new Map();
-function tradeCacheGet(map, key) {
+function markerCacheGet(map, key) {
   const item = map.get(key);
   if (!item) return null;
-  if (Date.now() - Number(item.at || 0) > HISTORY_TRADE_PAGE_CACHE_TTL_MS) { map.delete(key); return null; }
+  if (Date.now() - Number(item.at || 0) > MARKER_CACHE_TTL_MS) { map.delete(key); return null; }
   return item.value;
 }
 
-function tradeCachePut(map, key, value) {
+function markerCachePut(map, key, value) {
   map.delete(key);
   map.set(key, { at: Date.now(), value });
-  while (map.size > HISTORY_TRADE_PAGE_CACHE_LIMIT) map.delete(map.keys().next().value);
+  while (map.size > MARKER_CACHE_LIMIT) map.delete(map.keys().next().value);
   return value;
 }
 
@@ -133,12 +130,10 @@ async function getHistoryTxfSessionCached(date) {
 
 
 return { getHistoryStockIndexCached, getHistoryStocksCached, getHistoryMarketSessionCached, getHistoryTxfSessionCached,
-  getTrade: key => tradeCacheGet(historyTradePageCache, key),
-  putTrade: (key, value) => tradeCachePut(historyTradePageCache, key, value),
-  getMarkers: key => tradeCacheGet(historyDaytradeMarkerCache, key),
-  putMarkers: (key, value) => tradeCachePut(historyDaytradeMarkerCache, key, value),
+  getMarkers: key => markerCacheGet(historyDaytradeMarkerCache, key),
+  putMarkers: (key, value) => markerCachePut(historyDaytradeMarkerCache, key, value),
   diagnostics: () => ({ cached: Object.fromEntries(Object.entries(historyResponseCache).map(([key,map])=>[key,map.size])),
     pending: Object.fromEntries(Object.entries(historyPendingRequests).map(([key,map])=>[key,map.size])),
-    tradePages: historyTradePageCache.size, markers: historyDaytradeMarkerCache.size }),
+    markers: historyDaytradeMarkerCache.size }),
 };
 }

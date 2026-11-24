@@ -15,7 +15,6 @@ export async function startHistoryPage({ route = () => ({ ok: true }), date = ""
       addEventListener() {}, removeEventListener() {}, querySelector: () => null, querySelectorAll: () => [] });
     return elements.get(id);
   };
-  element("historyDateSelect").value = date;
   const frames = new Map();
   let nextFrame = 1;
   Object.assign(globalThis, {
@@ -30,6 +29,8 @@ export async function startHistoryPage({ route = () => ({ ok: true }), date = ""
   });
   Object.assign(globalThis.window, { requestAnimationFrame: globalThis.requestAnimationFrame,
     cancelAnimationFrame: globalThis.cancelAnimationFrame });
+  const { historyState } = await import("../../ui/renderer/js/features/history/history_state.js");
+  historyState.pickedDate = date;
   const requests = [];
   globalThis.fetch = async (url) => {
     requests.push(String(url));

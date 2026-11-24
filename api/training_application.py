@@ -226,6 +226,29 @@ class TrainingApplication:
                 "dataset": report.get("dataset"), "training_enabled": self.deps.training_enabled, "slots": slots,
                 "today": self.today()}
 
+    def days(self) -> dict[str, Any]:
+        """Each date's part in the models (資料中心): what the latest run used it for, its samples there, whether the next
+        run takes it, and how each live model did on it (none for a model trained before that was recorded)."""
+        report = training_job.latest_run_report() or {}
+        split = report.get("split") or {}
+        used = {day: part for part in ("train", "validation", "test") for day in split.get(part) or []}
+        # A split by time has one complete date for both training and validating.
+        used = {**{day: "train" for day in split.get("dates") or []}, **used}
+        dataset = self._dataset(report, load_horizon_authority().allowed_minutes[0]) or {}
+        samples = {str(s.get("trading_date")): s.get("samples") for s in dataset.get("shards") or []}
+        today = self.today() or {}
+        window = today.get("window") or {}
+        upcoming = {**{day: "train" for day in window.get("trained_dates") or []}, **{day: "test" for day in window.get("test_only_dates") or []}}
+        models = []
+        for key, live in (self.deps.registry().status().get("slots") or {}).items():
+            by_date = (live.get("validation") or {}).get("by_date")
+            if live.get("champion") and isinstance(by_date, dict):
+                models.append({"key": key, "by_date": by_date})
+        days = {day: {"use": used.get(day), "next": upcoming.get(day), "samples": samples.get(day),
+                      "models": [{"key": m["key"], **m["by_date"][day]} for m in models if day in m["by_date"]]}
+                for day in sorted({*used, *upcoming})}
+        return {"ok": True, "run_id": report.get("run_id"), "is_trading_day": today.get("is_trading_day"), "days": days}
+
     @staticmethod
     def _dataset(report: dict[str, Any], minutes: int) -> dict[str, Any] | None:
         dataset_id = (report.get("dataset") or {}).get("dataset_id")

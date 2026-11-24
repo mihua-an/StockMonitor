@@ -103,7 +103,7 @@ def create_market_router(d: MarketRouteDependencies) -> APIRouter:
     # One trading day's events from Rust B's event file (G13): today's tape is Market Runtime's `events.subscribe`.
     # The 事件列表 reads the exact date Market Runtime names (its ARCHIVE presentation) and 歷史回放 its day; the
     # date list the renderer searched through is gone.
-    def get_monitor_events(date: str = "", limit: int = 500):
+    def get_monitor_events(date: str = "", limit: int = 500, view: str = ""):
         # Rust B's event file is the only source: nothing writes `signal_event` any more, so there is no raw
         # stream to rebuild a missing day from (the old fallback called a method AnalysisEventArchive never had).
         # The caller names the day (Market Runtime's presentation date, or 歷史回放's day).
@@ -114,6 +114,8 @@ def create_market_router(d: MarketRouteDependencies) -> APIRouter:
             payload = events.read(date_text=date_text, limit=limit)
         except ValueError:
             raise ValidationError("invalid date", classification="INVALID_DATE") from None
+        if view == "list":
+            payload["events"] = [events.list_record(record) for record in payload["events"]]
         # COMPLETE: the day's archive (events or none); PARTIAL: an archive with damaged lines -- what was read is not
         # all the day had; MISSING: B wrote no archive for it -- a day with no events and a day without an archive read
         # the same before.
@@ -124,6 +126,15 @@ def create_market_router(d: MarketRouteDependencies) -> APIRouter:
             payload["coverage"] = "MISSING"
             payload["source"] = "none"
         return payload
+
+
+    def get_monitor_event_counts(dates: str = ""):
+        """The counts of the named days (comma separated, at most 31)."""
+        named = [date for date in dates.split(",") if date.strip()][:31]
+        try:
+            return {"ok": True, "dates": events.counts(named)}
+        except ValueError:
+            raise ValidationError("invalid date", classification="INVALID_DATE") from None
 
 
     # What Market Runtime holds is not served here: /api/latest-signals (the renderer asks A's
@@ -138,6 +149,7 @@ def create_market_router(d: MarketRouteDependencies) -> APIRouter:
         ("POST", "/api/shioaji/sync", sync_shioaji_subscriptions),
         ("POST", "/api/shioaji/reconnect", reconnect_shioaji),
         ("GET", "/api/monitor/events", get_monitor_events),
+        ("GET", "/api/monitor/event-counts", get_monitor_event_counts),
     )
     for method, path, handler in routes:
         router.add_api_route(path, handler, methods=[method])

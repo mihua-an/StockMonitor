@@ -16,7 +16,8 @@ import { expandCellHtml, expandDetailRowHtml, recordExpandBody } from "../../cor
 import { createExpandMotion } from "../../core/expand_motion.js";
 import { emptyStateRowHtml, loadStateRowHtml } from "../../core/load_state_view.js";
 import { signedValueClass as signClass } from "../../core/market_color_policy.js";
-import { paperMoney as money, paperOrderUnits, paperSideClass as sideClass, paperSignedMoney as signed } from "./read_views.js";
+import { paperOrderUnits, paperSideClass as sideClass } from "./read_views.js";
+import { ledgerMoney as money, ledgerSignedMoney as signed } from "../../core/ledger_money.js";
 
 const DAY_MS = 86400000;
 export const HISTORY_TABS = [["orders", "歷史委託"], ["fills", "歷史成交"]];

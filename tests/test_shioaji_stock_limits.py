@@ -13,12 +13,31 @@ from service.market.shioaji.session import ShioajiBrokerService
 from service.platform.remediation import Recovery
 
 
+class VerdictSink:
+    """The provider's queue to Market Runtime: `queued` says whether the queue takes an event, `verdict` what Market
+    Runtime answers it -- (True, None), (False, reason), or None for no answer yet (kept in `waiting`)."""
+
+    def __init__(self, published, *, queued=True, verdict=(True, None)):
+        self.published, self.queued, self.verdict, self.waiting = published, queued, verdict, []
+
+    def publish_with_verdict(self, event, on_verdict):
+        if not self.queued:
+            return False
+        self.published.append(event)
+        if self.verdict is None:
+            self.waiting.append(on_verdict)
+        else:
+            on_verdict(*self.verdict)   # the sender may answer before publish returns
+        return True
+
+
 def service(info_by_code, published):
     svc = ShioajiBrokerService.__new__(ShioajiBrokerService)
     svc._lock = threading.RLock()
     svc._running = threading.Event(); svc._running.set()
     svc._reference_stream_seq = {}
     svc._stock_limits_published = {}
+    svc._stock_limits_in_flight = {}
     svc._stock_limits_attempted = {}
     svc._stock_limits_worker = None
     svc._stock_limits_state = {}
@@ -26,7 +45,7 @@ def service(info_by_code, published):
     svc._session_generation = 3
     svc.price_scale = 10_000
     svc._api = SimpleNamespace(contracts=SimpleNamespace(info=lambda contract: info_by_code[contract.code]))
-    svc.event_sink = SimpleNamespace(publish=lambda event: published.append(event) or True)
+    svc.event_sink = VerdictSink(published)
     return svc
 
 
@@ -52,20 +71,43 @@ def test_today_limits_are_published_and_a_stale_contract_is_not():
     assert not svc._stock_limits_recovery.open, "finished once every code is published"
 
 
-def test_a_refused_limit_is_not_published():
-    """Market Runtime's ingress refusing the reference keeps the code waiting and the recovery open."""
+def test_a_limit_the_queue_did_not_take_is_not_published():
+    """The provider's queue refusing the reference keeps the code waiting and the recovery open."""
     published = []
     info = {"3481": SimpleNamespace(update_date="2026/10/01", limit_up=54.7, limit_down=44.8)}
     svc = service(info, published)
-    svc.event_sink = SimpleNamespace(publish=lambda event: published.append(event) and False)
+    svc.event_sink = VerdictSink(published, queued=False)
     contracts = {"3481": SimpleNamespace(code="3481")}
     svc._publish_stock_limits(["3481"], contracts, "2026-10-01")
-    assert len(published) == 1
     assert svc._stock_limits_published == {}
     assert svc._stock_limits_state["3481"]["state"] == "PUBLISH_FAILED"
     assert svc._stock_limits_recovery.open
-    svc.event_sink = SimpleNamespace(publish=lambda event: published.append(event) or True)
+    svc.event_sink = VerdictSink(published)
     svc._publish_stock_limits(["3481"], contracts, "2026-10-01")
+    assert svc._stock_limits_published == {"3481": "2026-10-01"}
+    assert not svc._stock_limits_recovery.open
+
+
+def test_a_limit_market_runtime_refused_is_not_published_and_is_sent_again():
+    """11-23: the queue took the reference and Market Runtime refused it (a stale sequence); the provider marked it
+    published on the queue's word, so it never sent it again and its status said PUBLISHED. Only Market Runtime's
+    acceptance publishes it now."""
+    published = []
+    info = {"3481": SimpleNamespace(update_date="2026/10/01", limit_up=54.7, limit_down=44.8)}
+    svc = service(info, published)
+    contracts = {"3481": SimpleNamespace(code="3481")}
+    svc.event_sink = VerdictSink(published, verdict=None)
+    svc._publish_stock_limits(["3481"], contracts, "2026-10-01")
+    assert svc._stock_limits_state["3481"] == {"state": "SENT", "dated": "2026-10-01"}, "queued is not published"
+    assert not svc._stock_limits_recovery.open, "nothing to judge before Market Runtime answers"
+    svc.event_sink.waiting.pop()(False, "RejectedSequence")
+    assert svc._stock_limits_published == {}
+    assert svc._stock_limits_state["3481"]["state"] == "PUBLISH_FAILED"
+    assert "RejectedSequence" in svc._stock_limits_state["3481"]["reason"]
+    assert svc._stock_limits_recovery.open
+    svc.event_sink = VerdictSink(published)
+    svc._publish_stock_limits(["3481"], contracts, "2026-10-01")
+    assert len(published) == 2, "sent again"
     assert svc._stock_limits_published == {"3481": "2026-10-01"}
     assert not svc._stock_limits_recovery.open
 

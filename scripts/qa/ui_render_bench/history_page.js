@@ -289,7 +289,7 @@ export async function runHistoryBench(base, historyHtml, recorded, options) {
       tick_rows: main.querySelectorAll('[data-role="tick-body"] tr').length,
       tick_rows_added: tape.added,
       tick_rows_washed: tape.washed,
-      price_flow_rows: main.querySelectorAll('[data-component-slot="replayPriceFlow"] tr').length,
+      price_flow_rows: main.querySelectorAll('[data-component-id="priceFlow"] tr').length,
       event_rows: main.querySelectorAll("tr[data-event-key]").length,
       // The event feed's viewport: its height and how many rows the row controller says it holds of how many listed.
       event_viewport: (() => {

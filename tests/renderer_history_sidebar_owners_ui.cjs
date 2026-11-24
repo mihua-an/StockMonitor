@@ -1,11 +1,11 @@
 const { makeTempDir } = require("./support/temp_dirs.cjs");
-// 歷史回放 sidebar in a real Chromium (run with Electron): the date picker (features/history/date_picker.js) and the
-// stock list (features/history/stock_list.js) each own their container and draw it from historyState alone.
-//   * named states: no history (historyUnavailable says why) -> the picker's one line and the list's message; dates
-//     listed -> options, label and calendar list; a day without stocks; the day's stocks.
+// 歷史回放's 商品列 in a real Chromium (run with Electron): the stock list (features/history/stock_list.js) owns its container
+// and draws it from historyState alone; the picked date (features/history/picked_date.js) tells whoever shows it.
+//   * named states: no history (historyUnavailable says why) -> the list's message; a day without stocks; its stocks.
+//   * a picked date reaches its listeners once per change, whoever picked it; listing a date picks nothing.
 //   * the loading mark (historyState.loadingCode) and the active row are data: a change rewrites the class of the rows
 //     it concerns and nothing else -- every row element stays the same node.
-//   * the page (pages/history.js) only changes historyState and calls the components: it writes neither container.
+//   * the page (pages/history.js) only changes historyState and calls the components: it writes no container.
 const { app, BrowserWindow } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
@@ -18,55 +18,39 @@ app.on("window-all-closed", () => {});
 async function scenario(base) {
   const fail = (message) => { throw new Error(message); };
   const main = document.querySelector("main");
-  main.innerHTML = `<div id="historyDatePicker">
-      <button id="historyDateButton" type="button"><span id="historyDateLabel"></span></button>
-      <div id="historyDateMenu" hidden><div id="historyDateList"></div></div>
-      <select id="historyDateSelect" hidden></select>
-    </div>
-    <div id="historyStockList" style="height:300px;overflow:auto"></div>`;
+  main.innerHTML = `<div id="historyStockList" style="height:300px;overflow:auto"></div>`;
   const { historyState } = await import(`${base}js/features/history/history_state.js`);
-  const { syncHistoryDatePicker, setHistoryDateValue, ensureHistoryDateOption } = await import(`${base}js/features/history/date_picker.js`);
+  const { pickedHistoryDate, setHistoryDateValue, onHistoryDateChange, ensureHistoryDateOption } = await import(`${base}js/features/history/picked_date.js`);
   const { renderHistoryStockList } = await import(`${base}js/features/history/stock_list.js`);
-  const select = document.getElementById("historyDateSelect");
-  const label = document.getElementById("historyDateLabel");
-  const dateList = document.getElementById("historyDateList");
   const stockList = document.getElementById("historyStockList");
 
-  // --- no history: both components say why, from the one state field ---------------------------------------------
+  // --- no history, then a failed read with the dates already listed: the list says why ----------------------------
   historyState.dates = [];
   historyState.stocks = [];
   historyState.historyUnavailable = "找不到歷史 parquet";
-  syncHistoryDatePicker();
   renderHistoryStockList();
-  if (select.options.length !== 1 || select.options[0].value !== "" || select.options[0].textContent !== "找不到歷史 parquet") {
-    fail(`no-history select: ${select.innerHTML}`);
-  }
-  if (label.textContent !== "找不到歷史 parquet") fail(`no-history label: ${label.textContent}`);
-  if (dateList.children.length) fail("no-history calendar list should be empty");
   if (stockList.querySelector(".history-stock-list-empty")?.textContent !== "找不到歷史 parquet") fail(`no-history list: ${stockList.innerHTML}`);
-
-  // A read failure with the dates already listed: the picker keeps the dates, the list says why.
   historyState.dates = ["2026-11-04", "2026-11-03"];
   historyState.historyUnavailable = "歷史資料載入失敗";
-  syncHistoryDatePicker();
   renderHistoryStockList();
-  if ([...select.options].map((o) => o.value).join() !== "2026-11-04,2026-11-03") fail(`dates not listed: ${select.innerHTML}`);
   if (stockList.querySelector(".history-stock-list-empty")?.textContent !== "歷史資料載入失敗") fail(`failure list: ${stockList.innerHTML}`);
-
-  // --- dates listed: choosing one rewrites only the chosen state, the option elements stay ------------------------
   historyState.historyUnavailable = "";
+
+  // --- the picked date --------------------------------------------------------------------------------------------
+  const told = [];
+  const stop = onHistoryDateChange((date) => told.push(date));
+  historyState.selectedDate = "2026-11-02";
+  if (pickedHistoryDate() !== "2026-11-02") fail("before one is picked, the date last shown");
   setHistoryDateValue("2026-11-03");
-  if (select.value !== "2026-11-03" || label.textContent !== "2026-11-03") fail(`chosen date: ${select.value} / ${label.textContent}`);
-  const optionNodes = [...select.options];
-  const dateButtons = [...dateList.children];
+  setHistoryDateValue("2026-11-03");
   setHistoryDateValue("2026-11-04");
-  if (select.value !== "2026-11-04" || label.textContent !== "2026-11-04") fail(`second chosen date: ${select.value} / ${label.textContent}`);
-  if ([...select.options].some((node, i) => node !== optionNodes[i])) fail("choosing a date rebuilt the <select> options");
-  if ([...dateList.children].some((node, i) => node !== dateButtons[i])) fail("choosing a date rebuilt the calendar buttons");
-  if (dateList.querySelector(".active")?.dataset.historyDate !== "2026-11-04") fail("the calendar marks the chosen date");
+  if (told.join() !== "2026-11-03,2026-11-04" || pickedHistoryDate() !== "2026-11-04") fail(`picked: ${told} / ${pickedHistoryDate()}`);
   ensureHistoryDateOption("2026-10-30");
-  if ([...select.options].map((o) => o.value).join() !== "2026-11-04,2026-11-03,2026-10-30") fail(`jump date not listed: ${select.innerHTML}`);
-  if (select.value !== "2026-11-04") fail("listing a date does not choose it");
+  if (historyState.dates.join() !== "2026-11-04,2026-11-03,2026-10-30") fail(`jump date not listed: ${historyState.dates}`);
+  if (pickedHistoryDate() !== "2026-11-04") fail("listing a date does not pick it");
+  stop();
+  setHistoryDateValue("2026-11-03");
+  if (told.length !== 2) fail("a removed listener is not told");
 
   // --- a day without stocks -----------------------------------------------------------------------------------------
   historyState.stocks = [];
@@ -127,11 +111,10 @@ async function scenario(base) {
 function pageSource() {
   const source = fs.readFileSync(path.join(__dirname, "..", "ui", "renderer", "js", "pages", "history.js"), "utf8");
   const problems = [];
-  if (/innerHTML/.test(source)) problems.push("pages/history.js writes innerHTML (the date picker and the stock list own their containers)");
+  if (/innerHTML/.test(source)) problems.push("pages/history.js writes innerHTML (the stock list owns its container)");
   if (/history-stock-item-loading|querySelectorAll\?\.\("\.history-stock-item"\)/.test(source)) {
     problems.push("pages/history.js marks stock rows itself (stock_list.js draws the mark from historyState.loadingCode)");
   }
-  if (/setSelectOptions/.test(source)) problems.push("pages/history.js fills the date <select> itself");
   return problems;
 }
 

@@ -13,10 +13,10 @@ async function scenario(create){
     const c=query.getHistoryStocksCached('2026-09-03');await Promise.resolve();pending.at(-1).reject(new Error('offline failure'));
     await assert.rejects(c);assert.equal(query.diagnostics().pending.stocks,0);
     const retry=query.getHistoryStocksCached('2026-09-03');await Promise.resolve();pending.at(-1).resolve([]);await retry;
-    for(let i=0;i<15;i++)query.putTrade(String(i),{price:i});
-    assert.equal(query.getTrade('0'),null);assert.equal(query.diagnostics().tradePages,12);
+    for(let i=0;i<15;i++)query.putMarkers(String(i),{price:i});
+    assert.equal(query.getMarkers('0'),null);assert.equal(query.diagnostics().markers,12);
     query.putMarkers('zero',{count:0});assert.equal(query.getMarkers('zero').count,0);
-    now+=10001;assert.equal(query.getTrade('14'),null);assert.equal(query.getMarkers('zero'),null);
+    now+=10001;assert.equal(query.getMarkers('zero'),null);
     return {calls,diagnostics:query.diagnostics()};
   }finally{Date.now=realNow;}
 }

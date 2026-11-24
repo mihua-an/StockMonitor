@@ -15,11 +15,11 @@ use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-/// v5: each tape print in the image carries its cumulative volume (state::Trade::total_volume). An older checkpoint
-/// is not read: recovery replays the WAL (an older format is rebuilt, never converted). The version moves with every
-/// change to what the image holds -- a field a v4 image never had would otherwise be restored as "unknown" and
-/// written back that way by every later checkpoint.
-pub const CHECKPOINT_SCHEMA: &str = "market-runtime-checkpoint-v5";
+/// v6: the quote in the image says whether its newest price was fetched from history (state::Quote::price_backfilled).
+/// An older checkpoint is not read: recovery replays the WAL (an older format is rebuilt, never converted). The version
+/// moves with every change to what the image holds -- a field an older image never had would otherwise be restored as
+/// "unknown" and written back that way by every later checkpoint.
+pub const CHECKPOINT_SCHEMA: &str = "market-runtime-checkpoint-v6";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CheckpointBody {

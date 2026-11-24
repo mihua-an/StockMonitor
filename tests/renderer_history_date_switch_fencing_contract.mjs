@@ -19,7 +19,6 @@ const page = await startHistoryPage({ date: "2026-09-30", route: (url) => new Pr
 const { historyState } = await import("../ui/renderer/js/features/history/history_state.js");
 const { loadHistoryMarketSession, loadHistoryTxfSession } = await import("../ui/renderer/js/features/history/market_session.js");
 const { loadHistoryIntradayEvents } = await import("../ui/renderer/js/pages/history.js");
-const select = page.element("historyDateSelect");
 historyState.selectedDate = "2026-09-30";
 
 // Date A's loads start and stall.
@@ -28,7 +27,7 @@ await page.settle();
 const stalled = pending.splice(0);
 assert.equal(stalled.length, 3, "date A asked for its events, TAIEX and TXF");
 // The user moves to B; B's loads complete first.
-select.value = historyState.selectedDate = "2026-10-01";
+historyState.pickedDate = historyState.selectedDate = "2026-10-01";
 const loadsB = [loadHistoryIntradayEvents(), loadHistoryMarketSession("2026-10-01"), loadHistoryTxfSession("2026-10-01")];
 await page.settle();
 for (const release of pending.splice(0)) release();

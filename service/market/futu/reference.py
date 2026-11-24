@@ -15,6 +15,7 @@ bar ending at 16:00 (OpenD labels a bar by its end), once per New York day: the 
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from datetime import date as date_cls, datetime, time as time_of_day, timedelta, timezone
 from typing import Any, Callable, Iterable
@@ -49,13 +50,19 @@ def _market_of(code: str) -> str:
 
 
 class FutuReferencePublisher:
-    def __init__(self, publish: Callable[[str, str, dict[str, Any]], bool], *,
+    def __init__(self, publish: Callable[[str, str, dict[str, Any], Callable[[bool, str | None], None]], bool], *,
                  now: Callable[[], datetime] | None = None, monotonic: Callable[[], float] = time.monotonic) -> None:
-        # publish(code, trading_date, data) -> admitted
+        # publish(code, trading_date, data, on_verdict) -> queued; Market Runtime's answer goes to on_verdict(accepted,
+        # reason) from the sender thread.
         self._publish = publish
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._monotonic = monotonic
-        self._sent: dict[tuple[str, str], tuple[int, str]] = {}     # (code, date) -> (prev_close units, name)
+        # Guards what Market Runtime's answers (sender thread) change: _sent, _in_flight and the counters they move.
+        self._lock = threading.Lock()
+        # (code, date) -> (prev_close units, name) Market Runtime ACCEPTED: a value is sent again until it is in.
+        self._sent: dict[tuple[str, str], tuple[int, str]] = {}
+        self._in_flight: dict[tuple[str, str], tuple[int, str]] = {}   # sent, Market Runtime's answer pending
+        self.last_rejection: dict[str, Any] | None = None
         self._checked_at: dict[tuple[str, str], float] = {}   # (code, date) -> when last asked and answered
         self._pre_open: set[tuple[str, str]] = set()           # (code, date) read before the US regular open
         self._failed_at: float | None = None
@@ -94,7 +101,9 @@ class FutuReferencePublisher:
             return "last_price", row.get("last_price")
         # Sent before the open, the previous regular close is already this date's 昨收; a snapshot that has not yet
         # moved to the new day just after 09:30 would replace it with the day before's.
-        if (code, date) in self._pre_open and (code, date) in self._sent:
+        with self._lock:
+            sent = (code, date) in self._sent or (code, date) in self._in_flight
+        if (code, date) in self._pre_open and sent:
             return None
         return "prev_close_price", row.get("prev_close_price")
 
@@ -106,8 +115,10 @@ class FutuReferencePublisher:
         if self._last_call_at is not None and now - self._last_call_at < MIN_CALL_INTERVAL_SECONDS:
             return []
         out = []
+        with self._lock:
+            settled = set(self._sent)
         for code in sorted({str(c).strip().upper() for c in codes if str(c).strip()}):
-            if _market_of(code) in CRYPTO_MARKETS and (code, self._trading_date(code)) in self._sent:
+            if _market_of(code) in CRYPTO_MARKETS and (code, self._trading_date(code)) in settled:
                 continue   # a past close: sent once, it never changes
             last = self._checked_at.get((code, self._trading_date(code)))
             if last is None or now - last >= REFRESH_SECONDS:
@@ -118,9 +129,10 @@ class FutuReferencePublisher:
         """Keep only what a code still asked about needs: its current trading date's entries. A code that left the
         plan, or a date its exchange has moved past, is never asked about again."""
         current = {code: self._trading_date(code) for code in codes}
-        for book in (self._sent, self._checked_at):
-            for key in [key for key in book if current.get(key[0]) != key[1]]:
-                del book[key]
+        with self._lock:
+            for book in (self._sent, self._in_flight, self._checked_at):
+                for key in [key for key in book if current.get(key[0]) != key[1]]:
+                    del book[key]
         self._pre_open = {key for key in self._pre_open if current.get(key[0]) == key[1]}
 
     def _crypto_close_day(self, date: str) -> str:
@@ -196,21 +208,43 @@ class FutuReferencePublisher:
                     self.last_unusable = {"code": code, field: repr(prev)[:40], "keys": sorted(map(str, row))[:30]}
                     continue
                 name = str(row.get("name") or "").strip()
-                if self._sent.get((code, date)) == (units, name):
-                    continue
+                value = (units, name)
+                with self._lock:
+                    if value in (self._sent.get((code, date)), self._in_flight.get((code, date))):
+                        continue
+                    # Before it is queued: the sender may answer it before publish returns.
+                    self._in_flight[(code, date)] = value
                 data: dict[str, Any] = {"prev_close": units}
                 if name:
                     data["name"] = name
-                if self._publish(code, date, data):
-                    self._sent[(code, date)] = (units, name)
-                    self.published += 1
+                if self._publish(code, date, data, lambda accepted, reason, key=(code, date), value=value:
+                                 self._verdict(key, value, accepted, reason)):
                     sent += 1
                 else:
-                    self.rejected += 1
+                    with self._lock:
+                        if self._in_flight.get((code, date)) == value:
+                            del self._in_flight[(code, date)]
+                        self.rejected += 1
+                        self.last_rejection = {"code": code, "date": date, "reason": "the queue to Market Runtime is full"}
         return sent
+
+    def _verdict(self, key: tuple[str, str], value: tuple[int, str], accepted: bool, reason: str | None) -> None:
+        """Market Runtime's answer to one 昨收 (sender thread). Accepted: in, sent no more while it stays the same.
+        Refused: counted and logged, and sent again at the code's next check (REFRESH_SECONDS)."""
+        with self._lock:
+            if self._in_flight.get(key) == value:
+                del self._in_flight[key]
+            if accepted:
+                self._sent[key] = value
+                self.published += 1
+                return
+            self.rejected += 1
+            self.last_rejection = {"code": key[0], "date": key[1], "reason": reason}
+        logger.warning("[FUTU REFERENCE] Market Runtime refused the 昨收 of %s for %s: %s", key[0], key[1], reason)
 
     def snapshot_status(self) -> dict[str, Any]:
         return {"published": self.published, "calls": self.calls, "failures": self.failures, "unusable": self.unusable,
-                "rejected": self.rejected, "last_error": self.last_error,
+                "rejected": self.rejected, "last_rejection": self.last_rejection, "in_flight": len(self._in_flight),
+                "last_error": self.last_error,
                 "last_failure": dict(self.last_failure) if self.last_failure else None, "last_unusable": self.last_unusable,
                 "codes": len({code for code, _ in self._sent})}

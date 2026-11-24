@@ -4,7 +4,6 @@
 import { apiGet } from "../../core/api.js";
 import { createHistoryQueries } from "./queries.js";
 import { createHistoryTrace } from "./trace.js";
-import { createHistoryTradePagerState } from "./trade_pager.js";
 
 export const historyPage = Object.seal({
   stockRowSnap: null,
@@ -15,7 +14,6 @@ export const historyPage = Object.seal({
   visit: 0,
   // The visit's date-list read and the day it opens (refreshHistoryPage); a replay opened from elsewhere waits for it.
   dateLoad: null,
-  datePickerCleanup: null,
   unregisterProductQuoteSearch: null,
   engine: null,
   reloadOnApiOnline: null,
@@ -29,10 +27,12 @@ export const historyTraceObj = createHistoryTrace({ windowRef: globalThis.window
 export function createHistoryState() {
   return {
     dates: [],
-    // Why there is no history to list ("" when there is): no recorded dates, or the read failed. The date picker shows
-    // it when no dates are listed and the stock list shows it instead of the day's stocks.
+    // Why there is no history to list ("" when there is): no recorded dates, or the read failed. The
+    // stock list shows it instead of the day's stocks.
     historyUnavailable: "",
     stocks: [],
+    // The date picked (picked_date.js), and the one the page has loaded.
+    pickedDate: "",
     selectedDate: "",
     selectedCode: "",
     // The stock whose replay data is loading (its row spins), "" when none.
@@ -52,7 +52,8 @@ export function createHistoryState() {
     txfDate: "",
     intradayEvents: [],
     daytradeMarkerRows: [],
-    tradeDetails: createHistoryTradePagerState(),
+    // 交易明細: the ledger's pairs as last read, and how they are narrowed (scope "overview" | "today"; date "" = the replayed day).
+    tradeDetails: Object.seal({ scope: "overview", date: "", query: "", rows: [], loading: false, loadedAt: 0, error: "" }),
     selectedEventKey: "",
     selectedDaytradeId: "",
     // 事件顯示分成「交易時段」與「整個盤中」兩層。

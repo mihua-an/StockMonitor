@@ -6,7 +6,7 @@ import { createDocument } from './lib/mini_dom.mjs';
 // Trend surface identity -- BEHAVIOURAL.
 //
 // TrendChartComponent builds every Taiwan trend surface, 歷史回放's included (its replay surface in
-// history.html's empty replayPrimary slot; layout_config.js DEFAULT_LAYOUTS.history.replayPrimary = "trendChart").
+// 歷史回放's replayPrimary pane; features/history/pane_defaults.js).
 // Every defect this file guards was a surface being given the wrong identity or the wrong nodes:
 //   * two canvases sharing one canvas id, and a 個股走勢 canvas labelled
 //     data-trend-view="futures" while drawing a stock (the shared parking store);
@@ -150,10 +150,11 @@ assert.equal(secondSlot.querySelector('[data-role="trend-canvas"]').id, 'trendCa
 assert.equal(secondSlot.querySelector('[data-role="trend-canvas"]').dataset.trendLookupDock, undefined,
   'only 個股走勢 docks its card on the order book');
 assert.equal(realtimeDocument.querySelectorAll('#metricChange').length, 0, 'tape nodes carry no document id on any surface');
-assert.deepEqual(secondSlot.querySelectorAll('[data-secondary-row]').map((row) => row.dataset.secondaryRow), ['session', 'market'],
-  '期貨走勢 carries its facts without 漲停 / 跌停 and the breadth -- no N分上漲／N分下跌 row (2026-10-16)');
+assert.deepEqual(secondSlot.querySelectorAll('[data-secondary-row]').map((row) => row.dataset.secondaryRow), ['stock', 'market'],
+  '期貨走勢 carries 個股走勢\'s facts row (with the contract\'s 漲停 / 跌停, user 11-23) and the breadth -- no N分上漲／N分下跌 row');
 assert.equal(secondSlot.querySelector('[data-role="prediction-cell"]'), null, '期貨走勢 shows no model predictions');
-assert.equal(secondSlot.querySelector('[data-role="metric-limit-up"]'), null, '期貨走勢 shows no 漲停');
+assert.ok(secondSlot.querySelector('[data-role="metric-limit-up"]') && secondSlot.querySelector('[data-role="metric-limit-down"]'),
+  '期貨走勢 shows 漲停 / 跌停');
 assert.deepEqual(BREADTH_ROLES.map((role) => text(secondSlot, role)), ['411', '391', '7', '3', '72']);
 assert.equal(text(secondSlot, 'stock-open'), '--', 'the 期貨 surface has the facts row, empty until a view model arrives');
 assert.ok(secondSlot.querySelector('[data-role="trend-control-row"]')?.querySelector('[data-role="txf-session-control"]'),
@@ -232,13 +233,14 @@ assert.deepEqual(parkedTrendSurfaceKeys().sort(), ['analysisQuinary:stock', 'aux
 
 
 // =============================================================================================
-// 3. 歷史回放: the SECOND place this component is mounted (layout_config.js replayPrimary).
+// 3. 歷史回放: the SECOND place this component is mounted (features/history/pane_defaults.js replayPrimary).
 // =============================================================================================
 const historyDocument = parseDocument('../ui/renderer/pages/history.html');
 liveDocument = historyDocument.ownerDocument;
-const replayHost = historyDocument.querySelector('[data-component-slot="replayPrimary"]');
-assert.ok(replayHost, 'history.html must ship the replayPrimary slot');
-assert.equal(replayHost.children.length, 0, 'the page ships the slot empty: the component builds the replay surface');
+assert.equal(historyDocument.querySelector('[data-component-slot]'), null, 'the workspace makes every pane (tree_workspace.js)');
+const replayHost = liveDocument.createElement('div');
+replayHost.dataset.componentSlot = 'replayPrimary';
+historyDocument.querySelector('.history-workspace').appendChild(replayHost);
 
 const replaySurface = new TrendChartComponent();
 replaySurface.mount({ host: replayHost, context: replayContext(), hydrate: true, slotId: 'replayPrimary' });

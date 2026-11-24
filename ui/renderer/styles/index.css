@@ -35,10 +35,10 @@
 @import url("components/orderbook.css");
 @import url("components/tick-details.css");
 @import url("components/event-feed.css");
-@import url("components/trade-details.css");
 @import url("components/trade-flow.css");
 @import url("components/price-flow.css");
 @import url("components/order-ticket.css");
+@import url("components/ledger-list.css");
 @import url("components/paper-ledger.css");
 @import url("components/paper-order-popover.css");
 @import url("components/industry-index-list.css");
@@ -47,6 +47,7 @@
 @import url("components/load-state.css");
 @import url("components/analysis-rebuild.css");
 @import url("components/settings.css");
+@import url("components/page-frame.css");
 @import url("components/replay-bar.css");
 @import url("components/mini-candle.css");
 @import url("components/technical-window.css");

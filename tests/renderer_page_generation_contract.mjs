@@ -25,7 +25,7 @@ for (const spec of [
     apiGet: () => { const d = deferred(); pending.push(d); return d.promise; },
     // The pages read through the strict reader (api.js apiGetOk); the same deferred answers stand in for it.
     apiGetOk: () => { const d = deferred(); pending.push(d); return d.promise; },
-    [spec.render]: value => rendered.push(value), $: () => null, fmt: String, nextJobRead: () => 0,
+    [spec.render]: value => rendered.push(value), $: () => null, fmt: String, nextJobRead: () => 0, refreshDayNotes: async () => {},
   });
   vm.runInContext(declaration(source(spec.page), spec.name), context);
   const run = () => spec.page === "settings"
@@ -88,7 +88,7 @@ console.log("page generation: reversed responses, dispose/remount and stale fail
     apiGet: () => { const d = deferred(); pending.push(d); return d.promise; },
     // The pages read through the strict reader (api.js apiGetOk); the same deferred answers stand in for it.
     apiGetOk: () => { const d = deferred(); pending.push(d); return d.promise; },
-    renderDailyOverview: (value) => rendered.push(value), $: () => null, fmt: String,
+    renderDailyOverview: (value) => rendered.push(value), $: () => null, fmt: String, refreshDayNotes: async () => {},
   });
   vm.runInContext(`${declaration(source("data_center"), "refreshDataCenter")}; this.refreshDataCenter = refreshDataCenter;`, context);
   const entering = context.refreshDataCenter();

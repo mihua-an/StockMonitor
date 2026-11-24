@@ -1,9 +1,9 @@
 // 歷史回放 事件標記: the replayed day's intraday events and 當沖 entries as trend markers, cut at the replay time (split
 // out of pages/history.js).
+import { pickedHistoryDate } from "./picked_date.js";
 import { eventFeedKey } from "../../core/event_feed_format.js";
 import { eventMarkerColor, eventMarkerLabel, eventMarkerPlacement, eventMarkerPriority } from "../../core/event_markers.js";
 import { marketPalette } from "../../core/market_palette.js";
-import { $ } from "../../core/utility.js";
 import { historyState } from "./history_state.js";
 import { activeHistoryTradeForCurrent, getHistoryReplayCutoffTime, historyReplayClockMinute, historyTradeEntryPrice, historyTradeInterval, normalizeHistoryClockText } from "./history_values.js";
 import { historyTradePriceText } from "./presentation.js";
@@ -143,7 +143,7 @@ export function buildHistoryEventMarkers(points) {
 export function buildHistoryTradeEntryMarkers() {
   if (!historyState.selectedCode) return [];
 
-  const selectedDate = String($("historyDateSelect")?.value || historyState.selectedDate || "").slice(0, 10);
+  const selectedDate = pickedHistoryDate();
   const selectedCode = String(historyState.selectedCode || "");
   const cutoff = getHistoryReplayCutoffTime();
   const cutoffMinute = historyReplayClockMinute(cutoff);

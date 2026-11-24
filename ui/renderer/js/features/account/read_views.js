@@ -1,3 +1,4 @@
+import { ledgerMoney } from "../../core/ledger_money.js";
 import { numberOrNull } from "../../core/numbers.js";
 import { signedValueClass } from "../../core/market_color_policy.js";
 
@@ -56,21 +57,6 @@ export function createAccountReadViewPresentation() {
 /** Shares in one 張 (a board lot). */
 export const PAPER_LOT_SHARES = 1000;
 
-/**
- * 模擬帳務's figures (模擬下單's ticket, 模擬帳務's ledger, 委託紀錄): plain numbers up to 2 decimals, "--" when the value
- * is missing or not a number (read through numberOrNull, so true / "" are missing, never 1 / 0).
- */
-export function paperMoney(value) {
-  const amount = numberOrNull(value);
-  return amount === null ? "--" : amount.toLocaleString("zh-TW", { maximumFractionDigits: 2 });
-}
-
-/** A signed 模擬帳務 figure: its size only, the direction is the colour (signedValueClass). */
-export function paperSignedMoney(value) {
-  const amount = numberOrNull(value);
-  return amount === null ? "--" : paperMoney(Math.abs(amount));
-}
-
 /** 買進 in the up colour, 賣出 in the down colour. */
 export function paperSideClass(side) {
   return side === "買進" ? "price-up" : "price-down";
@@ -84,5 +70,5 @@ export function paperOrderUnitCount(lot, shares) {
 
 /** An order's shares as text in its own unit ("3 張", "500 股"). */
 export function paperOrderUnits(lot, shares) {
-  return `${paperMoney(paperOrderUnitCount(lot, shares))} ${lot === "odd" ? "股" : "張"}`;
+  return `${ledgerMoney(paperOrderUnitCount(lot, shares))} ${lot === "odd" ? "股" : "張"}`;
 }

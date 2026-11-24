@@ -109,12 +109,10 @@ async function getHistoryTxfSessionCached(date) {
 
 
 return { getHistoryStocksCached, getHistoryMarketSessionCached, getHistoryTxfSessionCached,
-  getTrade: key => tradeCacheGet(historyTradePageCache, key),
-  putTrade: (key, value) => tradeCachePut(historyTradePageCache, key, value),
   getMarkers: key => tradeCacheGet(historyDaytradeMarkerCache, key),
   putMarkers: (key, value) => tradeCachePut(historyDaytradeMarkerCache, key, value),
   diagnostics: () => ({ cached: Object.fromEntries(Object.entries(historyResponseCache).map(([key,map])=>[key,map.size])),
     pending: Object.fromEntries(Object.entries(historyPendingRequests).map(([key,map])=>[key,map.size])),
-    tradePages: historyTradePageCache.size, markers: historyDaytradeMarkerCache.size }),
+    markers: historyDaytradeMarkerCache.size }),
 };
 }

@@ -251,6 +251,19 @@ export function renderToday(today, secondsLeft) {
     + figure("目前資料", data) + next;
 }
 
+// Where today stands on 收盤 -> 收盤整理 -> 模型訓練 -> 上線, by the training's own phase of the day (today.py).
+const PIPELINE = ["收盤", "收盤整理", "模型訓練", "上線"];
+const PIPELINE_AT = { BEFORE_OPEN: 0, IN_SESSION: 0, WAITING_SEAL: 1, WAITING_TRAINING: 2, RETRY_WAIT: 2, TRAINING: 2, TRAINED: 4 };
+
+/** 今天's steps; a holiday (or a damaged ledger) stands on none. */
+export function renderPipeline(today) {
+  const at = PIPELINE_AT[today?.phase] ?? -1;
+  return PIPELINE.map((title, index) => {
+    const state = at > index ? "done" : at === index ? "now" : "todo";
+    return stepCard(index, title, "", state, state === "done" ? 100 : 0);
+  }).join("");
+}
+
 // Why a slot has no live model (registry.py status `champion_state`): none yet is not a damaged record.
 const LIVE_STATE = {
   NONE: "無模型",

@@ -38,9 +38,8 @@ assert.match(next, /<small>下次物化<\/small><b>台股<\/b>/);
 assert.match(next, /<small>時間<\/small><b>10\/29 14:40<\/b>/);
 assert.match(next, /<small>倒數<\/small><b>40 分 0 秒<\/b>/);
 assert.doesNotMatch(next, /已花時間/, "nothing runs yet");
-let history = view.renderClosingHistory(waiting);
-assert.doesNotMatch(history, /上次物化/, "no title over the rows: the room is theirs");
-assert.match(history, /<td>期貨日盤 10\/29<\/td><td>完成<\/td><td>1 檔 · 169k 筆<\/td><td><span class="settings-badge is-warn">有缺口：期貨日盤<\/span><\/td><td>10\/29 13:46<\/td>/);
+let history = view.renderClosingLast(waiting);
+assert.match(history, /<small>期貨日盤 10\/29<\/small><b>1 檔 · 169k 筆 <span class="settings-badge is-warn">有缺口：期貨日盤<\/span> 10\/29 13:46<\/b>/);
 
 // STK running (in `write`, counted in events), IDX done; 下次 is the night. The time left and the share done are the
 // provider's one estimate (closing_progress.py): the card's 預估剩餘 and the job's eta are that same number.
@@ -97,10 +96,10 @@ assert.equal(view.renderClosingBar(done), "");
 log = view.renderClosingLog(done, at(15, 0));
 assert.match(log, /收盤資料已就緒，自動訓練從這裡開始/);
 assert.match(log, /股票 76 檔 · 2\.90M 筆 · 完整<\/span><span class="job-log-dur">3 分 15 秒/);
-history = view.renderClosingHistory(done);
-assert.equal((history.match(/<tr data-morph-key/g) || []).length, 3);
-assert.match(history, /<td>台股 10\/29<\/td><td>完成<\/td><td>91 檔 · 2\.94M 筆<\/td><td><span class="settings-badge is-pass">完整<\/span><\/td><td>10\/29 14:43<\/td>/);
-assert.match(history, /<td>期貨夜盤 10\/28<\/td><td class="error">失敗<\/td>/);
+history = view.renderClosingLast(done);
+assert.equal((history.match(/data-morph-key/g) || []).length, 3);
+assert.match(history, /<small>台股 10\/29<\/small><b>91 檔 · 2\.94M 筆 <span class="settings-badge is-pass">完整<\/span> 10\/29 14:43<\/b>/);
+assert.match(history, /<small>期貨夜盤 10\/28<\/small><b>[^<]*<span class="settings-badge is-fail">失敗<\/span>/);
 
 // 執行紀錄 keeps the last close until the next one reaches its seal time; the steps and 下次物化 are the next one's.
 const night = { id: "FUT:NIGHT", trading_date: "2026-10-29", stage: "waiting_close", settled_at: null,
@@ -126,11 +125,11 @@ assert.match(view.renderClosingSteps(us, at(12, 11, 0, 30)), /job-step-h">美股
 log = view.renderClosingLog(us, at(12, 11, 0, 30));
 assert.match(log, /美股 WAL 1\.69M 筆 → 歷史資料/);
 assert.doesNotMatch(log, /summary/, "Futu writes no daily summary");
-assert.match(view.renderClosingHistory(us), /<td>美股 10\/28<\/td><td>完成<\/td><td>12 檔 · 1\.50M 筆（含補回 2\.8k 筆）<\/td><td><span class="settings-badge is-warn">有缺口：美股<\/span><\/td>/);
+assert.match(view.renderClosingLast(us), /<small>美股 10\/28<\/small><b>12 檔 · 1\.50M 筆（含補回 2\.8k 筆） <span class="settings-badge is-warn">有缺口：美股<\/span>/);
 
 // Nothing recorded yet.
 assert.match(view.renderClosingLog({ sessions: [] }), /還沒有收盤紀錄/);
-assert.match(view.renderClosingHistory({}), /還沒有物化紀錄/);
+assert.match(view.renderClosingLast({}), /還沒有物化紀錄/);
 assert.match(view.renderClosingNext({ next: null }), /<small>下次物化<\/small><b>--<\/b>/);
 
 console.log("renderer closing progress contract passed");

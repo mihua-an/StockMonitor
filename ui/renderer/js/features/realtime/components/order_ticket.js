@@ -11,7 +11,8 @@ import { lookupInstrumentKind } from "../../../market_data/instrument_kind.js";
 import { buyCost, sellProceeds } from "../../../core/trade_costs.js";
 import { MarketPriceColorPolicy } from "../../../core/market_color_policy.js";
 import { numberOrNull as num } from "../../../core/numbers.js";
-import { PAPER_LOT_SHARES as LOT, paperMoney as money } from "../../account/read_views.js";
+import { PAPER_LOT_SHARES as LOT } from "../../account/read_views.js";
+import { ledgerMoney as money } from "../../../core/ledger_money.js";
 
 const ODD_MAX = 999;
 

@@ -397,9 +397,9 @@ body.workspace-page {
   min-height: 0;
 }
 
-/* ===== Pane workspace (core/pane_workspace.js) =====
- * Rows of panes the user can rearrange by dragging tabs. The workspace sets every row's height and every pane's width
- * in whole pixels; the 8 px between them is exactly the splitter, so nothing here may add gaps or margins. */
+/* ===== Pane workspace (core/tree_workspace.js) =====
+ * Panes the user can rearrange by dragging tabs, in a tree of rows and columns. The workspace sizes every split and pane
+ * inline in whole pixels; the 8 px between them is exactly the splitter, so nothing here may add gaps or margins. */
 .pane-mode {
   display: flex;
   flex-direction: column;
@@ -407,24 +407,6 @@ body.workspace-page {
   position: relative;
 }
 
-.pane-mode > .pane-row {
-  display: flex;
-  flex: none;
-  width: 100%;
-  min-height: 0;
-  min-width: 0;
-}
-
-.pane-mode > .pane-row > [data-pane-id] {
-  flex: none;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  margin: 0;
-  box-sizing: border-box;
-}
-
-/* A pane tree (core/tree_workspace.js): every split and pane is sized inline, the 8 px between them is the splitter. */
 .pane-tree-split {
   display: flex;
   flex: none;
@@ -449,6 +431,17 @@ body.workspace-page {
   position: relative;
   background: transparent;
   touch-action: none;
+}
+
+/* The space beside a pinned element, which keeps its width: not a handle. */
+.pane-gap-col {
+  flex: none;
+  width: 8px;
+}
+
+.pane-gap-row {
+  flex: none;
+  height: 8px;
 }
 
 .pane-mode .pane-splitter-col {

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import math
 from typing import Any, Iterable
 
 from service.account.accounting_core import ZERO
@@ -280,166 +279,18 @@ class AccountReadService:
             "closing_terms": self.accounting_core.closing_terms(market, code, trade_type),
         }
 
-    @staticmethod
-    def _daytrade_cursor_from_row(row: Any) -> str:
-        if not row:
-            return ""
-        return f"{str(row['realized_date'])}|{int(row['sort_order'] or 0)}|{int(row['id'] or 0)}"
-
-    @staticmethod
-    def _parse_daytrade_cursor(cursor: str | None) -> tuple[str, int, int] | None:
-        text = str(cursor or "").strip()
-        if not text:
-            return None
-        try:
-            realized_date, sort_order, row_id = text.split("|", 2)
-            if not realized_date:
-                return None
-            return realized_date, int(sort_order), int(row_id)
-        except (TypeError, ValueError):  # not an error: a row without a numeric order is not sortable; None by contract
-            return None
-
     def _serialize_daytrade_rows(self, rows: Iterable[Any]) -> list[dict[str, Any]]:
         names = self._stock_names()
         return [self._pair_row(row, names) for row in rows]
 
-    @staticmethod
-    def _resolve_daytrade_scope(
-        *, scope: str | None, realized_date: str | None, code: str | None
-    ) -> tuple[str, str, str]:
-        """Validate the daytrade history query scope (overview / today / symbol), shared by
-        ``get_daytrade_history_page`` and ``explain_daytrade_history_query`` so the two cannot drift."""
-        target_date = str(realized_date or "").strip()
-        target_code = str(code or "").strip()
-        requested_scope = str(scope or "").strip().lower()
-        if requested_scope not in {"overview", "today", "symbol"}:
-            raise ValueError(f"invalid daytrade history scope: {requested_scope or '<missing>'}")
-        query_scope = requested_scope
-
-        if query_scope == "today" and not target_date:
-            raise ValueError("today daytrade history requires date")
-        if query_scope == "symbol" and not target_code:
-            raise ValueError("symbol daytrade history requires code")
-        return query_scope, target_date, target_code
-
-    @staticmethod
-    def _daytrade_where_clause(
-        *, query_scope: str, target_date: str, target_code: str, market: str
-    ) -> tuple[str, list[Any]]:
-        clauses = ["market=?", "trade_type='當沖'"]
-        params: list[Any] = [market]
-        if query_scope == "today":
-            clauses.append("realized_date=?")
-            params.append(target_date)
-        elif query_scope == "symbol":
-            clauses.append("code=?")
-            params.append(target_code)
-        return " AND ".join(clauses), params
-
-    def get_daytrade_history_page(
-        self,
-        *,
-        scope: str | None = None,
-        realized_date: str | None = None,
-        code: str | None = None,
-        market: str = "台股",
-        page: int = 1,
-        page_size: int = 50,
-        direction: str = "jump",
-        cursor: str | None = None,
-    ) -> dict[str, Any]:
-        """Return one indexed page of paired day trades.
-
-        The query scope is explicit:
-        - ``overview``: all historical paired day trades (still paginated; never fetch-all).
-        - ``today``: all paired day trades for one Replay date.
-        - ``symbol``: all historical paired day trades for one selected symbol.
-
-        Adjacent navigation uses keyset cursors. Arbitrary page input falls back to
-        indexed OFFSET; first/last have dedicated fast paths.
-        """
-        query_scope, target_date, target_code = self._resolve_daytrade_scope(
-            scope=scope, realized_date=realized_date, code=code
-        )
-
-        size = max(1, min(int(page_size or 50), 200))
-        requested_page = max(1, int(page or 1))
-        nav = str(direction or "jump").strip().lower()
-        if nav not in {"first", "prev", "next", "last", "jump"}:
-            nav = "jump"
-
-        where_sql, params = self._daytrade_where_clause(
-            query_scope=query_scope, target_date=target_date, target_code=target_code, market=market
-        )
-
-        with self._connection(caller="history.daytrade.page") as conn:
-            total_count = int(conn.execute(
-                f"SELECT COUNT(*) FROM realized_matches WHERE {where_sql}",
-                tuple(params),
-            ).fetchone()[0])
-            total_pages = max(1, math.ceil(total_count / size))
-            target_page = min(requested_page, total_pages)
-            parsed_cursor = self._parse_daytrade_cursor(cursor)
-
-            rows = []
-            if total_count <= 0:
-                rows = []
-            elif nav == "first" or target_page == 1:
-                target_page = 1
-                rows = conn.execute(
-                    f"SELECT * FROM realized_matches WHERE {where_sql} "
-                    "ORDER BY realized_date DESC, sort_order DESC, id DESC LIMIT ?",
-                    (*params, size),
-                ).fetchall()
-            elif nav == "last":
-                target_page = total_pages
-                last_size = total_count - ((total_pages - 1) * size)
-                rows = conn.execute(
-                    f"SELECT * FROM realized_matches WHERE {where_sql} "
-                    "ORDER BY realized_date ASC, sort_order ASC, id ASC LIMIT ?",
-                    (*params, max(1, last_size)),
-                ).fetchall()
-                rows = list(reversed(rows))
-            elif nav == "next" and parsed_cursor:
-                c_date, c_sort, c_id = parsed_cursor
-                rows = conn.execute(
-                    f"SELECT * FROM realized_matches WHERE {where_sql} "
-                    "AND (realized_date, sort_order, id) < (?, ?, ?) "
-                    "ORDER BY realized_date DESC, sort_order DESC, id DESC LIMIT ?",
-                    (*params, c_date, c_sort, c_id, size),
-                ).fetchall()
-            elif nav == "prev" and parsed_cursor:
-                c_date, c_sort, c_id = parsed_cursor
-                rows = conn.execute(
-                    f"SELECT * FROM realized_matches WHERE {where_sql} "
-                    "AND (realized_date, sort_order, id) > (?, ?, ?) "
-                    "ORDER BY realized_date ASC, sort_order ASC, id ASC LIMIT ?",
-                    (*params, c_date, c_sort, c_id, size),
-                ).fetchall()
-                rows = list(reversed(rows))
-            else:
-                offset = (target_page - 1) * size
-                rows = conn.execute(
-                    f"SELECT * FROM realized_matches WHERE {where_sql} "
-                    "ORDER BY realized_date DESC, sort_order DESC, id DESC LIMIT ? OFFSET ?",
-                    (*params, size, offset),
-                ).fetchall()
-
-        serialized = self._serialize_daytrade_rows(rows)
-        return {
-            "scope": query_scope,
-            "date": target_date if query_scope == "today" else "",
-            "code": target_code if query_scope == "symbol" else "",
-            "items": serialized,
-            "page": target_page,
-            "page_size": size,
-            "total_count": total_count,
-            "total_pages": total_pages,
-            "has_prev": target_page > 1,
-            "has_next": target_page < total_pages,
-            "prev_cursor": self._daytrade_cursor_from_row(rows[0]) if rows else "",
-            "next_cursor": self._daytrade_cursor_from_row(rows[-1]) if rows else "",
-        }
+    def get_daytrade_history(self, market: str = "台股") -> list[dict[str, Any]]:
+        """Every paired day trade of a market, newest first (歷史回放's 交易明細, which narrows them by date and code itself)."""
+        with self._connection(caller="history.daytrade.list") as conn:
+            rows = conn.execute(
+                "SELECT * FROM realized_matches WHERE market=? AND trade_type='當沖' ORDER BY realized_date DESC, sort_order DESC, id DESC",
+                (market,),
+            ).fetchall()
+        return self._serialize_daytrade_rows(rows)
 
     def get_daytrade_symbol_date_rows(
         self,
@@ -449,8 +300,8 @@ class AccountReadService:
     ) -> list[dict[str, Any]]:
         """Small bounded dataset used by Replay trade-entry markers.
 
-        This deliberately queries only one date + one symbol and is separate
-        from the paginated table so chart markers never require full history.
+        This deliberately queries only one date + one symbol, so chart markers
+        never require the full history.
         """
         target_date = str(realized_date or "").strip()
         target_code = str(code or "").strip()
@@ -466,26 +317,6 @@ class AccountReadService:
                 (market, target_code, target_date),
             ).fetchall()
         return self._serialize_daytrade_rows(rows)
-
-    def explain_daytrade_history_query(
-        self,
-        *,
-        scope: str | None = None,
-        realized_date: str | None = None,
-        code: str | None = None,
-        market: str = "台股",
-    ) -> list[str]:
-        """Diagnostic helper used by pagination tests/benchmarks."""
-        query_scope, target_date, target_code = self._resolve_daytrade_scope(
-            scope=scope, realized_date=realized_date, code=code
-        )
-        where_sql, params = self._daytrade_where_clause(
-            query_scope=query_scope, target_date=target_date, target_code=target_code, market=market
-        )
-        sql = f"EXPLAIN QUERY PLAN SELECT * FROM realized_matches WHERE {where_sql} ORDER BY realized_date DESC, sort_order DESC, id DESC LIMIT 50"
-        with self._connection(caller="history.daytrade.explain") as conn:
-            rows = conn.execute(sql, tuple(params)).fetchall()
-        return [str(row[3]) for row in rows]
 
     def get_summary(self) -> dict[str, Any]:
         """The 帳務 home cards: today / week / month / total / 當沖 realized and the holding cost per market, as

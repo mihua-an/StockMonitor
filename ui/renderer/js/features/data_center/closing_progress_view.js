@@ -4,7 +4,6 @@
 // 執行紀錄 under each step, and beside it 下次物化 (what, when, countdown) over the 上次物化 rows. Pure HTML: every value
 // from the payload is escaped here.
 import { escapeHtml } from "../../core/utility.js";
-import { emptyStateRowHtml } from "../../core/load_state_view.js";
 import { numberOrNull } from "../../core/numbers.js";
 import { compactCount, clockTime, int, formatSpan, figure, logEmpty, logGroup, logList, logRow, phasePip, progressBar, runningFigures,
   stepCard } from "../../core/job_status_view.js";
@@ -101,21 +100,20 @@ export function renderClosingNext(payload, now = Date.now()) {
   return running + figure("下次物化", next ? closeName(next.id) : "--") + figure("時間", when) + figure("倒數", left);
 }
 
-const STATE_TEXT = { done: "完成", failed: "失敗" };
+const STATE_TEXT = { failed: "失敗" };
 
-/** 上次物化: the closes that ended, newest first, one of each kind -- 狀態, 歷史資料, 完整性, 完成時間. */
-export function renderClosingHistory(payload) {
+/** 上次物化: the closes that ended, newest first, one of each kind -- 歷史資料, the result (失敗 / 有缺口 / 完整) and 完成時間 on
+ * one figure each. */
+export function renderClosingLast(payload) {
   const rows = payload?.history || [];
-  const body = rows.length ? rows.map((row) => {
+  if (!rows.length) return figure("上次物化", "還沒有物化紀錄");
+  return rows.map((row) => {
     const gaps = (row.gaps || []).map((id) => escapeHtml(NAME[id] || id));
     const ended = ms(row.ended_at) === null ? "--" : `${localDay(row.ended_at)} ${escapeHtml(hhmm(row.ended_at))}`;
-    return `<tr data-morph-key="${escapeHtml(`${row.id}:${row.trading_date}`)}"><td>${closeName(row.id)} ${shortDate(row.trading_date)}</td>`
-      + `<td${row.stage === "failed" ? ' class="error"' : ""}>${STATE_TEXT[row.stage] || escapeHtml(row.stage)}</td>`
-      + `<td>${int(row.codes)} 檔 · ${eventsText(row.events, row.backfilled)}</td>`
-      + `<td>${gaps.length ? `<span class="settings-badge is-warn">有缺口：${gaps.join("、")}</span>` : '<span class="settings-badge is-pass">完整</span>'}</td><td>${ended}</td></tr>`;
-  }).join("") : emptyStateRowHtml(5, "還沒有物化紀錄");
-  return `<table class="data-table dc-closing-history-table">`
-    + `<thead><tr><th>物化</th><th>狀態</th><th>歷史資料</th><th>完整性</th><th>完成時間</th></tr></thead><tbody>${body}</tbody></table>`;
+    const state = row.stage === "failed" ? STATE_TEXT.failed : gaps.length ? `有缺口：${gaps.join("、")}` : "完整";
+    return `<div class="settings-item" data-morph-key="${escapeHtml(`${row.id}:${row.trading_date}`)}"><small>${closeName(row.id)} ${shortDate(row.trading_date)}</small>`
+      + `<b>${int(row.codes)} 檔 · ${eventsText(row.events, row.backfilled)} <span class="settings-badge is-${row.stage === "failed" ? "fail" : gaps.length ? "warn" : "pass"}">${state}</span> ${ended}</b></div>`;
+  }).join("");
 }
 
 function jobRow(s, now) {

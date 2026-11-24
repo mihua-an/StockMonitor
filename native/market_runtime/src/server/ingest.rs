@@ -834,14 +834,24 @@ pub(crate) fn state_frame(state: &SymbolState, entry: Option<&ProjectionEntry>, 
     extra.insert("channel_arrival_us".into(), wire::arrivals(state));
     extra.insert("durable_sequence".into(), json!(event.durable_sequence));
     let summary = wire::summary(state, breadth);
+    // The trend channel changes only when a minute is forming (wire::current_point): a print fetched from history
+    // changes the summary and the tape, and its minute reaches the trend as B's.
     if changed.trade {
         let trade = wire::applied_trade(state);
         let point = wire::current_point(state, entry);
-        Some((state.generation, "trade.frame", &["summary", "trend", "trades"][..],
-            json!({"summary": summary, "trade": trade, "trend": {"point": point}}), extra, trace))
+        Some(if point.is_null() {
+            (state.generation, "trade.frame", &["summary", "trades"][..], json!({"summary": summary, "trade": trade}), extra, trace)
+        } else {
+            (state.generation, "trade.frame", &["summary", "trend", "trades"][..],
+             json!({"summary": summary, "trade": trade, "trend": {"point": point}}), extra, trace)
+        })
     } else if changed.quote {
         let point = wire::current_point(state, entry);
-        Some((state.generation, "quote.frame", &["summary", "trend"][..], json!({"summary": summary, "trend": {"point": point}}), extra, trace))
+        Some(if point.is_null() {
+            (state.generation, "quote.frame", &["summary"][..], json!({"summary": summary}), extra, trace)
+        } else {
+            (state.generation, "quote.frame", &["summary", "trend"][..], json!({"summary": summary, "trend": {"point": point}}), extra, trace)
+        })
     } else if changed.book {
         Some((state.generation, "orderbook.latest", &["orderbook"][..], wire::book(&state.book), extra, trace))
     } else if changed.reference {

@@ -13,17 +13,7 @@ const modules = {
   datacenter: {
     initDataCenterPage: () => calls.push("datacenter:mount"),
     // The date list that does not answer until released.
-    refreshDataCenter: () => { calls.push("datacenter:load"); return new Promise((resolve) => { releaseDates = resolve; }); },
-  },
-  training: {
-    bindTrainingEvents: () => calls.push("training:mount"),
-    refreshTrainingStatus: async () => { calls.push("training:load"); },
-  },
-  history: {
-    bindHistoryEvents: () => calls.push("history:mount"),
-    // A page may record the read it started (history.js keeps it for a replay opened from elsewhere): it starts
-    // synchronously, inside the mount.
-    refreshHistoryPage: () => { calls.push("history:load"); return Promise.resolve(); },
+    loadDataCenterPage: () => { calls.push("datacenter:load"); return new Promise((resolve) => { releaseDates = resolve; }); },
   },
   account: {
     initAccountLedgerPage: () => calls.push("account:mount"),
@@ -48,12 +38,12 @@ assert.deepEqual(calls, ["datacenter:mount", "datacenter:load"], "the read start
 
 // The date list has not answered; the next navigation runs at once.
 const second = await Promise.race([
-  navigation.navigate("training"),
+  navigation.navigate("account"),
   new Promise((resolve) => setTimeout(() => resolve("held"), 200)),
 ]);
 assert.notEqual(second, "held", "a navigation asked for while the previous page's read is out was held behind it");
-assert.equal(second.page, "training");
-assert.deepEqual(calls.slice(2), ["training:mount", "training:load"]);
+assert.equal(second.page, "account");
+assert.deepEqual(calls.slice(2), ["account:mount", "account:load:true"]);
 
 // The mount hands back the read for the window fit; it settles when the page's read does.
 let settled = false;
@@ -65,19 +55,15 @@ await first.mounted.loaded;
 assert.equal(settled, true);
 
 calls.length = 0;
-const history = mountPageModule("history", modules.history);
-assert.deepEqual(calls, ["history:mount", "history:load"], "history's read is started before the mount returns");
-await history.loaded;
-await mountPageModule("account", modules.account).loaded;
 await mountPageModule("settings", modules.settings).loaded;
-assert.deepEqual(calls.slice(2), ["account:mount", "account:load:true", "settings:mount", "settings:load"]);
+assert.deepEqual(calls, ["settings:mount", "settings:load"]);
 
 // A read that throws synchronously is the read's failure, not the mount's.
-const broken = mountPageModule("training", { bindTrainingEvents() {}, refreshTrainingStatus() { throw new Error("read failed"); } });
+const broken = mountPageModule("account", { initAccountLedgerPage() {}, refreshAccountLedgerPage() { throw new Error("read failed"); } });
 await assert.rejects(broken.loaded, /read failed/);
 assert.equal(isModulePage("realtime"), false);
 assert.equal(isModulePage("datacenter"), true);
-await loadPageData("datacenter", { refreshDataCenter: async () => "again" });
+await loadPageData("datacenter", { loadDataCenterPage: async () => "again" });
 
 // app.js mounts through page_mount.js and never waits for the read inside the navigation.
 const app = readFileSync(new URL("../ui/renderer/app.js", import.meta.url), "utf8");

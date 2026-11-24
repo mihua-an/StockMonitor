@@ -17,6 +17,7 @@ async function scenario(base, accountHtml) {
   const fail = (message) => { throw new Error(message); };
   window.desktopAPI = { networkManifest: { routes: [["/api/", "app_api"]], services: { app_api: { url: "http://app.invalid" } } } };
   document.querySelector("main").innerHTML = accountHtml;
+  (await import(`${base}js/core/page_frame.js`)).hydratePageFrames(document);
   const { account, actualAccountReplayState } = await import(`${base}js/features/account/account_state.js`);
   account.market = "台股";
   const { daytradeBucketDetailRowsHtml, rankingRows } = await import(`${base}js/features/account/daytrade_view.js`);

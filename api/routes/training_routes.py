@@ -30,6 +30,10 @@ def create_training_router(app: Any) -> APIRouter:
     def training_models():
         return app.models()
 
+    @router.get("/api/training/days")
+    def training_days():
+        return app.days()
+
     @router.get("/api/training/today")
     def training_today():
         return app.today()

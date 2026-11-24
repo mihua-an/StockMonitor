@@ -91,8 +91,14 @@ pub fn book(b: &Book) -> Value {
         "exchange_ts_ns": b.exchange_ts_ns.to_string(), "arrival_ns": b.received_ns.to_string()})
 }
 
-/// The trend point Rust A overlays for the current minute: the latest valid price, never a claimed volume.
+/// The trend point Rust A overlays for the current minute: the latest valid price, never a claimed volume. Only a live
+/// price forms a minute: a print fetched from history afterwards (a closed session viewed, a gap filled) belongs to a
+/// past minute, which is B's alone -- an overlay of it drew the whole session from price-only points before B's
+/// minutes replaced every one.
 pub fn current_point(state: &SymbolState, entry: Option<&ProjectionEntry>) -> Value {
+    if state.quote.price_backfilled {
+        return Value::Null;
+    }
     let (Some(price), Some(minute)) = (state.quote.current, state.quote.price_minute) else { return Value::Null };
     let key = &state.key;
     let b_minute = entry.and_then(|e| e.minutes.get(minute));

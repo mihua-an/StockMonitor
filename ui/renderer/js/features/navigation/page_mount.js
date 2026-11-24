@@ -7,9 +7,7 @@
 const PAGE_HOOKS = Object.freeze({
   // 版型編輯 is the live page on another workspace: its mount is the live page's.
   layouts: { mount: "initLayoutsPage", load: (mod) => mod.layoutsPageStarted() },
-  training: { mount: "bindTrainingEvents", load: (mod) => mod.refreshTrainingStatus?.() },
-  datacenter: { mount: "initDataCenterPage", load: (mod) => mod.refreshDataCenter?.() },
-  history: { mount: "bindHistoryEvents", load: (mod) => mod.refreshHistoryPage?.() },
+  datacenter: { mount: "initDataCenterPage", load: (mod) => mod.loadDataCenterPage?.() },
   account: { mount: "initAccountLedgerPage", load: (mod) => mod.refreshAccountLedgerPage?.(true) },
   settings: { mount: "initSettingsPage", load: (mod) => mod.refreshSettingsPage?.() },
 });

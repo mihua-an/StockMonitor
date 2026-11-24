@@ -1,3 +1,4 @@
+import { markPageFrameItems, showPageFrameView } from "../core/page_frame.js";
 import { renderPositions } from "../features/account/positions_view.js";
 import { emptyStateRowHtml, loadStateRowHtml } from "../core/load_state_view.js";
 import { renderMobileCards } from "../features/account/mobile_cards_view.js";
@@ -183,7 +184,7 @@ function renderErrors(items) {
       + `<span class="account-error-text">${escapeHtml(item.message)}</span></span></div>`).join("")
     : `<div class="settings-empty"><span class="settings-empty-icon">✓</span>${escapeHtml(account.market)}目前沒有資料異常`
       + `<div class="account-title-note">格式錯誤或配對異常會列在這裡</div></div>`;
-  const directoryItem = document.querySelector('.account-directory [data-account-view="errors"]');
+  const directoryItem = document.querySelector('.account-page [data-account-view="errors"]');
   directoryItem?.classList.toggle("has-alert", errors.length > 0);
 }
 
@@ -384,12 +385,9 @@ function showAccountView(view) {
   writePreference(accountStorageKey("view"), view, { context: "account view" });
   if (view === "orders") paperOrderHistoryView()?.show();
   else paperOrderHistory?.view.hide();
-  document.querySelectorAll(".account-directory [data-account-view]").forEach((button) => button.classList.toggle("is-active", button.dataset.accountView === view));
-  document.querySelectorAll(".account-view[data-account-view-panel]").forEach((panel) => {
-    const active = panel.dataset.accountViewPanel === view;
-    panel.hidden = !active;
-    panel.classList.toggle("active", active);
-  });
+  const page = document.querySelector(".account-page");
+  markPageFrameItems(page, (item) => item.dataset.accountView === view);
+  showPageFrameView(page, "data-account-view-panel", view);
   updateActualAccountPageTitle(view, currentAnalytics());
   // The phone's cards cover both markets at once.
   const marketSwitch = document.querySelector(".account-market-switch");
@@ -405,17 +403,14 @@ function showAccountView(view) {
   }
   const scroll = $("actualAccountContentScroll");
   if (scroll) {
-    // Avoid heavyweight CSS :has() selectors on the large account
-    // DOM.  A simple state class tells CSS whether the active page is one of
-    // the full-height table workspaces, reducing hover style recalculation.
-    scroll.classList.toggle("account-table-workspace-active", ["stockStats", "daily", "pairs", "trades"].includes(view));
+    scroll.classList.toggle("is-fill", Boolean(page.querySelector(".page-frame-view.active.is-fill")));
     scroll.scrollTop = 0;
   }
 
   // The main tabular views own their row scrollbar
   // (Title stays outside the visible scrollbar lane, like 查詢商品).
   // Reset that local row viewport as well when the user enters a view.
-  const activePanel = document.querySelector(`.account-view.active[data-account-view-panel="${view}"]`);
+  const activePanel = document.querySelector(`[data-account-view-panel="${view}"].active`);
   const localTableScroll = activePanel?.querySelector?.(
     ".account-stock-stats-table-wrap, .account-daily-table-wrap, .account-pair-table-wrap, .account-trades-wrap"
   );
@@ -494,7 +489,7 @@ function setupAccountColumnTitles() {
 }
 
 function bindDirectory() {
-  document.querySelectorAll(".account-directory [data-account-view]").forEach((button) => {
+  document.querySelectorAll(".account-page [data-account-view]").forEach((button) => {
     button.hidden = !viewAvailable(button.dataset.accountView);
     button.addEventListener("click", () => showAccountView(button.dataset.accountView));
   });
@@ -602,7 +597,7 @@ function applyAccountModeChrome() {
   });
   modeSeg?.classList.toggle("is-paper", paper);
   syncSegmented(modeSeg);
-  document.querySelectorAll(".account-directory [data-account-view]").forEach((button) => {
+  document.querySelectorAll(".account-page [data-account-view]").forEach((button) => {
     button.hidden = !viewAvailable(button.dataset.accountView);
   });
 }

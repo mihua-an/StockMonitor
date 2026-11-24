@@ -6,10 +6,10 @@ import { loadStateHtml } from "../core/load_state_view.js";
 import { syncSegmented } from "../core/settings_ui.js";
 import { createExpandMotion } from "../core/expand_motion.js";
 import { createJobLogToggle } from "../core/job_log_toggle.js";
-import { renderSteps, renderBar, renderProgress, renderLog, renderSummary, renderToday, renderLiveCards, renderPairCards, renderImportanceHorizons, renderImportanceCards } from "./training/model_center_view.js";
+import { renderPipeline, renderSteps, renderBar, renderProgress, renderLog, renderSummary, renderToday, renderLiveCards, renderPairCards, renderImportanceHorizons, renderImportanceCards } from "./training/model_center_view.js";
 import { userFacingMessage } from "../core/user_action.js";
 
-// 模型中心: 訓練狀態, the 10 live models and both models of every prediction, from one request
+// 資料中心's models: today's 流程 and 模型訓練 on 總覽, the 10 live models and both models of every prediction on 模型, from one request
 // (/api/training/models, which carries today's status). Training is a job Health runs; this page reads its status,
 // polls its progress while it runs, and asks for a manual run.
 let latestPayload = null;     // the last /api/training/models answer: the models, the slots, today, the last success
@@ -98,7 +98,7 @@ function renderJob() {
 }
 
 // Every card's body before the page's first answer: the load-state placeholder, which the answer's content morphs
-// over (training.html's cards are empty until then).
+// over (data_center.html's cards are empty until then).
 const CARD_BODIES = ["trainingLog", "trainingSummary", "trainingToday", "liveModelCards", "modelPairCards", "importanceCards"];
 
 function renderLoadState(state, detail = "") {
@@ -111,6 +111,7 @@ function renderAll(payload, read) {
   countdownBase = Number.isFinite(Number(today?.seconds_until_next_run)) ? { seconds: Number(today.seconds_until_next_run), at: Date.now() } : null;
   acceptJob(read, payload);
   renderJob();
+  setHtml("trainingPipeline", renderPipeline(today));
   setHtml("trainingToday", renderToday(today, secondsLeft()));
   renderLive(payload);
   renderPairs(payload);

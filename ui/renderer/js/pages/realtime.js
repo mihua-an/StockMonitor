@@ -2,7 +2,6 @@
 // live_redraw, canonical_view_owner, live_view_models, selection_controller, session_controller, startup_diagnostics)
 // into the dashboard context, and mounts, resumes and disposes the page.
 import { screenLayouts } from "../features/layouts/screen_layouts.js";
-import { TreeWorkspace } from "../core/tree_workspace.js";
 import { createComponentMetricsBinder } from "../features/realtime/component_metrics.js";
 import { installSelectionScenarioRunner } from "../features/realtime/selection_scenario_runner.js";
 import { realtimeContext } from "../core/dashboard_context.js";
@@ -45,8 +44,8 @@ function decorateLivePane(element, pane) {
 
 function livePanes() {
   const screens = screenLayouts();
-  return { selector: liveSurfaceSelector, Workspace: TreeWorkspace,
-    workspaceOptions: { initialTree: screens.active().tree, onChange: (tree) => screens.setTree(tree), decoratePane: decorateLivePane } };
+  return { selector: liveSurfaceSelector,
+    workspace: { initialTree: screens.active().tree, onChange: (tree) => screens.setTree(tree), decoratePane: decorateLivePane } };
 }
 
 const componentMetricsBinder = createComponentMetricsBinder({ viewResources, sendRealtimeClientMetric });
@@ -122,7 +121,7 @@ function mountLivePagePresentation() {
   try {
     mountDashboardPage({
       pageId: "realtime", root: document, context: realtimeContext,
-      panes: livePanes(),
+      ...livePanes(),
     });
   } finally { setMountingPresentation(false); }
   viewResources.own(screenLayouts().subscribe((screen) => dashboardWorkspace("realtime")?.show(screen.tree)));

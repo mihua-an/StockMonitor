@@ -1,12 +1,12 @@
-// A pane workspace of any shape (畫面配置): renders a pane tree (pane_tree.js), keeps one TabbedComponentHost per pane,
-// takes tab drops on the four edges of a pane and resizes with splitters. The layout is its owner's to store: every
-// change is handed to `onChange`.
+// A page's workspace as draggable panes (即時報價's screens, 歷史回放): renders a pane tree (pane_tree.js), keeps one
+// TabbedComponentHost per pane, takes tab drops on the four edges of a pane and resizes with splitters. The layout is its
+// owner's to store: every change is handed to `onChange`.
 //
-// Data is not this file's business, as in pane_workspace.js: a component subscribes when it mounts and lets go when it
-// is destroyed, whichever pane it is in. A change re-renders only the panes it touched.
+// Data is not this file's business: a component subscribes when it mounts and lets go when it is destroyed, whichever
+// pane it is in. Moving a tab only destroys it in one pane and mounts it in another; the page's market subscriptions
+// follow the selected symbol, never the panes. A change re-renders only the panes it touched.
 import { TabbedComponentHost } from "./tabbed_component_host.js";
-import { normalizeTree, treePanes, findTreePane, paneOfTreeComponent, moveTreeTab, splitTreePane, setTreePaneTabs, resizeTreeSplit } from "./pane_tree.js";
-import { pixelExtents } from "./pane_layout.js";
+import { normalizeTree, treePanes, findTreePane, paneOfTreeComponent, moveTreeTab, splitTreePane, setTreePaneTabs, resizeTreeSplit, pixelExtents } from "./pane_tree.js";
 import { tabDragSession } from "./tab_drag_session.js";
 import { beginSplitterDrag, splitPair } from "./splitter_drag.js";
 import { discardTrendSurfaces } from "./trend_surface_state.js";
@@ -22,7 +22,9 @@ function setExtent(element, prop, px) {
 
 export class TreeWorkspace {
   // `decoratePane(element, pane)`: the page's own marks on a pane, after every change of its tabs.
-  constructor({ pageId, element, context, registry, initialTree, onChange = null, decoratePane = null }) {
+  // `fixedTabs`: its features are fixed -- tabs move between panes but are never closed, and none is added.
+  // `pinned`: { id: { element, width } }: the page's own elements standing in the tree at a width of their own.
+  constructor({ pageId, element, context, registry, initialTree, onChange = null, decoratePane = null, fixedTabs = false, pinned = {} }) {
     this.pageId = String(pageId);
     this.element = element;
     this.context = context;
@@ -30,6 +32,8 @@ export class TreeWorkspace {
     this.initialTree = initialTree;
     this.onChange = onChange;
     this.decoratePane = decoratePane;
+    this.fixedTabs = Boolean(fixedTabs);
+    this.pinned = pinned;
     this.panes = new Map();                 // pane id -> { element, host }
     this.splits = new Map();                // split id -> element
     this.cleanup = [];
@@ -48,7 +52,7 @@ export class TreeWorkspace {
   }
 
   _normalize(raw) {
-    return normalizeTree(raw, { isKnown: (id) => this._isKnown(id) });
+    return normalizeTree(raw, { isKnown: (id) => this._isKnown(id), isPinned: (id) => Object.hasOwn(this.pinned, id) });
   }
 
   mount() {
@@ -114,6 +118,7 @@ export class TreeWorkspace {
         config: { componentIds: pane.componentIds, activeComponentId: pane.activeComponentId },
         onConfigChange: (config) => queueMicrotask(() => this._paneChanged(id, config)),
         onExternalTabDrop: (componentId, index) => this._change(moveTreeTab(this.layout, componentId, id, index)),
+        fixedTabs: this.fixedTabs,
         isPlacedElsewhere: (componentId) => {
           const holder = paneOfTreeComponent(this.layout, componentId);
           return Boolean(holder && holder.id !== id);
@@ -132,14 +137,14 @@ export class TreeWorkspace {
   }
 
   _nodeElement(node, used) {
-    if (node.kind === "pane") return this.panes.get(node.id).element;
+    if (node.kind === "pane") return this._elementOf(node);
     used.add(node.id);
     const element = this.splits.get(node.id) || Object.assign(document.createElement("div"), { className: "pane-tree-split" });
     element.dataset.dir = node.dir;
     this.splits.set(node.id, element);
     const children = [];
     node.children.forEach((child, index) => {
-      if (index) children.push(this._splitter(node.id, node.dir, index - 1));
+      if (index) children.push(this._splitter(node.id, node.dir, index - 1, Boolean(child.pinned || node.children[index - 1].pinned)));
       children.push(this._nodeElement(child, used));
     });
     element.replaceChildren(...children);
@@ -152,7 +157,8 @@ export class TreeWorkspace {
   }
 
   _elementOf(node) {
-    return node.kind === "pane" ? this.panes.get(node.id)?.element : this.splits.get(node.id);
+    if (node.kind === "split") return this.splits.get(node.id);
+    return node.pinned ? this.pinned[node.id].element : this.panes.get(node.id)?.element;
   }
 
   /** Whole-pixel extents for every split and pane (a half-pixel edge renders as a blurred, lighter frame line). */
@@ -166,16 +172,19 @@ export class TreeWorkspace {
       setExtent(element, "width", w);
       setExtent(element, "height", h);
       if (node.kind !== "split") return;
-      const extents = pixelExtents(node.children.map((child) => child.size), node.dir === "row" ? w : h, GAP);
+      const fixed = node.children.map((child) => (child.pinned ? this.pinned[child.id].width : null));
+      const extents = pixelExtents(node.children.map((child) => child.size), node.dir === "row" ? w : h, GAP, fixed);
       node.children.forEach((child, index) => place(child, node.dir === "row" ? extents[index] : w, node.dir === "row" ? h : extents[index]));
     };
     place(this.layout, width, height);
   }
 
-  _splitter(splitId, dir, index) {
+  // `still`: the space beside a pinned element, which keeps its width.
+  _splitter(splitId, dir, index, still = false) {
     const kind = dir === "row" ? "col" : "row";
     const splitter = document.createElement("div");
-    splitter.className = `pane-splitter pane-splitter-${kind}`;
+    splitter.className = still ? `pane-gap-${kind}` : `pane-splitter pane-splitter-${kind}`;
+    if (still) return splitter;
     splitter.setAttribute("role", "separator");
     splitter.setAttribute("aria-orientation", kind === "col" ? "vertical" : "horizontal");
     splitter.addEventListener("pointerdown", (event) => this._beginResize(event, splitter, splitId, dir, index));

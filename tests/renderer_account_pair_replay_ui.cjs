@@ -42,6 +42,8 @@ async function scenario(base, accountHtml) {
   };
 
   document.querySelector("main").innerHTML = accountHtml;
+
+  (await import(`${base}js/core/page_frame.js`)).hydratePageFrames(document);
   document.querySelector('[data-account-view-panel="pairs"]').hidden = false;
   await import(`${base}js/dashboard_components.js`);
   const { account, actualAccountExpandedPairDays } = await import(`${base}js/features/account/account_state.js`);

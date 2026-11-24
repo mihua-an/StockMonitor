@@ -177,6 +177,23 @@ def _metrics(y: np.ndarray, p: np.ndarray, codes: np.ndarray | None = None) -> d
     return out
 
 
+def _by_date(parts: dict[str, Any], y: dict[str, np.ndarray], p: dict[str, np.ndarray]) -> dict[str, dict[str, int]]:
+    """The winner on each trading date (資料中心's day): its labelled samples, how many came true, how many it called
+    (probability at least a half) and how many of those came true."""
+    out: dict[str, dict[str, int]] = {}
+    for name, part in parts.items():
+        dates = part["trading_date"].astype(str).to_numpy()
+        for day in np.unique(dates):
+            mask = dates == day
+            called = p[name][mask] >= 0.5
+            row = out.setdefault(str(day), {"samples": 0, "positives": 0, "called": 0, "hits": 0})
+            row["samples"] += int(mask.sum())
+            row["positives"] += int(y[name][mask].sum())
+            row["called"] += int(called.sum())
+            row["hits"] += int(y[name][mask][called].sum())
+    return out
+
+
 def _baseline(y: dict[str, np.ndarray], winner_log_loss: float) -> dict[str, Any]:
     """The constant baseline: the training part's positive ratio predicted for every row of each part, unweighted
     like the winner's selection. ``beaten`` when the winner's validation log loss is strictly lower."""
@@ -280,8 +297,8 @@ class OnlineModelTrainer:
                 if not check["ok"]:
                     rejected.append({"kind": kind, "slot": slot, "reason": "EXPORT_DEVIATES", **check})
                     continue
-                metrics = {name: _metrics(y[name], models.predict_onnx(onnx_bytes, x[name]), codes[name]) if len(x[name])
-                           else {"samples": 0} for name in parts}
+                probabilities = {name: models.predict_onnx(onnx_bytes, x[name]) if len(x[name]) else np.zeros(0) for name in parts}
+                metrics = {name: _metrics(y[name], probabilities[name], codes[name]) for name in parts}
             except CANDIDATE_ERRORS as exc:
                 _log.warning("training candidate %s of %s failed at %s: %s: %s", kind, slot, step, type(exc).__name__, exc,
                              exc_info=True)
@@ -289,7 +306,7 @@ class OnlineModelTrainer:
                                  "error": f"{type(exc).__name__}: {exc}"[:500]})
                 continue
             candidates.append({"kind": kind, "fitted": fitted, "onnx": onnx_bytes, "metrics": metrics, "matrix": matrix,
-                               "export_max_abs_diff": check["max_abs_diff"], "params": models.params(kind, fitted)})
+                               "by_date": _by_date(parts, y, probabilities), "export_max_abs_diff": check["max_abs_diff"], "params": models.params(kind, fitted)})
         if not candidates:
             if all(r["reason"] == "EXPORT_DEVIATES" for r in rejected):
                 return {"status": "EXPORT_REJECTED", "counts": counts, "rejected_candidates": rejected,
@@ -324,7 +341,7 @@ class OnlineModelTrainer:
             "label_version": LABEL_POLICY["version"], "label_column": label,
             "dataset_version": dataset["dataset_id"], "training_run_id": run_id,
             "horizon_authority_version": dataset["horizon_authority_version"],
-            "validation": {"status": "OFFLINE_METRICS_ONLY", "metrics": winner["metrics"],
+            "validation": {"status": "OFFLINE_METRICS_ONLY", "metrics": winner["metrics"], "by_date": winner["by_date"],
                            "export_max_abs_diff": winner["export_max_abs_diff"]},
             "test_only": False,
             # What the model center shows as 特徵權重; Rust B does not read it.

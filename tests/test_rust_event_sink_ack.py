@@ -233,6 +233,27 @@ def test_a_live_only_event_is_final_at_its_ack(monkeypatch):
     assert recorder.started == [] and recorder.emitted == []
 
 
+def test_a_publisher_waiting_for_the_verdict_is_told_market_runtimes_own_answer():
+    # 11-23: publish() said True (queued) for TXF limits Market Runtime then refused; the provider took the queue's word
+    # for an admission. publish_with_verdict tells the publisher Market Runtime's answer, once.
+    sink = RustDaemonEventSink(url="ws://127.0.0.1:1/live", token="t", capacity=1024)
+    told = []
+    accepted, refused, duplicate = _event(1), _event(2), _event(3)
+    for event in (accepted, refused, duplicate):
+        assert sink.publish_with_verdict(event, lambda ok, reason, n=event.sequence: told.append((n, ok, reason))) is True
+    assert told == [], "queued is no verdict"
+    sink._record_ack(accepted, {"accepted": True, "storage": "wal", "durable_sequence": 4}, resent=False, instance="mr-1")
+    sink._record_ack(refused, {"accepted": False, "reason": "RejectedSequence"}, resent=False)
+    sink._record_ack(duplicate, {"accepted": False, "reason": "RejectedSequence"}, resent=True)
+    sink._record_ack(accepted, {"accepted": True, "storage": "wal", "durable_sequence": 4}, resent=True, instance="mr-2")
+    assert told == [(1, True, None), (2, False, "RejectedSequence"), (3, True, None)], \
+        "a refusal carries Market Runtime's reason; a resend it already applied is accepted; told once"
+    stopped = RustDaemonEventSink(url="ws://127.0.0.1:1/live", token="t", capacity=1024)
+    stopped.stop_admission()
+    assert stopped.publish_with_verdict(_event(4), lambda ok, reason: told.append((4, ok, reason))) is False
+    assert told[-1][0] != 4 and stopped._verdicts == {}, "not queued: no verdict comes and nothing is kept"
+
+
 class LateJoinPeer(FakeWebSocket):
     """Answers the batch with a late join the batch revealed (market_runtime late_join.rs)."""
 

@@ -76,6 +76,7 @@ export async function checkResume(base, realtimeHtml, historyHtml, selectedSymbo
   const runtime = await import(`${base}js/pages/realtime.js`);
   await import(`${base}js/dashboard_components.js`);
   const dashboard = await import(`${base}js/core/dashboard_runtime.js`);
+  const historyPanes = await import(`${base}js/features/history/pane_defaults.js`);
   // Empty replay views, through the data boundary like every market view (they carry a read model).
   const { withMarketRead } = await import(`${base}js/core/market_read_adapters.js`);
   for (const id of ['trendChart', 'orderbook', 'tickDetails', 'tradeFlow', 'technicalAnalysis', 'eventFeed', 'tradeDetails']) replayHistoryContext.dataSource.setResolver(id, () => withMarketRead({}));
@@ -111,7 +112,7 @@ export async function checkResume(base, realtimeHtml, historyHtml, selectedSymbo
     const cache = document.createDocumentFragment(); cache.append(...main.childNodes);
     main.innerHTML = historyHtml;
     appState.currentPage = 'history';
-    dashboard.mountDashboardPage({ pageId: 'history', context: replayHistoryContext });
+    dashboard.mountDashboardPage({ pageId: 'history', context: replayHistoryContext, selector: '.history-workspace', workspace: { initialTree: historyPanes.historyInitialTree({ width: 1600, height: 800 }), fixedTabs: true } });
     // Replay/other pages can evict the live cache (64 entries / five minutes).
     // Returning must restore subscriptions even when there is no cached view.
     const releases = Array.from({ length: 70 }, (_, index) => subscribeRealtimeView({ market: 'STK', code: String(5000 + index), trading_date: date, session: 'DAY', channels: ['summary'] }, () => {}));

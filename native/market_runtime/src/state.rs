@@ -103,6 +103,9 @@ pub struct Quote {
     /// Exchange time and market minute of the newest valid price.
     pub price_exchange_ts_ns: i64,
     pub price_minute: Option<i32>,
+    /// The newest valid price is a print fetched from the broker's history afterwards (flags.backfill): its minute
+    /// is past, so no minute is forming (wire::current_point). A closed session viewed is all such prints.
+    pub price_backfilled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -379,6 +382,7 @@ impl SymbolState {
         } else {
             self.quote.current = Some(price);
             self.quote.price_exchange_ts_ns = event.exchange_ts_ns;
+            self.quote.price_backfilled = event.flags.backfill;
             self.quote.price_minute = if minute >= 0 {
                 Some(minute)
             } else {
@@ -427,7 +431,9 @@ impl SymbolState {
 
     fn apply(&mut self, event: &MarketEvent) -> Changed {
         let mut changed = Changed::default();
-        self.source_sequences.insert(event.payload.stream_key().to_owned(), event.sequence);
+        if event.payload.sequence_fenced() {
+            self.source_sequences.insert(event.payload.stream_key().to_owned(), event.sequence);
+        }
         if event.durable_sequence > 0 {
             // 0 = an indicative (試撮) event applied live but never stored.
             self.last_durable_sequence = event.durable_sequence;
@@ -798,6 +804,7 @@ impl Engine {
         if event.generation < fence.generation {
             ApplyResult::RejectedGeneration
         } else if event.generation == fence.generation
+            && event.payload.sequence_fenced()
             && event.sequence <= fence.source_sequences.get(event.payload.stream_key()).copied().unwrap_or(0)
         {
             ApplyResult::RejectedSequence
@@ -905,7 +912,9 @@ impl Engine {
             fence.source_sequences.clear();
         }
         fence.generation = event.generation;
-        fence.source_sequences.insert(event.payload.stream_key().to_owned(), event.sequence);
+        if event.payload.sequence_fenced() {
+            fence.source_sequences.insert(event.payload.stream_key().to_owned(), event.sequence);
+        }
         match self.current.get(&key.instrument) {
             Some(current) if partition_order(current) > partition_order(&key.session) => {}
             _ => {
@@ -1480,6 +1489,27 @@ mod tests {
         next.generation = 2;
         engine.apply(&next);
         assert_eq!(engine.state(&key).unwrap().reference.limit_up, Some(1_970_000), "the day's limits survive the restart");
+    }
+
+    #[test]
+    fn the_providers_limits_are_held_after_a_reference_a_quote_stated() {
+        // 11-23 night: TXF quotes stated the session reference with their own sequences (in the thousands), then the
+        // provider's limits came on its own counter (1): refused as a stale sequence, so 漲停 was never shown.
+        let mut engine = Engine::default();
+        let reference = |sequence, limit_up, reference_price| {
+            let mut event = trade("2344", sequence, 0, false);
+            event.payload = Payload::Reference { limit_up, limit_down: limit_up.map(|_| 1_620_000), prev_close: None,
+                                                 prev_volume: None, reference_price, name: None, reference_source: None };
+            event
+        };
+        let stated = reference(5_000, None, Some(1_800_000));
+        assert_eq!(engine.apply(&stated).0, ApplyResult::Applied);
+        assert_eq!(engine.apply(&reference(1, Some(1_970_000), None)).0, ApplyResult::Applied);
+        let held = &engine.state(&stated.state_key()).unwrap().reference;
+        assert_eq!((held.limit_up, held.limit_down, held.reference_price), (Some(1_970_000), Some(1_620_000), Some(1_800_000)));
+        // A print is still ordered by its own sequence.
+        assert_eq!(engine.apply(&trade("2344", 7, 1_805_000, false)).0, ApplyResult::Applied);
+        assert_eq!(engine.apply(&trade("2344", 6, 1_806_000, false)).0, ApplyResult::RejectedSequence);
     }
 
     #[test]

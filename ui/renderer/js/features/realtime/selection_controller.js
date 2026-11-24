@@ -107,7 +107,7 @@ export function setTrendViewMode(mode) {
   // as a stock chart, which is why its line lost its red/green), while the slot that really switched
   // kept the previous variant's label and frame numbers. TrendChartComponent is the single writer:
   // it stamps the identity on mount and on reconfigure, which is when a surface changes variant.
-  // Panes can be rearranged (pane_workspace.js), so the trend is selected wherever it is placed.
+  // Panes can be rearranged (tree_workspace.js), so the trend is selected wherever it is placed.
   selectDashboardComponent("realtime", componentId, { notify: false });
 }
 

@@ -59,7 +59,7 @@ app.whenReady().then(async () => {
   const base = pathToFileURL(renderer + path.sep).href;
   try {
     // The page itself: the node is the clock's, the poll's answer goes to the clock, the page has no tick of its own.
-    const page = fs.readFileSync(path.join(renderer, "js", "pages", "data_center.js"), "utf8");
+    const page = fs.readFileSync(path.join(renderer, "js", "features", "data_center", "closing_card.js"), "utf8");
     const uses = page.match(/dataCenterClosingNext/g) || [];
     if (uses.length !== 1 || !/createClosingClock\(\$\("dataCenterClosingNext"\)\)/.test(page)) throw new Error("data_center.js hands #dataCenterClosingNext to the clock and names it nowhere else");
     if (/renderClosingNext/.test(page) || /setInterval/.test(page)) throw new Error("data_center.js neither draws the figures nor ticks");

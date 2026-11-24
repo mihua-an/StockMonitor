@@ -2,7 +2,7 @@ const { makeTempDir } = require("./support/temp_dirs.cjs");
 // 資料中心's 收盤整理 card in a real Chromium (run with Electron): the page's own code on the real data_center.html and
 // a fake app_api answering /api/data-center/closing while STK is being materialized. Checked: the four steps in one row,
 // the bar shown at the day's percent, the running job's phase pip in the 執行紀錄, the figures beside; and the card is
-// the same job-status component as 模型中心's 訓練狀態 (training.html): step card, log line and figure compute the same.
+// the same job-status component as 模型訓練 beside it: step card, log line and figure compute the same.
 // Set CLOSING_UI_SHOT=<png path> to save a picture of the card.
 const { app, BrowserWindow } = require("electron");
 const path = require("node:path");
@@ -13,7 +13,7 @@ app.disableHardwareAcceleration();
 app.setPath("userData", makeTempDir("stockmonitor-closing-progress-ui-"));
 app.on("window-all-closed", () => {});
 
-async function scenario(base, dataCenterHtml, trainingHtml) {
+async function scenario(base, dataCenterHtml) {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const fail = (message) => { throw new Error(message); };
   window.desktopAPI = { networkManifest: { routes: [["/api/", "app_api"]], services: { app_api: { url: "http://app.invalid" } } } };
@@ -44,6 +44,7 @@ async function scenario(base, dataCenterHtml, trainingHtml) {
   };
   const main = document.getElementById("pageContainer");
   main.innerHTML = dataCenterHtml;
+  (await import(`${base}js/core/page_frame.js`)).hydratePageFrames(document);
   const page = await import(`${base}js/pages/data_center.js`);
   page.initDataCenterPage();
   for (let i = 0; i < 50 && !document.querySelector("#dataCenterClosingLog .job-log-row"); i += 1) await wait(20);
@@ -70,19 +71,10 @@ async function scenario(base, dataCenterHtml, trainingHtml) {
   const row = Number(rowLeft[1]) * 3600 + Number(rowLeft[2]) * 60 + Number(rowLeft[3]);
   if (top !== row) fail(`預估剩餘 ${top}s vs eta ${row}s`);
   if (/\b0\/s/.test(pip) || !/44\.1k\/s/.test(pip)) fail(`write's rate: ${pip}`);
-  const history = document.querySelectorAll("#dataCenterClosingHistory tbody tr");
-  if (history.length !== 3) fail(`上次物化 rows: ${history.length}`);
-  // 上次物化 is a table card of its own under the 收盤整理 card, titled as a settings group (the 11-01 sample the user
-  // approved); its cells keep the card's inset.
-  const historyHost = document.querySelector("#dataCenterClosingHistory");
-  if (historyHost.firstElementChild?.tagName !== "TABLE" || historyHost.dataset.gridVariant !== "page") fail("上次物化 is a table card");
-  if (historyHost.previousElementSibling?.textContent.trim() !== "上次物化") fail("上次物化's group title");
-  if (!history[2].textContent.includes("美股")) fail("a Futu close is named 美股");
-  // 下次物化 in the card, then 上次物化 below it.
-  const nextBox = document.getElementById("dataCenterClosingNext").getBoundingClientRect();
-  const historyBox = historyHost.getBoundingClientRect();
-  const closingBox = document.querySelector(".dc-closing").getBoundingClientRect();
-  if (!(nextBox.bottom <= closingBox.bottom && closingBox.bottom <= historyBox.top)) fail("下次物化 in the card, then 上次物化");
+  const last = [...document.querySelectorAll("#dataCenterClosingLast .settings-item")];
+  if (last.length !== 3) fail(`上次物化 rows: ${last.length}`);
+  if (!last[2].textContent.includes("美股")) fail("a Futu close is named 美股");
+  if (!last[0].querySelector(".settings-badge.is-warn") || !last[1].querySelector(".settings-badge.is-pass")) fail("上次物化's results");
   // 執行紀錄 opens by itself while the close it shows is being materialized (user 11-01).
   await wait(450);
   const logPane = document.querySelector(".dc-closing .job-log-pane");
@@ -101,7 +93,7 @@ async function scenario(base, dataCenterHtml, trainingHtml) {
   });
   const dataCenter = sample();
   page.disposeDataCenterPage();
-  main.innerHTML = trainingHtml;
+  main.innerHTML = dataCenterHtml;
   const { renderSteps, renderLog, renderSummary } = await import(`${base}js/pages/training/model_center_view.js`);
   const job = { state: "SUCCEEDED", started_at: iso(600), updated_at: iso(60), log: [{ step: "checking", started_at: iso(600), ended_at: iso(590) }] };
   document.getElementById("trainingSteps").innerHTML = renderSteps({ job, running: false });
@@ -112,6 +104,7 @@ async function scenario(base, dataCenterHtml, trainingHtml) {
     fail(`one component on both pages: ${JSON.stringify(dataCenter)} vs ${JSON.stringify(training)}`);
   }
   main.innerHTML = dataCenterHtml;
+  (await import(`${base}js/core/page_frame.js`)).hydratePageFrames(document);
   page.initDataCenterPage();
   for (let i = 0; i < 100 && !document.querySelector("#dataCenterClosingLog .job-log-row"); i += 1) await wait(20);
   // Leaving the page and coming back draws the card again (its poll restarts with the page).
@@ -128,9 +121,8 @@ app.whenReady().then(async () => {
   const renderer = path.join(__dirname, "..", "ui", "renderer");
   const base = pathToFileURL(renderer + path.sep).href;
   const dataCenterHtml = fs.readFileSync(path.join(renderer, "pages", "data_center.html"), "utf8");
-  const trainingHtml = fs.readFileSync(path.join(renderer, "pages", "training.html"), "utf8");
   try {
-    const rect = await win.webContents.executeJavaScript(`(${scenario.toString()})(${JSON.stringify(base)}, ${JSON.stringify(dataCenterHtml)}, ${JSON.stringify(trainingHtml)})`);
+    const rect = await win.webContents.executeJavaScript(`(${scenario.toString()})(${JSON.stringify(base)}, ${JSON.stringify(dataCenterHtml)})`);
     if (process.env.CLOSING_UI_SHOT) await new Promise((resolve) => setTimeout(resolve, 300));
     if (process.env.CLOSING_UI_SHOT) fs.writeFileSync(process.env.CLOSING_UI_SHOT, (await win.webContents.capturePage(rect)).toPNG());
     console.log("closing progress ui contract passed");

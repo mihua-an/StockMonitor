@@ -76,7 +76,11 @@ function liveTradeQuery() {
 
 // 漲停/跌停 for the 成交明細 tape: Market Runtime's (the contract's official ones), or none -- never derived from 昨收.
 function tapeLimitPrices(target) {
-  if (!target || target === "TXFR1") return { limitUp: null, limitDown: null };
+  if (!target) return { limitUp: null, limitDown: null };
+  if (target === "TXFR1") {
+    const shown = txfDisplay() || {};
+    return { limitUp: positiveNumberOrNull(shown.limit_up), limitDown: positiveNumberOrNull(shown.limit_down) };
+  }
   const summary = liveMarketDataGateway.snapshot(stockCanonicalViewSpec(target))?.summary || {};
   return { limitUp: positiveNumberOrNull(summary.limit_up), limitDown: positiveNumberOrNull(summary.limit_down) };
 }
@@ -378,7 +382,8 @@ function futuresTrendViewModel() {
     // 試撮: the header marks the indicative price "#".
     indicative: Boolean(snapshot.indicative),
     metrics: {
-      limitUp: null, limitDown: null,
+      // The contract's official 漲停 / 跌停 (Market Runtime's), so the price is marked 紅底 / 綠底 at a limit.
+      limitUp: positiveNumberOrNull(snapshot.limit_up), limitDown: positiveNumberOrNull(snapshot.limit_down),
       // 振幅 is the tab's own range against its reference. 漲跌 is Market Runtime's for the price it shows.
       ...trendMetrics({ change: snapshot.change, changePct: snapshot.change_pct, amplitude: tabAmplitude({ reference: reference.price, high, low }) }),
       // 目前無使用，之後要刪除（期貨走勢的 N分上漲／N分下跌 列已移除 2026-10-16；台指期沒有模型預測）

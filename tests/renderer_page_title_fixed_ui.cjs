@@ -1,5 +1,5 @@
 const { makeTempDir } = require("./support/temp_dirs.cjs");
-// 帳務, 模型中心 and 資料中心 keep their title row at the top (使用者 11-03), in a real Chromium (run with Electron): each
+// 帳務 and 資料中心 keep their title row at the top (使用者 11-03), in a real Chromium (run with Electron): each
 // page's real HTML in the App's frame (.app > .main > .page-container), its content made taller than the window and
 // scrolled to the bottom. Checked: the title row is not inside the scrolling area and does not move, the area under it
 // is what scrolls (the App's frame does not), and the title row lines up with the column under it.
@@ -14,13 +14,13 @@ app.on("window-all-closed", () => {});
 
 // [page html, title row, scroll area, the column under the title row (where the filler goes)].
 const PAGES = [
-  ["account.html", ".account-page-header", ".account-content-scroll", ".account-view.active"],
-  ["training.html", ".settings-page-head", ".training-scroll-area", ".mc-wrap"],
-  ["data_center.html", ".settings-page-head", ".dc-scroll-area", ".dc-wrap"],
+  ["account.html", ".page-frame-head", ".page-frame-scroll", ".page-frame-view.active"],
+  ["data_center.html", ".page-frame-head", ".page-frame-scroll", ".page-frame-view.active"],
 ];
 
-function measure(html, headSelector, scrollSelector, columnSelector) {
+async function measure(base, html, headSelector, scrollSelector, columnSelector) {
   document.body.innerHTML = `<div class="app app-bottom-nav"><main class="main main-with-bottom-nav"><section id="pageContainer" class="page-container">${html}</section></main></div>`;
+  (await import(`${base}js/core/page_frame.js`)).hydratePageFrames(document);
   const head = document.querySelector(headSelector);
   const scroll = document.querySelector(scrollSelector);
   const column = document.querySelector(columnSelector);
@@ -58,7 +58,7 @@ app.whenReady().then(async () => {
   const failures = [];
   try {
     for (const [file, head, scroll, column] of PAGES) {
-      const m = await run(measure, fs.readFileSync(path.join(pages, file), "utf8"), head, scroll, column);
+      const m = await run(measure, pathToFileURL(path.join(__dirname, "..", "ui", "renderer") + path.sep).href, fs.readFileSync(path.join(pages, file), "utf8"), head, scroll, column);
       const tag = `${file}: ${JSON.stringify(m)}`;
       if (m.inside) failures.push(`${file}: the title row sits inside the scroll area`);
       if (m.scrolled < 1000) failures.push(`${file}: the area under the title row scrolls (${tag})`);

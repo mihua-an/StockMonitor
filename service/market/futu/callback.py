@@ -354,10 +354,12 @@ class FutuThinCallbackAdapter(ProviderThinCallbackAdapter):
                 self._record_rejection("minute_bar", "rust_rejected", code)
         return published, skipped
 
-    def publish_reference(self, code: str, trading_date: str, data: Mapping[str, Any]) -> bool:
+    def publish_reference(self, code: str, trading_date: str, data: Mapping[str, Any],
+                          on_verdict: Callable[[bool, str | None], None]) -> bool:
         """One reference event (昨收, name) for ``code``'s ``trading_date`` partition (service/market/futu/reference.py).
 
-        It is instrument data asked of OpenD, not a print: stamped with the time it was read, like Shioaji's."""
+        It is instrument data asked of OpenD, not a print: stamped with the time it was read, like Shioaji's. Returns
+        whether the queue to Market Runtime took it; Market Runtime's own answer goes to ``on_verdict``."""
         code = str(code).strip().upper()
         market = code.split(".", 1)[0] if "." in code else "US"
         now_ns = time.time_ns()
@@ -365,13 +367,13 @@ class FutuThinCallbackAdapter(ProviderThinCallbackAdapter):
             key = (code, "reference")
             sequence = self._sequences.get(key, 0) + 1
             self._sequences[key] = sequence
-            accepted = bool(self._sink.publish(RustLiveEvent(
+            queued = bool(self._sink.publish_with_verdict(RustLiveEvent(
                 source="futu", market=market, code=code,
                 generation=max(0, int(self._generation())), sequence=sequence, event_type="reference",
                 exchange_ts_ns=now_ns, arrival_ns=now_ns, data=dict(data), time_quality="backend_clock",
                 describes_trading_date=str(trading_date),
-            )))
-        return accepted
+            ), on_verdict))
+        return queued
 
     def install(self, context: Any, sdk: Any) -> int:
         if self._installed:

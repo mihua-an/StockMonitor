@@ -1,6 +1,4 @@
 // One splitter drag for every resizable layout (core/splitter_drag.js), and the product lists' sideways rail.
-// 10-19: 歷史回放's lower panels crept 2 px per drag -- the drag measured each panel's border box (a 1 px border
-// outside width: 100%) and wrote it back into the grid tracks. The tracks are now read from the grid.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { beginSplitterDrag, splitPair } from "../ui/renderer/js/core/splitter_drag.js";
@@ -58,13 +56,13 @@ const down = (pointerId, clientX) => ({ pointerId, clientX, clientY: 0, preventD
 }
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
-for (const path of ["ui/renderer/js/core/pane_workspace.js", "ui/renderer/js/features/history/workspace_layout.js"]) {
+for (const path of ["ui/renderer/js/core/tree_workspace.js"]) {
   const source = read(path);
   assert.match(source, /from "(?:\.\/|\.\.\/\.\.\/core\/)splitter_drag\.js"/, `${path} uses the shared drag`);
   assert.doesNotMatch(source, /addEventListener\("pointermove"/, `${path} binds no drag listeners of its own`);
 }
-assert.match(read("ui/renderer/styles/layout/workspace.css"), /\.pane-mode > \.pane-row > \[data-pane-id\] \{[^}]*box-sizing: border-box;/,
-  "a pane's border stays inside the extent the workspace gives it (歷史回放's lower row is a pane workspace)");
+assert.match(read("ui/renderer/styles/layout/workspace.css"), /\.pane-tree-split > \[data-pane-id\] \{[^}]*box-sizing: border-box;/,
+  "a pane's border stays inside the extent the workspace gives it");
 assert.match(read("ui/renderer/styles/layout/workspace.css"), /body\.workspace-resizing\[data-resize-cursor="col-resize"\]/,
   "the drag cursor is the shared layout's, not one page's");
 

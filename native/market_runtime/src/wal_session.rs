@@ -62,7 +62,8 @@ pub fn dedupe(events: Vec<MarketEvent>) -> (Vec<MarketEvent>, Ledger) {
             ledger.duplicates += 1;
             continue;
         }
-        if let Some(last) = last_in_stream.get(&stream) {
+        // A Reference has several producers with no shared order (Payload::sequence_fenced): never out of order.
+        if let Some(last) = last_in_stream.get(&stream).filter(|_| e.payload.sequence_fenced()) {
             if e.sequence > 0 && e.sequence < *last {
                 ledger.out_of_order += 1;
             }

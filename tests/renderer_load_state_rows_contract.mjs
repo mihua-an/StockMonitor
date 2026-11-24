@@ -6,7 +6,7 @@ import fs from "node:fs";
 // by hand, each its own markup.
 const files = [
   "features/account/daily_pairs_view.js", "features/account/daytrade_view.js", "features/account/stock_stats_view.js",
-  "features/data_center/closing_progress_view.js", "features/realtime/product_list.js",
+  "features/data_center/days_view.js", "features/realtime/product_list.js",
   "features/workspace/workspace_trades_component.js", "features/realtime/components/industry_index_list_component.js",
 ];
 for (const file of files) {

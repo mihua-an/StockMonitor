@@ -12,23 +12,25 @@ app.on('window-all-closed', () => {});
 
 async function scenario(base, realtimeHtml) {
   const settle = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  // A pane workspace (pane_workspace.js) of two rows: whole-pixel panes, and a splitter drag moves only its own edge.
-  const { PaneWorkspace, layoutFromSlots } = await import(`${base}js/core/pane_workspace.js`);
+  // A pane workspace (tree_workspace.js) of two rows: whole-pixel panes, and a splitter drag moves only its own edge.
+  const { TreeWorkspace } = await import(`${base}js/core/tree_workspace.js`);
   document.querySelector('main').innerHTML = realtimeHtml;
   const workspaceElement = document.querySelector('.realtime-workspace');
   workspaceElement.style.width = '1900px'; workspaceElement.style.height = '720px';
   // No components: the geometry is the workspace's alone (every pane shows the add-feature page).
   const registry = { list: () => [], get: () => null, supports: () => false, titleFor: () => '', chooserRows: () => [] };
-  const workspace = new PaneWorkspace({
-    pageId: 'realtime', element: workspaceElement, context: { mode: 'live' }, registry, storageKey: 'geometryTestPanes',
-    rows: 2,
-    defaultLayout: () => layoutFromSlots({
-      rows: [['productList', 'topAuxiliary', 'liveInfo'], ['analysisPrimary', 'analysisSecondary', 'analysisTertiary', 'analysisQuaternary', 'auxiliary', 'analysisQuinary']],
-      tabbedSlots: {}, widths: [['50%', '25%'], ['22%', '18%', '15%', '15%', '15%']], heights: ['36%'],
-    }),
+  const pane = (id, size) => ({ kind: 'pane', id, size, componentIds: [id], activeComponentId: id });
+  const row = (id, size, children) => ({ kind: 'split', id, dir: 'row', size, children });
+  const workspace = new TreeWorkspace({
+    pageId: 'realtime', element: workspaceElement, context: { mode: 'live', supports: () => true },
+    registry: { ...registry, get: (id) => ({ id, create: () => ({ mount() {}, destroy() {}, resize() {} }) }), supports: () => true, titleFor: (id) => id, tabTitleFor: (id) => id },
+    initialTree: { kind: 'split', id: 'root', dir: 'column', size: 1, children: [
+      row('top', 0.36, [pane('productList', 0.5), pane('topAuxiliary', 0.25), pane('liveInfo', 0.25)]),
+      row('bottom', 0.64, [pane('analysisPrimary', 0.22), pane('analysisSecondary', 0.18), pane('analysisTertiary', 0.15), pane('analysisQuaternary', 0.15), pane('auxiliary', 0.15), pane('analysisQuinary', 0.15)]),
+    ] },
   }).mount();
   await settle();
-  const rows = [...workspaceElement.querySelectorAll('.pane-row')];
+  const rows = [...workspaceElement.querySelectorAll('.pane-tree-split[data-dir="row"]')];
   if (rows.length !== 2) throw new Error(`expected 2 pane rows, got ${rows.length}`);
   const fractional = [...workspaceElement.querySelectorAll('[data-pane-id]')].map((pane) => pane.getBoundingClientRect())
     .filter((r) => [r.left, r.top, r.width, r.height].some((value) => Math.abs(value - Math.round(value)) > 0.01));

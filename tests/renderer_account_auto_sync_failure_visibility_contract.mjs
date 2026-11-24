@@ -28,7 +28,8 @@ const notice = {
   querySelector: (selector) => (selector === "[data-account-notice-text]" ? noticeText : { onclick: null }),
 };
 globalThis.document = { getElementById: (id) => (id === "actualAccountNotice" ? notice : null),
-  querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, removeEventListener() {},
+  querySelector: (selector) => (selector === ".account-page" ? { querySelectorAll: () => [], querySelector: () => null, dataset: {} } : null),
+  querySelectorAll: () => [], addEventListener() {}, removeEventListener() {},
   body: { dataset: {} } };
 let backend = {};
 globalThis.fetch = async (url, options = {}) => {

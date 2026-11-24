@@ -21,9 +21,10 @@ import { escapeHtml } from "../../../core/utility.js";
 import { morphInto } from "../../../core/dom_morph.js";
 import { inFlight, runSingleFlight } from "../../../core/user_action.js";
 import { mountShell } from "../../../core/component_shell.js";
-import { renderColumnGroupHtml, renderColumnHeaderHtml } from "../../../core/column_title.js";
+import { renderColumnGroupHtml } from "../../../core/column_title.js";
 import { PAPER_LEDGER_ORDER_COLUMNS, PAPER_LEDGER_POSITION_COLUMNS, PAPER_LEDGER_REALIZED_COLUMNS } from "../../../core/column_schemas.js";
-import { destroyStandardDataGrid, expandDetailRowHtml, recordExpandBody, upgradeStandardDataGrid } from "../../../core/data_grid.js";
+import { ledgerDetailRowHtml, ledgerPairRowHtml, ledgerStockName as stockName, ledgerTableHtml as tableHtml, ledgerTinted as tinted } from "../../../core/components/ledger_list.js";
+import { destroyStandardDataGrid, recordExpandBody, upgradeStandardDataGrid } from "../../../core/data_grid.js";
 import { createExpandMotion } from "../../../core/expand_motion.js";
 import { syncSegmented } from "../../../core/settings_ui.js";
 import { bindProductQuoteHeaders, productQuoteSearchHtml, registerProductQuoteSearchProvider } from "../../../core/components/product_quote_search.js";
@@ -35,18 +36,13 @@ import { lookupInstrumentKind } from "../../../market_data/instrument_kind.js";
 import { OrderTicket, orderTicketHtml } from "./order_ticket.js";
 import { signedValueClass as signClass } from "../../../core/market_color_policy.js";
 import { numberOrNull as num } from "../../../core/numbers.js";
-import { PAPER_LOT_SHARES as LOT, paperMoney as money, paperOrderUnitCount, paperSideClass as sideClass, paperSignedMoney as signed } from "../../account/read_views.js";
+import { PAPER_LOT_SHARES as LOT, paperOrderUnitCount, paperSideClass as sideClass } from "../../account/read_views.js";
+import { ledgerMoney as money, ledgerSignedMoney as signed } from "../../../core/ledger_money.js";
 
 let searchSeq = 0;
 
 const stockText = (code, name) => `${code}${name && name !== code ? ` ${name}` : ""}`;
-/** A table's 股名 cell: the name only; the code when the ledger has no name for it. */
-const stockName = (code, name) => name || code;
-/** Text in a coloured span: a data-table cell has a colour of its own, so the colour goes on the text it marks. */
-const tinted = (text, cls) => (cls ? `<span class="${cls}">${escapeHtml(text)}</span>` : escapeHtml(text));
 const toMinute = (time) => String(time || "").slice(0, 5);
-/** A pair leg's time: a 當沖's clock (HH:MM), an earlier day's date as MM/DD. */
-const legTime = (ref) => (/^\d{4}-\d{2}-\d{2}/.test(String(ref || "")) ? String(ref).slice(5, 10).replace("-", "/") : String(ref || "--"));
 
 /** The 未實現 rows and their totals: each holding's net P&L is the 庫存 page's (live_position_marks.js, at the live
  * price). 成本 is cost_amount (a long's paid with the buy fee, a short's brought in after fee and tax); the totals add
@@ -86,12 +82,6 @@ export function orderRows(orders, fills) {
   return [...rows.filter((r) => !r.cancelled).sort(byTime), ...rows.filter((r) => r.cancelled).sort(byTime)];
 }
 
-function tableHtml({ role, wrapRole, columns, empty }) {
-  return `<div class="paper-ledger-table-wrap" data-role="${wrapRole}" data-grid-x="hidden" data-grid-variant="card" data-row-stops="1">
-      <table class="data-table paper-ledger-table">${renderColumnGroupHtml(columns)}${renderColumnHeaderHtml(columns)}
-        <tbody data-role="${role}"><tr><td colspan="${columns.length}" class="muted">${empty}</td></tr></tbody></table></div>`;
-}
-
 function shell(search) {
   const tile = (key, label, attr) => `<div class="settings-tile" ${attr}="${key}"><div class="settings-tile-label" data-card-label>${label}</div><div class="settings-tile-value is-mid" data-card-value>--</div></div>`;
   return `<div class="paper-ledger">
@@ -99,23 +89,23 @@ function shell(search) {
     <div class="paper-ledger-message" data-role="ledger-message" aria-live="polite"></div>
     <div class="paper-ledger-grid">
       <div class="paper-ledger-left">
-        <div class="paper-ledger-head">
-          <div class="settings-seg is-row paper-ledger-tabs" data-role="ledger-tabs" role="tablist">
+        <div class="ledger-head">
+          <div class="settings-seg is-row ledger-tabs" data-role="ledger-tabs" role="tablist">
             <button class="settings-seg-btn is-active" type="button" data-ledger-tab="orders">委託・成交</button><button class="settings-seg-btn" type="button" data-ledger-tab="realized">已實現</button>
           </div>
-          <div class="paper-ledger-head-end paper-ledger-search-slot">${search}</div>
+          <div class="ledger-head-end ledger-search-slot">${search}</div>
         </div>
-        <div class="paper-ledger-card" data-role="ledger-orders-view">${tableHtml({ role: "ledger-orders", wrapRole: "ledger-orders-wrap", columns: PAPER_LEDGER_ORDER_COLUMNS, empty: "讀取委託中…" })}</div>
-        <div class="paper-ledger-card" data-role="ledger-realized-view" hidden>${tableHtml({ role: "ledger-realized", wrapRole: "ledger-realized-wrap", columns: PAPER_LEDGER_REALIZED_COLUMNS, empty: "讀取已實現中…" })}</div>
+        <div class="ledger-card" data-role="ledger-orders-view">${tableHtml({ role: "ledger-orders", wrapRole: "ledger-orders-wrap", columns: PAPER_LEDGER_ORDER_COLUMNS, empty: "讀取委託中…" })}</div>
+        <div class="ledger-card" data-role="ledger-realized-view" hidden>${tableHtml({ role: "ledger-realized", wrapRole: "ledger-realized-wrap", columns: PAPER_LEDGER_REALIZED_COLUMNS, empty: "讀取已實現中…" })}</div>
       </div>
       <div class="paper-ledger-right">
         <section class="paper-ledger-section" data-role="ledger-unrealized">
-          <div class="paper-ledger-head">未實現<span class="paper-ledger-head-end" data-role="unrealized-total">--</span></div>
-          <div class="paper-ledger-card">${tableHtml({ role: "ledger-positions", wrapRole: "ledger-positions-wrap", columns: PAPER_LEDGER_POSITION_COLUMNS, empty: "沒有模擬庫存" })}</div>
+          <div class="ledger-head">未實現<span class="ledger-head-end" data-role="unrealized-total">--</span></div>
+          <div class="ledger-card">${tableHtml({ role: "ledger-positions", wrapRole: "ledger-positions-wrap", columns: PAPER_LEDGER_POSITION_COLUMNS, empty: "沒有模擬庫存" })}</div>
         </section>
         <section class="paper-ledger-section" data-role="ledger-edit" hidden>
-          <div class="paper-ledger-head" data-role="ledger-edit-title"></div>
-          <div class="paper-ledger-card paper-ledger-order-card">
+          <div class="ledger-head" data-role="ledger-edit-title"></div>
+          <div class="ledger-card paper-ledger-order-card">
             <div class="paper-ledger-book paper-ledger-order-book" data-role="ledger-book" data-component-title="hidden"></div>
             <div class="paper-ledger-edit">
               <div class="settings-seg is-row is-fill paper-ledger-modes" role="group" aria-label="刪改">
@@ -136,8 +126,8 @@ function shell(search) {
           </div>
         </section>
         <section class="paper-ledger-section" data-role="ledger-order" hidden>
-          <div class="paper-ledger-head"><span data-role="order-title"></span><div class="paper-ledger-head-end"><button class="order-ticket-link" type="button" data-order-action="close">回到未實現</button></div></div>
-          <div class="paper-ledger-card paper-ledger-order-card">
+          <div class="ledger-head"><span data-role="order-title"></span><div class="ledger-head-end"><button class="order-ticket-link" type="button" data-order-action="close">回到未實現</button></div></div>
+          <div class="ledger-card paper-ledger-order-card">
             <div class="paper-ledger-book paper-ledger-order-book" data-role="order-book" data-component-title="hidden"></div>
             <div class="paper-ledger-ticket" data-role="order-ticket-frame">
               ${orderTicketHtml()}
@@ -294,9 +284,7 @@ export class PaperLedgerComponent {
   }
 
   #detailRow(key, colspan, contentHtml) {
-    if (!this.open.has(key) && !this.motion.closing(key)) return "";
-    return expandDetailRowHtml({ colspan, className: "paper-ledger-detail", contentHtml,
-      attrs: `data-morph-key="${escapeHtml(`d:${key}`)}" data-detail-key="${escapeHtml(key)}"` });
+    return ledgerDetailRowHtml({ key, colspan, open: this.open.has(key) || this.motion.closing(key), contentHtml });
   }
 
   // ------------------------------------------------------------------ data
@@ -399,8 +387,8 @@ export class PaperLedgerComponent {
       // A trade typed in by hand: filled, no order behind it.
       const f = row.trade;
       const lines = [[escapeHtml(toMinute(f.time)), money(f.avg_price), `${money(f.qty)} 股`, "", "成交"]];
-      return `<tr class="paper-ledger-row paper-ledger-done${open ? " expanded" : ""}" data-morph-key="${escapeHtml(row.key)}" data-row-key="${escapeHtml(row.key)}">
-          <td class="paper-ledger-name">${tinted(stockName(f.code, f.name), "")}</td><td>${money(f.avg_price)}</td><td>${money(f.qty)} 股</td>
+      return `<tr class="ledger-row paper-ledger-done${open ? " expanded" : ""}" data-morph-key="${escapeHtml(row.key)}" data-row-key="${escapeHtml(row.key)}">
+          <td class="ledger-name">${tinted(stockName(f.code, f.name), "")}</td><td>${money(f.avg_price)}</td><td>${money(f.qty)} 股</td>
           <td>${escapeHtml(f.time || "")}</td><td>${tinted(f.action, sideClass(f.action))}</td></tr>
         ${this.#detailRow(row.key, 5, linesHtml(PAPER_LEDGER_ORDER_COLUMNS, lines))}`;
     }
@@ -427,8 +415,8 @@ export class PaperLedgerComponent {
     const lines = [[escapeHtml(toMinute(o.created_at)), placedAt == null ? "市價" : money(placedAt), `${money(o.qty)} 股`, "", "委託"],
       ...later.map((line) => [escapeHtml(toMinute(line.time)), ...line.cells])];
     const selected = this.edit?.orderId === o.order_id;
-    return `<tr class="paper-ledger-row${o.final ? " paper-ledger-done" : ""}${open ? " expanded" : ""}${selected ? " selected" : ""}" data-morph-key="${escapeHtml(row.key)}" data-row-key="${escapeHtml(row.key)}">
-        <td class="paper-ledger-name">${tinted(stockName(o.code, o.name), o.final ? "" : sideClass(o.side))}</td>
+    return `<tr class="ledger-row${o.final ? " paper-ledger-done" : ""}${open ? " expanded" : ""}${selected ? " selected" : ""}" data-morph-key="${escapeHtml(row.key)}" data-row-key="${escapeHtml(row.key)}">
+        <td class="ledger-name">${tinted(stockName(o.code, o.name), o.final ? "" : sideClass(o.side))}</td>
         ${cells.map((cell) => `<td>${cell}</td>`).join("")}<td>${op}</td></tr>
       ${this.#detailRow(row.key, 5, linesHtml(PAPER_LEDGER_ORDER_COLUMNS, lines))}`;
   }
@@ -439,20 +427,7 @@ export class PaperLedgerComponent {
     if (!this.pairs.length) { morphInto(body, '<tr><td colspan="5" class="muted">今天還沒有已實現</td></tr>'); return; }
     morphInto(body, this.pairs.map((p) => {
       const key = `r:${p.id}`;
-      const open = this.open.has(key) || this.motion.closing(key);
-      // 價金 is what really moved: the buy's 價金 + 手續費, the sell's 價金 − 手續費 − 交易稅 (the ledger's amounts).
-      const buyNet = Number(p.buy_amount) + Number(p.buy_fee);
-      const sellNet = Number(p.sell_amount) - Number(p.sell_fee) - Number(p.tax);
-      const roi = p.roi === null || p.roi === undefined ? "--" : tinted(`${Math.abs(p.roi * 100).toFixed(2)}%`, signClass(p.roi));
-      const detail = `<table class="paper-ledger-pair"><thead><tr><th></th><th>買入</th><th>賣出</th></tr></thead><tbody>
-          <tr><th>時間</th><td>${escapeHtml(legTime(p.buy_ref))}</td><td>${escapeHtml(legTime(p.sell_ref))}</td></tr>
-          <tr><th>單價</th><td>${money(p.buy_price)}</td><td>${money(p.sell_price)}</td></tr>
-          <tr><th>價金</th><td>${money(Math.round(buyNet))}</td><td>${money(Math.round(sellNet))}</td></tr>
-          <tr><th>報酬率</th><td colspan="2">${roi}</td></tr></tbody></table>`;
-      return `<tr class="paper-ledger-row${open ? " expanded" : ""}" data-morph-key="${escapeHtml(key)}" data-row-key="${escapeHtml(key)}">
-          <td class="paper-ledger-name">${escapeHtml(stockName(p.code, p.name))}</td><td>${money(p.qty)}</td><td>${money(p.buy_price)}</td>
-          <td>${money(p.sell_price)}</td><td>${tinted(signed(Math.round(p.profit)), signClass(p.profit))}</td></tr>
-        ${this.#detailRow(key, 5, detail)}`;
+      return ledgerPairRowHtml(p, { key, open: this.open.has(key) || this.motion.closing(key) });
     }).join(""));
     this.motion.play();
   }
@@ -468,8 +443,8 @@ export class PaperLedgerComponent {
       const open = this.open.has(key) || this.motion.closing(key);
       const detail = `<div class="paper-ledger-figures">${figure("均價", r.avgCost === null ? "-" : money(Math.round(r.avgCost * 100) / 100))}${figure("市價", r.mark === null ? "-" : money(r.mark))}
         ${figure("成本", money(Math.round(r.cost)))}${figure("現值", r.value === null ? "-" : money(Math.round(r.value)))}</div>`;
-      return `<tr class="paper-ledger-row${open ? " expanded" : ""}" data-morph-key="${escapeHtml(key)}" data-row-key="${escapeHtml(key)}">
-      <td class="paper-ledger-name">${escapeHtml(stockName(r.code, r.name))}</td><td>${money(Math.abs(r.qty))}</td>
+      return `<tr class="ledger-row${open ? " expanded" : ""}" data-morph-key="${escapeHtml(key)}" data-row-key="${escapeHtml(key)}">
+      <td class="ledger-name">${escapeHtml(stockName(r.code, r.name))}</td><td>${money(Math.abs(r.qty))}</td>
       <td>${r.pnl === null ? "-" : tinted(money(Math.abs(Math.round(r.pnl))), signClass(r.pnl))}</td>
     </tr>${this.#detailRow(key, 3, detail)}`;
     }).join("") : '<tr><td colspan="3" class="muted">沒有模擬庫存</td></tr>');
@@ -485,7 +460,7 @@ export class PaperLedgerComponent {
     set(sum("roi"), totals.roi === null ? "-" : `${Math.abs(totals.roi).toFixed(2)}%`, totals.roi === null ? "" : signClass(totals.roi));
     set(sum("value"), totals.value === null ? "-" : money(Math.round(totals.value)));
     set(sum("cost"), money(Math.round(totals.cost)));
-    set(this.$("unrealized-total"), pnl, `paper-ledger-head-end ${pnlClass}`.trim());
+    set(this.$("unrealized-total"), pnl, `ledger-head-end ${pnlClass}`.trim());
     set(this.root.querySelector('[data-card="pnl"] [data-card-value]'), pnl, `settings-tile-value is-mid ${pnlClass}`.trim());
   }
 

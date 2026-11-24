@@ -1,0 +1,148 @@
+/* A full page's frame (core/page_frame.js): 帳務中心, 資料中心 and 設定. The side nav and the title row are 設定's
+ * (settings.css); this file holds the page's card and what stands in it. */
+
+.page-frame {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  padding: 0 16px;
+  border: 1px solid var(--gray-800);
+  border-radius: 16px;
+  background: var(--surface-panel);
+  overflow: hidden;
+}
+
+/* The nav's items; a page whose list is longer than the nav scrolls it itself. */
+.page-frame-items {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.page-frame-foot {
+  flex: none;
+}
+
+.page-frame-separator {
+  flex: none;
+  width: auto;
+  height: 1px;
+  margin: 8px 6px;
+  border: 0;
+  background: var(--pane-border);
+}
+
+/* The page's column: its title over the content scroll; both share one centred width. */
+.page-frame-main {
+  --page-frame-max: 1180px;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.page-frame-head {
+  grid-row: 1;
+}
+
+.page-frame-head[hidden] {
+  display: none;
+}
+
+/* Room for the tabs fixed over the title row's right end. */
+.page-frame-head.has-tabs {
+  padding-right: 190px;
+  min-height: 58px;
+}
+
+.page-frame-subtitle {
+  font-size: 13px;
+  color: var(--slate-400);
+}
+
+/* The title row's actions wrap right-aligned when they do not fit. */
+.page-frame-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.page-frame-banner {
+  grid-row: 2;
+}
+
+/* No top padding, so a sticky title sits flush with the top. */
+.page-frame-scroll {
+  grid-row: 3;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+.page-frame-scroll[hidden] {
+  display: none;
+}
+
+.page-frame-view {
+  max-width: var(--page-frame-max);
+  margin: 0 auto;
+  padding: 0 24px 16px;
+  box-sizing: border-box;
+}
+
+.page-frame-view[hidden] {
+  display: none;
+}
+
+/* A view that is one table gives the whole remaining height to its card, whose body scrolls; the page does not. */
+.page-frame-scroll.is-fill {
+  overflow: hidden;
+}
+
+.page-frame-view.active.is-fill {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* A view over the whole content area, without the title row. */
+.page-frame-stage {
+  grid-row: 1 / -1;
+  min-width: 0;
+  min-height: 0;
+  padding: 8px 12px;
+  box-sizing: border-box;
+}
+
+.page-frame-stage[hidden] {
+  display: none;
+}
+
+/* The tabs of what the page shows (資料｜事件｜回放): one element, the same place and size whichever is shown. */
+.page-frame-tabs {
+  position: absolute;
+  z-index: 40;
+  top: 15px;
+  right: 23px;
+  width: 154px;
+  height: 34px;
+  box-sizing: border-box;
+}
+
+.page-frame-tabs[hidden] {
+  display: none;
+}
+
+.page-frame-tabs > button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding-left: 0;
+  padding-right: 0;
+}

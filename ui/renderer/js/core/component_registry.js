@@ -85,7 +85,7 @@ export class ComponentRegistry {
     const item = this.get(id);
     if (!item) return false;
     if (mode && item.supportedModes.length && !item.supportedModes.includes(String(mode))) return false;
-    // A pane the user opened on a pane workspace (pane_layout.js: 即時報價, 歷史回放) is the generic "workspacePane" slot.
+    // A pane the user opened on a pane workspace (tree_workspace.js: 即時報價, 歷史回放) is the generic "workspacePane" slot.
     const slot = String(slotId || "").startsWith("pane-") ? "workspacePane" : String(slotId || "");
     if (slot && item.supportedSlots.length && !item.supportedSlots.includes(slot)) return false;
     if (hostType && item.supportedHosts.length && !item.supportedHosts.includes(String(hostType))) return false;

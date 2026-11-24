@@ -287,3 +287,45 @@ mod replay_diff_tests {
         assert!(replay_diff_frame(&held, "v1", "r1", 5, "REPLAY_SEEK", &far, serde_json::to_vec(&far).unwrap().len()).is_none(), "whole");
     }
 }
+
+#[cfg(test)]
+mod forming_minute_tests {
+    use super::state_frame;
+    use crate::event::{EventFlags, InstrumentKey, SessionKey, StateKey};
+    use crate::state::{tests_support::trade_event, Engine};
+    use crate::wire;
+
+    // A closed session viewed after hours (2466, 11-24): every print the provider fetched carried a forming trend point,
+    // so the chart was drawn once from price-only points (no volume, open = high = low) and again when B's minutes
+    // replaced each one.
+    #[test]
+    fn a_print_fetched_from_history_forms_no_minute_and_a_live_print_does() {
+        let key = StateKey { instrument: InstrumentKey::new("shioaji", "STK", "2330"), session: SessionKey { trading_date: "2026-09-29".into(), session: "DAY".into() } };
+        let mut engine = Engine::default();
+        let mut fetched = trade_event("2330", 1, 1_010_000);
+        fetched.flags = EventFlags { backfill: true, view_only: true, ..EventFlags::default() };
+        let (_, changed) = engine.apply(&fetched);
+        let state = engine.state(&key).unwrap();
+        let (_, kind, channels, payload, _, _) = state_frame(state, None, None, &fetched, &changed, None).unwrap();
+        assert_eq!((kind, channels), ("trade.frame", &["summary", "trades"][..]), "the fetched print changes the summary and the tape only");
+        assert!(payload.get("trend").is_none());
+        assert_eq!(payload["summary"]["current"], 101.0, "現價 is still the fetched print's");
+        assert!(wire::current_point(state, None).is_null());
+        assert!(wire::trend(Some(state), None, &key.instrument, "2026-09-29").is_empty(), "no overlay minute in the snapshot either");
+
+        let live = trade_event("2330", 2, 1_011_000);
+        let (_, changed) = engine.apply(&live);
+        let state = engine.state(&key).unwrap();
+        let (_, _, channels, payload, _, _) = state_frame(state, None, None, &live, &changed, None).unwrap();
+        assert_eq!(channels, &["summary", "trend", "trades"][..], "a live print forms its minute");
+        assert_eq!(payload["trend"]["point"]["close"], 101.1);
+
+        // The flag is part of the checkpoint image (CHECKPOINT_SCHEMA v6).
+        let mut stored = trade_event("2330", 3, 1_012_000);
+        stored.flags = EventFlags { backfill: true, ..EventFlags::default() };
+        engine.apply(&stored);
+        let image = serde_json::to_value(engine.image()).unwrap();
+        let restored = Engine::from_image(serde_json::from_value(image).unwrap()).unwrap();
+        assert!(restored.iter().next().unwrap().quote.price_backfilled, "a gap's print stays a fetched price through a restart");
+    }
+}

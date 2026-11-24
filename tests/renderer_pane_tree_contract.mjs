@@ -1,6 +1,6 @@
 // 畫面配置's pane tree (ui/renderer/js/core/pane_tree.js): any shape of panes, every tab once, no leftover splits.
 import assert from "node:assert/strict";
-import { normalizeTree, treePanes, findTreePane, moveTreeTab, splitTreePane, setTreePaneTabs, resizeTreeSplit, treeFromRows } from "../ui/renderer/js/core/pane_tree.js";
+import { normalizeTree, treePanes, findTreePane, moveTreeTab, splitTreePane, setTreePaneTabs, resizeTreeSplit, treeFromRows, pixelExtents, pinnedInPlace } from "../ui/renderer/js/core/pane_tree.js";
 
 const pane = (id, size, ...componentIds) => ({ kind: "pane", id, size, componentIds, activeComponentId: componentIds[0] || "" });
 const split = (id, dir, size, ...children) => ({ kind: "split", id, dir, size, children });
@@ -52,11 +52,28 @@ tree = resizeTreeSplit(pro(), "mid", [300, 100]);
 assert.ok(Math.abs(tree.children[1].children[0].size - 0.75) < 1e-9);
 assert.equal(tree.children[0].size, 0.2);
 
-// 即時報價's rows become the same panes, tabs and shares.
+// A stored rows-of-panes layout: its rows become the same panes, tabs and shares.
 tree = treeFromRows({ rows: [{ id: "r0", size: 0.5, panes: [{ id: "p0", size: 0.4, componentIds: ["a", "b"], activeComponentId: "b" }, { id: "p1", size: 0.6, componentIds: ["c"] }] },
   { id: "r1", size: 0.5, panes: [{ id: "p2", size: 1, componentIds: ["d"] }] }] });
 assert.equal(tree.dir, "column");
 assert.deepEqual(tree.children[0].children.map((c) => c.id), ["p0", "p1"]);
 assert.equal(findTreePane(tree, "p0").activeComponentId, "b");
 assert.equal(tree.children[1].id, "p2");
+// Pixel extents land on whole pixels and fill the space exactly; a pinned element keeps its own width.
+assert.deepEqual(pixelExtents([0.3333, 0.3333, 0.3334], 1001, 8), [328, 329, 328], "edges at round(985 x 1/3), round(985 x 2/3)");
+assert.equal(pixelExtents([0.22, 0.18, 0.15, 0.15, 0.15, 0.15], 1663.5, 8).reduce((a, b) => a + b, 0), 1663 - 40);
+assert.deepEqual(pixelExtents([0.5, 0.5, 0], 1192, 8, [null, null, 176]), [500, 500, 176]);
+
+// A pinned element: no pane of tabs, no share, kept through edits, never left without panes beside it in its row.
+const pinned = () => normalizeTree(split("root", "column", 1, split("up", "row", 0.5, pane("l", 1, "a", "b"), { kind: "pane", id: "pin", pinned: true, size: 9 }), pane("low", 0.5, "c")),
+  { isPinned: (id) => id === "pin" });
+assert.deepEqual(treePanes(pinned()).map((p) => p.id), ["l", "low"]);
+assert.equal(pinned().children[0].children[1].size, 0);
+assert.equal(normalizeTree(pinned()).children[0].id, "l", "a page without the element does not get it");
+tree = moveTreeTab(pinned(), "a", "low");
+assert.ok(pinnedInPlace(tree));
+assert.equal(moveTreeTab(tree, "b", "low"), tree, "the last pane beside it stays");
+tree = splitTreePane(pinned(), "c", "l", "right");
+assert.deepEqual([tree.dir, tree.children.map((c) => c.id).at(-1), tree.children.length], ["row", "pin", 3], "a new pane opens before it; the emptied row goes");
+assert.deepEqual(resizeTreeSplit(pinned(), "up", [700, 176]).children[0].children.map((c) => c.size), [1, 0], "a drag leaves its width to it");
 console.log("pane tree contract ok");

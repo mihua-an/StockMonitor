@@ -24,7 +24,6 @@ const fireStorage = (key) => { for (const fn of [...(windowListeners.get("storag
 const prefs = await import("../ui/renderer/js/core/preferences.js");
 const horizons = await import("../ui/renderer/js/core/trend_footer_horizons.js");
 const markers = await import("../ui/renderer/js/core/event_markers.js");
-const layout = await import("../ui/renderer/js/core/layout_config.js");
 const { ScopedValueStore } = await import("../ui/renderer/js/core/scoped_state.js");
 const breadth = await import("../ui/renderer/js/core/market_breadth_store.js");
 
@@ -48,18 +47,6 @@ assert.equal(markers.stockTrendEventMarkersVisible(), true);
 refuse = false;
 assert.equal(markers.setStockTrendEventMarkersVisible(false).ok, true);
 assert.deepEqual(dispatched, ["stock-trend-event-markers-changed"]);
-
-// Slot layouts: the setter's ok follows the save; a refused save leaves the stored layout as it was.
-const registry = { supports: () => true, get: () => ({}) };
-assert.equal(layout.setSlotComponent("history", "replayPrimary", "eventFeed", registry).ok, true);
-const kept = store.get("shioajiSlotLayoutConfigV9");
-refuse = true;
-const failedSlot = layout.setSlotComponent("history", "replayPrimary", "orderbook", registry);
-assert.deepEqual([failedSlot.ok, failedSlot.error, failedSlot.config.slots.replayPrimary], [false, "persist_failed", "eventFeed"]);
-const failedTabs = layout.setTabbedSlot("realtime", "liveInfo", { componentIds: ["eventFeed"], activeComponentId: "eventFeed" }, registry);
-assert.deepEqual([failedTabs.ok, failedTabs.error], [false, "persist_failed"]);
-refuse = false;
-assert.equal(store.get("shioajiSlotLayoutConfigV9"), kept);
 
 // Store listeners: the immediate call is isolated as the change call is.
 const scoped = new ScopedValueStore("t", 1);

@@ -1,35 +1,38 @@
+// 歷史回放's 交易明細: every 當沖 pair of the ledger, or one date's (總覽｜今日), narrowed by the code or name typed. A row is
+// 模擬帳務's 已實現 row (ledger_list.js) with its 股數 in the side's colour (多 up, 空 down); it opens to 買入 / 賣出, and opening it
+// replays that trade.
 import { CleanupBag } from "../cleanup_bag.js";
-import { renderPanelTabs } from "../panel_tabs.js";
-import { escapeHtml, formatPrice, byRole as role } from "../utility.js";
-import { applyColumnSchema, destroyColumnTitle, renderColumnHeaderHtml } from "../column_title.js";
-import { TRADE_DETAILS_COLUMNS } from "../column_schemas.js";
-import { destroyStandardDataGrid, enableCompleteRowDataGridScroll } from "../data_grid.js";
+import { byRole as role } from "../utility.js";
+import { morphInto } from "../dom_morph.js";
+import { PAPER_LEDGER_REALIZED_COLUMNS } from "../column_schemas.js";
+import { destroyStandardDataGrid, recordExpandBody, upgradeStandardDataGrid } from "../data_grid.js";
+import { createExpandMotion } from "../expand_motion.js";
+import { syncSegmented } from "../settings_ui.js";
 import { mountShell } from "../component_shell.js";
 import { titleBarMarkup } from "./title_bar.js";
-import { signedValueClass } from "../market_color_policy.js";
+import { bindDateMenu, dateOptionsHtml } from "./date_menu.js";
+import { ledgerMessageHtml, ledgerPairRowHtml, ledgerTableHtml } from "./ledger_list.js";
 
-function profitText(v) { const n = Number(v); return Number.isFinite(n) ? Math.abs(Math.round(n)).toLocaleString("zh-TW") : "--"; }
+const COLSPAN = PAPER_LEDGER_REALIZED_COLUMNS.length;
+const SIDE_CLASS = { 多: "price-up", 空: "price-down" };
+const keyOf = (item) => `t:${item.id}`;
 
 function shell() {
   return `<div class="record-panel">
     ${titleBarMarkup({ title: "交易明細" })}
-    <div class="record-panel-filter-row trade-details-filter-row">
-      <div data-role="trade-filter-tabs" class="tab-list"></div>
-      <div data-role="trade-pagination" class="trade-details-pagination" aria-label="交易明細頁碼">
-        <button type="button" data-page-action="first">第一頁</button>
-        <button type="button" data-page-action="prev">上一頁</button>
-        <input data-role="trade-page-input" type="number" min="1" value="1" inputmode="numeric" aria-label="交易明細頁碼" />
-        <span class="trade-details-page-total">/ <span data-role="trade-total-pages">1</span></span>
-        <button type="button" data-page-action="next">下一頁</button>
-        <button type="button" data-page-action="last">最後一頁</button>
+    <div class="ledger-head">
+      <div class="ledger-search-slot"><div class="product-quote-search wide"><input type="text" class="product-quote-code-input" data-role="trade-query" autocomplete="off" spellcheck="false" aria-label="輸入代號或名稱篩選" placeholder="代號或名稱"></div></div>
+      <div class="settings-seg is-row ledger-tabs" data-role="trade-scope" role="tablist">
+        <button class="settings-seg-btn" type="button" data-trade-scope="overview">總覽</button><button class="settings-seg-btn" type="button" data-trade-scope="today">今日</button>
+      </div>
+      <div class="ledger-head-end">
+        <div data-role="trade-date-picker" class="event-feed-date-picker">
+          <button data-role="trade-date-button" class="event-feed-date-button" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="交易日期"><span data-role="trade-date-label">----</span><span class="event-feed-date-caret" aria-hidden="true">▾</span></button>
+          <div data-role="trade-date-menu" class="event-feed-date-menu" hidden><div data-role="trade-date-list" class="event-feed-date-list" role="listbox" aria-label="交易日期清單"></div></div>
+        </div>
       </div>
     </div>
-    <div data-role="trade-scroll" class="trade-details-table-wrap" data-grid-x="hidden">
-      <table data-role="trade-table" class="record-table trade-details-table">
-        ${renderColumnHeaderHtml(TRADE_DETAILS_COLUMNS)}
-        <tbody data-role="trade-body"><tr><td colspan="9" class="empty">尚無交易明細</td></tr></tbody>
-      </table>
-    </div>
+    <div class="ledger-card">${ledgerTableHtml({ role: "trade-body", wrapRole: "trade-scroll", columns: PAPER_LEDGER_REALIZED_COLUMNS, empty: "交易明細載入中…" })}</div>
   </div>`;
 }
 
@@ -39,179 +42,110 @@ export class TradeDetailsComponent {
     this.context = null;
     this.cleanup = new CleanupBag("trade details");
     this.vm = {};
-    this.rowSnap = null;
+    this.open = new Set();
+    this.motion = null;
+    this.dateMenu = null;
   }
 
   mount({ host, context, hydrate }) {
     this.host = host;
     this.context = context;
     mountShell(host, shell(), { hydrate });
-    applyColumnSchema(role(host, "trade-table"), TRADE_DETAILS_COLUMNS, {
-      schemaId: "tradeDetails",
-      resize: { storageKey: "historyTradeRecordsColumnWidthsV1", defaultMinWidth: 48, floorWidth: 36, fitToAvailable: true },
+    upgradeStandardDataGrid(role(host, "trade-scroll"), { x: "hidden", width: "fill" });
+    // A row's detail opens and closes with the shared motion; a closed one is drawn again without it.
+    this.motion = createExpandMotion({
+      find: (key) => recordExpandBody(this.host?.querySelector(`tr[data-detail-key="${CSS.escape(key)}"]`)),
+      redraw: () => this._renderRows(),
     });
-
+    this._bind(host);
     const refresh = () => context?.dataSource?.invalidate("tradeDetails", {
       symbol: context?.symbolStore?.getSelectedSymbol?.(),
       timestamp: context?.currentTimestamp?.get?.(),
     });
-    this.cleanup.push(context?.symbolStore?.subscribe?.(refresh) || (() => {}));
     this.cleanup.push(context?.dataSource?.subscribe?.("tradeDetails", (vm) => this.update(vm)) || (() => {}));
-
-    const body = role(host, "trade-body");
-    const rowClick = (event) => {
-      const row = event.target?.closest?.("tr[data-trade-id]");
-      if (!row || !body?.contains?.(row)) return;
-      const id = String(row.dataset.tradeId || "");
-      const item = (Array.isArray(this.vm?.rows) ? this.vm.rows : []).find((x) => String(x?.id ?? "") === id);
-      if (item) this.context?.services?.tradeDetails?.onRowSelect?.(item);
-    };
-    body?.addEventListener?.("click", rowClick);
-    this.cleanup.push(() => body?.removeEventListener?.("click", rowClick));
-
-    const pagination = role(host, "trade-pagination");
-    const pageClick = (event) => {
-      const button = event.target?.closest?.("button[data-page-action]");
-      if (!button || !pagination?.contains?.(button) || button.disabled) return;
-      this._requestPage(String(button.dataset.pageAction || ""));
-    };
-    pagination?.addEventListener?.("click", pageClick);
-    this.cleanup.push(() => pagination?.removeEventListener?.("click", pageClick));
-
-    const pageInput = role(host, "trade-page-input");
-    const jump = () => {
-      const total = Math.max(1, Number(this.vm?.totalPages) || 1);
-      const page = Math.max(1, Math.min(total, Math.trunc(Number(pageInput?.value) || 1)));
-      if (pageInput) pageInput.value = String(page);
-      if (page !== Number(this.vm?.page || 1)) this.context?.services?.tradeDetails?.onPageRequest?.({ direction: "jump", page });
-    };
-    const keydown = (event) => { if (event.key === "Enter") { event.preventDefault(); jump(); pageInput?.blur?.(); } };
-    pageInput?.addEventListener?.("keydown", keydown);
-    pageInput?.addEventListener?.("change", jump);
-    this.cleanup.push(() => pageInput?.removeEventListener?.("keydown", keydown), () => pageInput?.removeEventListener?.("change", jump));
-
-    this.rowSnap = enableCompleteRowDataGridScroll(role(host, "trade-scroll"), {
-      rowHeightVar: "--row-height-trade-record",
-      wheelStepRows: 1,
-      discreteRail: true,
-    }).rowSnap;
     refresh();
   }
 
-  _tabs(vm) {
-    const symbol = String(vm?.selectedSymbol || "").trim();
-    const name = String(vm?.selectedName || "").trim();
-    const date = String(vm?.selectedDate || "").slice(0, 10);
-    return [
-      { id: "OVERVIEW", name: "總覽", title: "全部歷史已配對交易", closable: false },
-      { id: "TODAY", name: "今日", title: `${date || "目前日期"}－所有已配對交易`, closable: false },
-      { id: "SYMBOL", name: symbol || "個股", title: `${symbol || "目前個股"}${name ? ` ${name}` : ""}－所有歷史已配對交易`, closable: false },
-    ];
-  }
-
-  _renderTabs(vm) {
-    const host = role(this.host, "trade-filter-tabs");
-    if (!host) return;
-    const tabs = this._tabs(vm);
-    const scope = String(vm?.scope || "overview");
-    const activeKey = scope === "today" ? "TODAY" : scope === "symbol" ? "SYMBOL" : "OVERVIEW";
-    renderPanelTabs(host, {
-      tabs,
-      activeKey,
-      keyOf: (tab) => String(tab.id || ""),
-      labelOf: (tab) => tab.name || tab.id || "",
-      titleOf: (tab) => tab.title || tab.name || tab.id || "",
-      closableOf: () => false,
-      onSelect: (key) => {
-        const nextScope = String(key) === "TODAY" ? "today" : String(key) === "SYMBOL" ? "symbol" : "overview";
-        if (nextScope !== String(this.vm?.scope || "overview")) this.context?.services?.tradeDetails?.onScopeChange?.(nextScope);
-      },
+  _bind(host) {
+    const service = () => this.context?.services?.tradeDetails;
+    const on = (node, type, fn) => { node.addEventListener(type, fn); this.cleanup.push(() => node.removeEventListener(type, fn)); };
+    on(role(host, "trade-query"), "input", (event) => service()?.onQueryChange?.(event.target.value));
+    on(role(host, "trade-scope"), "click", (event) => {
+      const button = event.target.closest("[data-trade-scope]");
+      if (button && button.dataset.tradeScope !== this.vm?.scope) service()?.onScopeChange?.(button.dataset.tradeScope);
     });
-  }
-
-  _requestPage(action) {
-    const page = Math.max(1, Number(this.vm?.page) || 1);
-    const totalPages = Math.max(1, Number(this.vm?.totalPages) || 1);
-    const request = { direction: action, page };
-    if (action === "first") request.page = 1;
-    else if (action === "prev") { request.page = Math.max(1, page - 1); request.cursor = String(this.vm?.prevCursor || ""); }
-    else if (action === "next") { request.page = Math.min(totalPages, page + 1); request.cursor = String(this.vm?.nextCursor || ""); }
-    else if (action === "last") request.page = totalPages;
-    else return;
-    this.context?.services?.tradeDetails?.onPageRequest?.(request);
-  }
-
-  _renderPagination(vm) {
-    const page = Math.max(1, Number(vm?.page) || 1);
-    const totalPages = Math.max(1, Number(vm?.totalPages) || 1);
-    const input = role(this.host, "trade-page-input");
-    const total = role(this.host, "trade-total-pages");
-    const pagination = role(this.host, "trade-pagination");
-    if (input) { input.value = String(page); input.max = String(totalPages); input.disabled = Boolean(vm?.loading); }
-    if (total) total.textContent = String(totalPages);
-    pagination?.querySelectorAll?.("button[data-page-action]").forEach((button) => {
-      const action = String(button.dataset.pageAction || "");
-      if (action === "first" || action === "prev") button.disabled = Boolean(vm?.loading) || !Boolean(vm?.hasPrev);
-      else if (action === "next" || action === "last") button.disabled = Boolean(vm?.loading) || !Boolean(vm?.hasNext);
+    on(role(host, "trade-body"), "click", (event) => {
+      const row = event.target.closest("tr[data-row-key]");
+      if (row) this._toggle(row.dataset.rowKey);
     });
+    // The card clips what it holds, so the open menu goes to <body>; its nodes are kept here.
+    const picker = role(host, "trade-date-picker"), list = role(host, "trade-date-list"), label = role(host, "trade-date-label");
+    const menu = bindDateMenu({
+      picker, button: role(host, "trade-date-button"), menu: role(host, "trade-date-menu"), list, attribute: "trade-date", portal: true,
+      onSelect: (value) => service()?.onDateSelect?.(value),
+    });
+    this.dateMenu = { list, label, reposition: menu.reposition };
+    this.cleanup.push(() => menu.destroy(), () => { this.dateMenu = null; });
   }
 
-  _renderRows(vm) {
+  // Opening a row also replays its trade; a click while it moves is ignored (expand_motion.js).
+  _toggle(key) {
+    const opening = !this.open.has(key);
+    if (!this.motion.start(key, opening)) return;
+    if (opening) this.open.add(key); else this.open.delete(key);
+    this._renderRows();
+    const item = opening ? (this.vm?.rows || []).find((row) => keyOf(row) === key) : null;
+    if (item) this.context?.services?.tradeDetails?.onRowSelect?.(item);
+  }
+
+  _renderHead() {
+    const { scope, query = "", date = "", dates = [] } = this.vm;
+    const seg = role(this.host, "trade-scope");
+    seg.querySelectorAll("[data-trade-scope]").forEach((button) => button.classList.toggle("is-active", button.dataset.tradeScope === scope));
+    syncSegmented(seg);
+    const input = role(this.host, "trade-query");
+    if (input.value !== query && input.ownerDocument.activeElement !== input) input.value = query;
+    const { list, label, reposition } = this.dateMenu;
+    label.textContent = date || "----";
+    const signature = JSON.stringify([date, dates]);
+    if (signature === this.datesSignature) return;
+    this.datesSignature = signature;
+    morphInto(list, dateOptionsHtml(dates, date, "trade-date"));
+    reposition();
+  }
+
+  _renderRows() {
+    const { rows = [], loading, loaded, error, scope, query, date, selectedTradeId } = this.vm;
     const body = role(this.host, "trade-body");
     if (!body) return;
-    const rows = Array.isArray(vm?.rows) ? vm.rows : [];
-    if (vm?.loading && !rows.length) {
-      body.innerHTML = `<tr><td colspan="9" class="empty">交易明細載入中…</td></tr>`;
-      return;
-    }
     if (!rows.length) {
-      const symbol = String(vm?.selectedSymbol || "");
-      const scope = String(vm?.scope || "overview");
-      const fallback = scope === "symbol" && symbol
-        ? `${symbol} 尚無歷史已配對交易`
-        : scope === "today"
-          ? "此日期尚無已配對交易"
-          : "尚無歷史已配對交易";
-      body.innerHTML = `<tr><td colspan="9" class="empty">${escapeHtml(vm?.emptyText || fallback)}</td></tr>`;
+      const empty = error || (loading || !loaded ? "交易明細載入中…"
+        : query ? "沒有符合的交易" : scope === "today" ? `${date || "這天"} 沒有已配對交易` : "尚無歷史已配對交易");
+      morphInto(body, ledgerMessageHtml(COLSPAN, empty, error ? "danger-text" : "muted"));
       return;
     }
-    const selectedDate = String(vm?.selectedDate || "").slice(0, 10);
-    const selectedId = String(vm?.selectedTradeId || "");
-    body.innerHTML = rows.map((item) => {
-      const date = String(item?.realized_date || "").slice(0, 10);
-      const dateClass = date === selectedDate ? " trade-details-current-date" : "";
-      const selectedClass = String(item?.id ?? "") === selectedId ? " trade-details-selected-row" : "";
-      const direction = String(item?.direction || "");
-      const directionClass = direction === "多" ? "price-up" : direction === "空" ? "price-down" : "price-flat";
-      return `<tr class="trade-details-row${dateClass}${selectedClass}" data-trade-id="${escapeHtml(String(item?.id ?? ""))}" data-history-daytrade-date="${escapeHtml(date)}">
-        <td>${escapeHtml(date || "--")}</td><td>${escapeHtml(item?.code || "")}</td><td class="trade-details-name">${escapeHtml(item?.name || "")}</td>
-        <td class="trade-details-direction ${directionClass}">${escapeHtml(direction || "--")}</td><td>${escapeHtml(item?.entry_ref || "--")}</td>
-        <td>${escapeHtml(item?.exit_ref || "--")}</td><td>${Number.isFinite(Number(item?.buy_price)) ? formatPrice(item.buy_price) : "--"}</td>
-        <td>${Number.isFinite(Number(item?.sell_price)) ? formatPrice(item.sell_price) : "--"}</td><td class="${signedValueClass(item?.profit)}">${escapeHtml(profitText(item?.profit))}</td>
-      </tr>`;
-    }).join("");
+    morphInto(body, rows.map((item) => {
+      const key = keyOf(item);
+      return ledgerPairRowHtml(item, { key, open: this.open.has(key) || this.motion.closing(key),
+        selected: String(item.id) === String(selectedTradeId ?? ""), qtyClass: SIDE_CLASS[item.direction] || "" });
+    }).join(""));
+    this.motion.play();
   }
 
   update(vm = {}) {
     this.vm = vm || {};
-    this._renderTabs(this.vm);
-    this._renderPagination(this.vm);
-    this._renderRows(this.vm);
-    this.rowSnap?.refreshContent?.({
-      topologyChanged: false,
-      logicalRows: Array.isArray(this.vm?.rows) ? this.vm.rows.length : 0,
-    });
+    this._renderHead();
+    this._renderRows();
   }
 
-  resize() { this.rowSnap?.scheduleMeasure?.(); }
+  resize() {}
 
   destroy() {
-    destroyColumnTitle(role(this.host, "trade-table"));
     destroyStandardDataGrid(role(this.host, "trade-scroll"));
-    this.rowSnap = null;
     this.cleanup.release();
     this.host = null;
     this.context = null;
+    this.motion = null;
     this.vm = {};
   }
 }

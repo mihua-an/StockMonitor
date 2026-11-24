@@ -5,9 +5,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { rendererNetworkManifest } from "./support/renderer_network_manifest.mjs";
 
-const elements = { historyDateSelect: { value: "2026-10-07" } };
 globalThis.localStorage = { getItem: () => null, setItem() {} };
-globalThis.document = { getElementById: (id) => elements[id] || null, querySelector: () => null, querySelectorAll: () => [] };
+globalThis.document = { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [] };
 globalThis.window = { desktopAPI: { networkManifest: rendererNetworkManifest(), sourceSettings: { enabled_sources: ["shioaji"], sources: {} } },
   dispatchEvent() {}, addEventListener() {} };
 globalThis.CustomEvent = class { constructor(type, options) { this.type = type; this.detail = options?.detail; } };
@@ -15,8 +14,9 @@ globalThis.CustomEvent = class { constructor(type, options) { this.type = type; 
 const pending = [];
 globalThis.fetch = (url) => new Promise((resolve, reject) => pending.push({ url: String(url), resolve, reject }));
 
-const { loadHistoryDaytradeMarkerRows } = await import("../ui/renderer/js/features/history/trade_pages.js");
+const { loadHistoryDaytradeMarkerRows } = await import("../ui/renderer/js/features/history/trade_list.js");
 const { historyState, historyHooks } = await import("../ui/renderer/js/features/history/history_state.js");
+historyState.pickedDate = "2026-10-07";
 let rerenders = 0;
 historyHooks.rerenderHistoryCurrentChart = () => { rerenders += 1; };
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -28,7 +28,7 @@ try {
   historyState.selectedCode = "2330";
   const first = loadHistoryDaytradeMarkerRows();
   await flush();
-  elements.historyDateSelect.value = "2026-10-08";
+  historyState.pickedDate = "2026-10-08";
   const second = loadHistoryDaytradeMarkerRows();
   await flush();
   assert.equal(pending.length, 2);
