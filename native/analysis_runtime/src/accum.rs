@@ -144,14 +144,17 @@ impl SideBucket {
         self.buy + self.sell + self.unknown
     }
     /// Ratios over the KNOWN-direction denominator; the unknown share is reported separately.
-    pub(crate) fn wire(&self, grand_total: Volume) -> Value {
+    pub(crate) fn wire(&self) -> Value {
         let known = self.buy + self.sell;
         json!({"buy": vol::wire(self.buy), "sell": vol::wire(self.sell), "unknown": vol::wire(self.unknown), "count": self.count,
                "total": vol::wire(self.total()), "net": vol::wire(self.buy - self.sell),
                "buy_ratio": ratio(self.buy, known), "sell_ratio": ratio(self.sell, known), "net_ratio": ratio(self.buy - self.sell, known),
-               "unknown_ratio": ratio(self.unknown, self.total()), "class_ratio": ratio(self.total(), grand_total)})
+               "unknown_ratio": ratio(self.unknown, self.total())})
     }
 }
+
+/// The share of the classified volume from which one class controls the session (user decision: 55%, ten points apart).
+const CONTROL_RATIO: f64 = 0.55;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct Flow {
@@ -183,10 +186,34 @@ impl Flow {
         let net = [&self.large, &self.small, &self.unclassified].iter().map(|b| b.buy - b.sell).sum::<Volume>();
         let mut wire = json!({"total": vol::wire(total), "net": vol::wire(net), "availability": if rule.is_some() { "OK" } else { "NO_RULE" }, "rule_id": rule,
                               "ratio_unit": "decimal_ratio"});
-        wire["large"] = self.large.wire(total);
-        wire["small"] = self.small.wire(total);
-        wire["unclassified"] = self.unclassified.wire(total);
+        wire["large"] = self.large.wire();
+        wire["small"] = self.small.wire();
+        wire["unclassified"] = self.unclassified.wire();
         wire
+    }
+
+    /// A period's flow as the 大單流向 panel shows it: `wire`, plus the buy and sell volume over every class (`net` is
+    /// their difference).
+    pub fn period_wire(&self, rule: Option<&str>) -> Value {
+        let mut wire = self.wire(rule);
+        let sum = |of: fn(&SideBucket) -> Volume| vol::wire([&self.large, &self.small, &self.unclassified].into_iter().map(of).sum::<Volume>());
+        wire["buy"] = sum(|b| b.buy);
+        wire["sell"] = sum(|b| b.sell);
+        wire
+    }
+
+    /// 控盤: which class traded the larger part of the classified volume. A call auction's match is nobody's order
+    /// (unclassified), so it is in neither class and not in the denominator. A side controls only from
+    /// `CONTROL_RATIO`; below it the two are EVEN. Nothing classified yet: null.
+    pub fn control_wire(&self) -> Value {
+        let (large, small) = (self.large.total(), self.small.total());
+        let classified = large + small;
+        if vol::positive(classified).is_none() {
+            return json!({"side": null, "large_ratio": null, "small_ratio": null});
+        }
+        let (large_ratio, small_ratio) = (large / classified, small / classified);
+        let side = if !vol::lt(large_ratio, CONTROL_RATIO) { "LARGE" } else if !vol::lt(small_ratio, CONTROL_RATIO) { "SMALL" } else { "EVEN" };
+        json!({"side": side, "large_ratio": ratio(large, classified), "small_ratio": ratio(small, classified)})
     }
 }
 
@@ -2417,6 +2444,19 @@ pub mod tests {
     }
 
     #[test]
+    fn control_is_the_class_with_at_least_55_percent_of_the_classified_volume() {
+        let flow = |large: f64, small: f64, unclassified: f64| Flow {
+            large: SideBucket { buy: large, ..Default::default() }, small: SideBucket { sell: small, ..Default::default() },
+            unclassified: SideBucket { unknown: unclassified, ..Default::default() } }.control_wire();
+        assert_eq!(flow(55.0, 45.0, 0.0)["side"], "LARGE", "at the threshold");
+        assert_eq!(flow(45.0, 55.0, 0.0)["side"], "SMALL");
+        assert_eq!(flow(54.9, 45.1, 0.0)["side"], "EVEN");
+        assert_eq!(flow(50.0, 50.0, 0.0)["side"], "EVEN");
+        assert_eq!(flow(60.0, 40.0, 900.0), json!({"side": "LARGE", "large_ratio": 0.6, "small_ratio": 0.4}), "an auction's match is in no class");
+        assert!(flow(0.0, 0.0, 900.0)["side"].is_null(), "only auctions: nobody controls");
+    }
+
+    #[test]
     fn the_flow_s_hour_buckets_follow_the_session_from_its_open_to_its_close() {
         let cal = Calendar::default();
         let r = rules();
@@ -2431,8 +2471,12 @@ pub mod tests {
             b["to_minute"].as_i64().unwrap(), b["opens_session"].as_bool().unwrap(), b["closes_session"].as_bool().unwrap())).collect();
         assert_eq!(shape, vec![("all", 540, 810, true, true), ("m540", 540, 599, true, false), ("m600", 600, 659, false, false),
                                ("m780", 780, 810, false, true)], "the hours that traded, the first from 09:00 and the last to 13:30");
-        assert_eq!(buckets[1]["large"], json!({"buy": 150, "sell": 0}));
-        assert_eq!((buckets[1]["total"].as_f64(), buckets[1]["buy_ratio"].as_f64()), (Some(200.0), Some(0.75)), "of the bucket's own volume");
+        assert_eq!(buckets[1]["large"], json!({"buy": 150, "sell": 0, "unknown": 0, "net": 150}));
+        assert_eq!((buckets[1]["total"].as_f64(), buckets[1]["buy_ratio"].as_f64()), (Some(200.0), Some(0.3)), "of the session's volume so far");
+        let (earlier, _, _) = inst.flow_wire(&cal, &r, ts(602, 0), None, None, None);
+        assert_eq!(earlier["hourSeries"][1]["buy_ratio"].as_f64(), Some(0.375), "150 of the 400 traded by then: later volume dilutes it");
+        let shares = |key: &str| buckets[1..].iter().map(|b| b[key].as_f64().unwrap()).sum::<f64>();
+        assert!((shares("buy_ratio") - buckets[0]["buy_ratio"].as_f64().unwrap()).abs() < 1e-6, "the hours add up to 開盤迄今");
         assert_eq!((buckets[0]["total"].as_f64(), buckets[0]["sell_ratio"].as_f64()), (Some(500.0), Some(0.4)));
     }
 
@@ -2444,10 +2488,12 @@ pub mod tests {
         let mut inst = Instrument::new(id());
         let (before, _, _) = inst.flow_wire(&cal, &r, ts(480, 0), None, None, None);
         assert_eq!((before["availability"].as_str(), before["session"].as_str()), (Some("BEFORE_SESSION"), Some("DAY")));
-        assert_eq!((before["session_open_minute"].as_i64(), before["session_close_minute"].as_i64()), (Some(540), Some(810)));
+        assert_eq!((before["session_open_minute"].as_i64(), before["session_close_minute"].as_i64()), (Some(540), Some(804)), "to the last minute before the 13:25 closing call");
         inst.apply(&cal, &r, &trade_at(1, 600, 1, 1_000_000, 10, 1));
         let (flow, _, _) = inst.flow_wire(&cal, &r, ts(601, 0), None, None, None);
-        assert_eq!((flow["session_open_minute"].as_i64(), flow["session_close_minute"].as_i64()), (Some(540), Some(810)));
+        assert_eq!((flow["session_open_minute"].as_i64(), flow["session_close_minute"].as_i64()), (Some(540), Some(804)));
+        let closed = |minute| inst.flow_wire(&cal, &r, ts(minute, 59), None, None, None).0["session_closed"].clone();
+        assert_eq!((closed(601), closed(810), closed(811)), (json!(false), json!(false), json!(true)), "the closing minute is still the session's");
 
         // A futures night is one partition from 15:00 to 05:00 the next morning (minutes past 1440).
         let night_id = InstrumentId { source: "shioaji".into(), market: "FUT".into(), code: "TXFR1".into(),

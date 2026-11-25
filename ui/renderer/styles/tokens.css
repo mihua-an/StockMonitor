@@ -96,7 +96,6 @@
   --blue-100: #dbeafe;
   --blue-100x-4: #dbe8f5;
   --blue-200: #bfdbfe;
-  --blue-200x-2: #aebed1;
   --blue-200x-3: #b5c3d1;
   --blue-200x-4: #b8c5d3;
   --blue-200x-7: #c9d7e5;
@@ -104,7 +103,6 @@
   --blue-300x-10: #a8b8c9;
   --blue-300x-2: #8ea7c1;
   --blue-300x-3: #91a7bd;
-  --blue-300x-6: #9fb0c2;
   --blue-300x-9: #9fb6d7;
   --blue-400: #60a5fa;
   --blue-400-a28: rgba(96, 165, 250, 0.28);
@@ -131,7 +129,6 @@
   --blue-700x-10: #334b69;
   --blue-700x-11: #34506f;
   --blue-700x-12: #3a4857;
-  --blue-700x-13: #3b4a5c;
   --blue-700x-3: #2c4054;
   --blue-700x-4: #2c4561;
   --blue-700x-5: #2d4a67;
@@ -260,7 +257,6 @@
   --slate-700-a55: rgba(51, 65, 85, 0.55);
   --slate-700-a62: rgba(51, 65, 85, 0.62);
   --slate-700-a72: rgba(51, 65, 85, 0.72);
-  --slate-700x: #3b4652;
   --slate-800: #1e293b;
   --slate-900: #0f172a;
   --slate-900-a48: rgba(15, 23, 42, 0.48);

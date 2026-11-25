@@ -68,7 +68,7 @@ pub struct OutageGaps {
 
 fn open_start(id: &PartitionId, code: &str) -> GapStart {
     GapStart { market: id.market.clone(), code: code.to_owned(), trading_date: id.trading_date.clone(), session: id.session.clone(),
-        after_ns: 0, volume_at_after: 0.0, total_before: (id.market == "STK").then_some(0.0) }
+        after_ns: 0, volume_at_after: 0.0, total_before: (id.market == "STK").then_some(0.0), average_before: None }
 }
 
 impl OutageGaps {
@@ -206,7 +206,7 @@ mod tests {
 
     fn start(code: &str, after_ns: i64, total: f64) -> GapStart {
         GapStart { market: "STK".into(), code: code.into(), trading_date: "2026-11-06".into(), session: "DAY".into(), after_ns,
-            volume_at_after: 2.0, total_before: Some(total) }
+            volume_at_after: 2.0, total_before: Some(total), average_before: Some(1_001_000) }
     }
 
     fn report(code: &str, from_ns: i64, to_ns: i64) -> LossReport {
@@ -242,6 +242,7 @@ mod tests {
         assert_eq!(gap["cause"], "outage");
         assert_eq!(gap["after_ns"], taipei(9, 59));
         assert_eq!(gap["total_before"], 1200.0);
+        assert_eq!(gap["average_before"], 1_001_000, "the fill continues the session's 均價 from here");
         assert_eq!(gap["next_ns"], taipei(10, 2) + SECOND);
         assert_eq!(gap["next_total_before"], 1245.0);
         assert_eq!(gap["connection"], "connection 2");

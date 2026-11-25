@@ -29,7 +29,7 @@ component.update(vm([tradeflow, windows], 3));
 assert.equal(built, 1, "same view-state objects, same choices: no builder runs");
 component.update(vm([{ ...tradeflow }, windows], 4));
 assert.equal(built, 2, "a new tradeflow object builds");
-component.displayMode = "minute";
+component.displayModes = { large: "minute", small: "cumulative" };
 component.render();
 assert.equal(built, 3, "a UI choice builds");
 const noSource = vm(undefined, 5);

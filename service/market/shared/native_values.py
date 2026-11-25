@@ -55,6 +55,28 @@ def derived_price_to_units(value: Any, *, scale: int = DEFAULT_PRICE_SCALE) -> i
     return result
 
 
+class RunningAverage:
+    """The session-to-now 均價 of a run of prints (fixed point), as the live stream states it on each print: traded
+    amount over volume. A broker's history states only price and volume, so whoever turns it into events runs this.
+
+    ``average_before`` / ``total_before``: the 均價 and cumulative volume the run starts from; ``from_open`` starts at
+    nothing. A run whose start is not known has no average (0 = not stated): its own prints' average is not the
+    session's."""
+
+    def __init__(self, *, from_open: bool, average_before: int | None = None, total_before: float | None = None) -> None:
+        self._known = from_open or (bool(average_before) and bool(total_before))
+        self._volume = 0.0 if from_open or not self._known else float(total_before)
+        self._amount = 0.0 if from_open or not self._known else float(average_before) * float(total_before)
+
+    def after(self, price_units: int, volume: float) -> int:
+        """The average at this print."""
+        if not self._known:
+            return 0
+        self._volume += float(volume)
+        self._amount += float(price_units) * float(volume)
+        return int(self._amount / self._volume + 0.5)
+
+
 def exchange_timestamp_ns(obj: Any) -> int:
     """Return a Shioaji exchange-local wall clock as an epoch timestamp."""
     raw = getattr(obj, "datetime", None)

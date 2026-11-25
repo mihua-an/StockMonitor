@@ -29,13 +29,19 @@ assert.equal(volumeUnitLabel("", "張"), "張");
 // 大單 panels: no rounding to whole lots, the instrument's unit.
 assert.match(renderBigOrderSignedCell(0.25), />\+0\.25</);
 const flow = { market: "US", cumulative: { large: { buy: 0.5, sell: 0.25, net: 0.25 }, small: { buy: 0.1, sell: 0.2, net: -0.1 } },
-  totals: { large: { total: 0.75, class_ratio: 0.5 }, small: { total: 0.3, class_ratio: 0.2 } }, minuteSeries: [] };
+  totals: { large: { total: 0.75 }, small: { total: 0.3 }, control: { side: "LARGE", large_ratio: 0.5714, small_ratio: 0.4286 } }, minuteSeries: [] };
 const html = renderUnifiedBigOrderInOut(flow);
 assert.match(html, /<span class="flow-control-large">大單 0\.75<\/span>/, html);
 assert.match(html, /<span class="flow-control-small">小單 0\.3<\/span>/);
-// 大單控盤 is B's class_ratio (its denominator includes unclassified volume), not large / (large + small).
-assert.match(html, /大單控盤<\/span><b>50\.0%<\/b>/);
-assert.match(renderUnifiedBigOrderInOut({ market: "STK", cumulative: {}, minuteSeries: [] }), /大單控盤<\/span><b>–<\/b>/, "nothing traded: no share");
+// 控盤 is B's verdict and shares (totals.control), never computed from the two volumes here.
+const controlOf = (control) => renderUnifiedBigOrderInOut({ market: "STK", cumulative: {}, minuteSeries: [], totals: { large: { total: 1 }, small: { total: 1 }, control } })
+  .match(/flow-control-head">(.*?)<\/div>/)[1].replace(/<[^>]+>/g, " ").trim().replace(/ +/g, " ");
+assert.match(html, /大單控盤<\/span>/);
+assert.equal(controlOf({ side: "LARGE", large_ratio: 0.622, small_ratio: 0.378 }), "大單控盤 62.2%");
+assert.equal(controlOf({ side: "SMALL", large_ratio: 0.328, small_ratio: 0.672 }), "小單控盤 67.2%");
+assert.equal(controlOf({ side: "EVEN", large_ratio: 0.508, small_ratio: 0.492 }), "大小單相當 50.8% 49.2%", "neither controls: both shares");
+assert.equal(controlOf({ side: null, large_ratio: null, small_ratio: null }), "控盤 –", "only auctions: no share, never 0.0%");
+assert.match(renderUnifiedBigOrderInOut({ market: "STK", cumulative: {}, minuteSeries: [] }), /控盤<\/span><span class="flow-control-share">–<\/span>/, "nothing traded: no share");
 assert.match(html, /\+0\.25<\/b><span class="flow-net-unit">股</);
 const quote = flowQuoteHtml({ time: "10:00", market: "US", large: { cumulative: 0.25, net: 0.25 }, small: { cumulative: -0.5, net: 0 } });
 assert.match(quote, /0\.25<\/b>.*股/s, "查價: the cumulative is not rounded to 0");

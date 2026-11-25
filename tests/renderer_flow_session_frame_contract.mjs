@@ -27,15 +27,23 @@ const night = { market: "FUT", session: "NIGHT", session_open_minute: 900, sessi
   minuteSeries: [row(900, "15:00", 2), row(1470, "00:30", -3)] };
 assert.deepEqual(frame(renderUnifiedBigOrderInOut(night)), { start: 900, end: 1740,
   labels: ["15", "17", "19", "21", "23", "01", "03", "05"] });
-assert.equal(flowMinuteDetail(night, 1470).time, "00:30", "a minute past 1440 reads as the next morning's clock");
+assert.equal(flowMinuteDetail(night, 1470).time, "00:31", "a minute past 1440 reads as the next morning's clock");
 
 // A session continuing from the previous partition (Futu's overnight 20:00-03:59): it opens before this partition's 0.
 const overnight = { market: "US", session: "OVERNIGHT", session_open_minute: -240, session_close_minute: 239, cumulative: {},
   minuteSeries: [row(-140, "21:40", 4), row(30, "00:30", 1)] };
 assert.deepEqual(frame(renderUnifiedBigOrderInOut(overnight)), { start: -240, end: 239,
   labels: ["20", "21", "22", "23", "00", "01", "02", "03"] });
-assert.equal(flowMinuteDetail(overnight, -140).time, "21:40");
+assert.equal(flowMinuteDetail(overnight, -140).time, "21:41");
 assert.equal(flowMinuteDetail(overnight, -140).large.cumulative, 4, "the previous partition's minute is on the axis");
+
+// A Taiwan stock: B's frame ends with the minute before the 13:25 closing call. A bar is named by its minute's end, the
+// first 09:01 and the last 13:25; the auction's minutes are neither drawn nor read, nor are they the 分時 number.
+const tw = { market: "STK", session_open_minute: 540, session_close_minute: 804, cumulative: {},
+  minuteSeries: [row(540, "09:00", 4), row(804, "13:24", -6), row(806, "13:26", 0), row(810, "13:30", 0)] };
+assert.deepEqual(frame(renderUnifiedBigOrderInOut(tw)), { start: 540, end: 804, labels: ["09", "10", "11", "12", "13"] });
+assert.deepEqual([flowMinuteDetail(tw, 540).time, flowMinuteDetail(tw, 804).time, flowMinuteDetail(tw, 805)], ["09:01", "13:25", null]);
+assert.match(renderUnifiedBigOrderInOut(tw, { displayModes: { large: "minute" } }), /大單分時賣超<\/span><b class="price-down">-6</);
 
 // No frame from B: nothing is drawn and nothing is read, never a frame of the renderer's own.
 const unframed = renderUnifiedBigOrderInOut({ market: "STK", cumulative: {}, minuteSeries: [row(600, "10:00", 5)] });

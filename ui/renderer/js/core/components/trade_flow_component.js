@@ -2,7 +2,7 @@ import { CleanupBag } from "../cleanup_bag.js";
 import {
   normalizeBigOrderFlowView, renderBigOrderFlowViewTabs, renderUnifiedBigOrderInOut, renderUnifiedBigOrderRatios,
   renderUnifiedBigOrderMinuteVolume, bigOrderFlowBuckets, bigOrderBucketWindow, flowChartMinuteAt, flowChartMinutePercent,
-  flowMinuteDetail, flowQuoteHtml,
+  flowMinuteDetail, flowModeChoice, flowQuoteHtml,
 } from "../big_order_flow.js";
 import { componentUpdated } from "../market_render_trace.js";
 import { enableRowUnitScroll } from "../row_snap.js";
@@ -44,8 +44,9 @@ export class TradeFlowComponent {
     this.cleanup = new CleanupBag("trade flow");
     this.vm = {};
     this.activeKey = "inout";
-    this.activeWindow = "300s";
-    this.displayMode = "cumulative";
+    this.activeWindow = "all";
+    // 累計／分時 of each 進出 chart.
+    this.displayModes = { large: "cumulative", small: "cumulative" };
     this.sideFilter = "ALL";
     this.bucketKey = "all";
     this.renderedActiveKey = "";
@@ -81,31 +82,33 @@ export class TradeFlowComponent {
     this.renderedActiveKey = this.activeKey;
   }
 
-  // The view's controls (累計／分時, 時間區間, 單別, the 分時 buckets) are kept across renders (the content is morphed,
+  // The view's controls (累計／分時 of each chart, the 買賣比 rows, 單別, the 分時 buckets) are kept across renders (the content is morphed,
   // not rebuilt), so one delegated listener on the content serves them all.
   bindControls() {
     const content = role(this.host, "flow-content");
     if (!content?.addEventListener) return;
     this.cleanup.listen(content, "click", (event) => {
-      const mode = event.target?.closest?.("[data-flow-display-mode]");
-      if (mode) {
-        this.displayMode = String(mode.dataset.flowDisplayMode || "minute") === "cumulative" ? "cumulative" : "minute";
+      const choice = flowModeChoice(event.target);
+      if (choice) {
+        this.displayModes = { ...this.displayModes, [choice.size]: choice.mode };
+        this.render();
+        return;
+      }
+      const period = event.target?.closest?.("[data-flow-window]");
+      if (period) {
+        this.activeWindow = String(period.dataset.flowWindow || "all");
+        this.render();
+        return;
+      }
+      const side = event.target?.closest?.("[data-flow-side]");
+      if (side) {
+        this.sideFilter = String(side.dataset.flowSide || "ALL").toUpperCase();
         this.render();
         return;
       }
       const bucket = event.target?.closest?.("[data-flow-bucket]");
       if (bucket) {
         this.bucketKey = String(bucket.dataset.flowBucket || "all");
-        this.render();
-      }
-    });
-    this.cleanup.listen(content, "change", (event) => {
-      const target = event.target;
-      if (target?.matches?.("[data-flow-window-select]")) {
-        this.activeWindow = String(target.value || "300s");
-        this.render();
-      } else if (target?.matches?.("[data-flow-side-filter]")) {
-        this.sideFilter = String(target.value || "ALL").toUpperCase();
         this.render();
       }
     });
@@ -160,7 +163,7 @@ export class TradeFlowComponent {
   // otherwise rebuild the whole markup every frame just to find it equal). A VM without flowSource always builds.
   renderInputs(vm) {
     if (!Array.isArray(vm.flowSource)) return null;
-    return [this.activeKey, this.displayMode, this.activeWindow, this.sideFilter, this.bucketKey, this.windowOrders,
+    return [this.activeKey, this.displayModes.large, this.displayModes.small, this.activeWindow, this.sideFilter, this.bucketKey, this.windowOrders,
       vm.scopeLabel, vm.availability, ...vm.flowSource];
   }
 
@@ -191,7 +194,7 @@ export class TradeFlowComponent {
     // Data availability controls chart contents, never whether the component
     // shell/tabs are rendered. Empty projections keep the same surface.
     if (this.activeKey === "inout") {
-      const html = renderUnifiedBigOrderInOut(flow, { displayMode: this.displayMode });
+      const html = renderUnifiedBigOrderInOut(flow, { displayModes: this.displayModes });
       if (this.replaceContent(content, html)) this.paintCrosshair();
     } else if (this.activeKey === "ratio") {
       this.replaceContent(content, renderUnifiedBigOrderRatios(flow, { activeWindow: this.activeWindow }));

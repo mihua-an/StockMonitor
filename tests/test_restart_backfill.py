@@ -90,7 +90,7 @@ def test_a_gap_is_fetched_once_its_first_live_print_arrives_and_reported_with_bo
     ticks = history((ns(10, 2), 1001.0, 15.0, 1), (ns(10, 4), 1002.0, 10.0, 2))
     h = Harness(ticks=ticks)
     wire = {"market": "STK", "code": "2330", "trading_date": "2026-11-06", "session": "DAY", "after_ns": ns(10, 0),
-            "volume_at_after": 5.0, "total_before": 105.0, "restart_from_ns": ns(10, 0), "restart_to_ns": ns(10, 5)}
+            "volume_at_after": 5.0, "total_before": 105.0, "average_before": 9_990_000, "restart_from_ns": ns(10, 0), "restart_to_ns": ns(10, 5)}
     h.backfill.requested([wire])
     assert h.backfill.pending() == 1 and not h.queries, "nothing is fetched before the stream took over"
     h.backfill.observe("STK", "2330", ns(10, 0), 105.0, 5.0)  # not after the start: not the end
@@ -100,6 +100,7 @@ def test_a_gap_is_fetched_once_its_first_live_print_arrives_and_reported_with_bo
     assert h.queries == [("2330", date(2026, 11, 6), "10:00:00", "10:05:01")]
     trades = [e for e in h.published if e.event_type == "trade"]
     assert [(e.data["volume"], e.data["total_volume"], e.data["side"]) for e in trades] == [(15.0, 120.0, 1), (10.0, 130.0, -1)]
+    assert [e.data["average"] for e in trades] == [9_992_500, 9_994_615], "continued from the 均價 at the gap's start"
     assert all(e.flags == {"backfill": True, "backfill_cutoff_ns": ns(10, 5, 1)} for e in trades)
     assert [e.sequence for e in trades] == [1, 2], "the code's own stream sequence space"
     assert h.reports == [{"market": "STK", "code": "2330", "trading_date": "2026-11-06", "session": "DAY", "cause": "restart", "restart_to_ns": ns(10, 5), "end": "first_live_print",
@@ -128,6 +129,7 @@ def test_a_code_that_does_not_print_again_is_filled_at_its_close_with_nothing_to
     assert h.done.wait(5)
     h.backfill.stop()
     assert h.reports[0]["next_total_before"] is None and h.reports[0]["prints"] == 1
+    assert [e.data["average"] for e in h.published] == [0], "the 均價 at its start is not known: none is made up"
 
 
 def test_prints_of_another_day_are_never_taken():
@@ -224,6 +226,7 @@ def test_a_late_join_is_filled_from_the_open_at_once_and_reported_as_one():
     trades = [e for e in h.published if e.event_type == "trade"]
     assert [(e.data["volume"], e.data["total_volume"]) for e in trades] == [(50.0, 50.0), (15.0, 65.0)], "the live instant is the stream's"
     assert all(e.flags == {"backfill": True, "backfill_cutoff_ns": ns(10, 30, 2)} for e in trades)
+    assert [e.data["average"] for e in trades] == [10_000_000, 10_002_308], "the session's 均價 at each print, which the history does not state"
     assert trades[0].data["trade_id"] == f"bf{ns(10, 30)}:1"
     assert h.reports == [{"market": "STK", "code": "3481", "trading_date": "2026-11-06", "session": "DAY", "cause": "late_join",
                           "restart_to_ns": 0, "end": "first_live_print", "total_before": 0.0, "next_total_before": 65.0,

@@ -17,15 +17,15 @@ const flow = {
 };
 
 const buckets = bigOrderFlowBuckets(flow);
-assert.deepEqual(buckets.map((b) => b.label), ["開盤迄今", "開盤~10:00", "10:00~11:00"]);
-assert.deepEqual(buckets.map((b) => [b.buyPct, b.sellPct]), [[5, 10], [10, 0], [0, 20]]);
+assert.deepEqual(buckets.map((b) => b.label), ["開盤迄今", "10:00~11:00", "開盤~10:00"]);
+assert.deepEqual(buckets.map((b) => [b.buyPct, b.sellPct]), [[5, 10], [0, 20], [10, 0]]);
 
 const hour10 = renderUnifiedBigOrderMinuteVolume(flow, { bucketKey: "m600" });
 assert.ok(hour10.includes("10:01:05") && !hour10.includes("09:00:03"));
 const listHead = hour10.slice(hour10.indexOf("flow-large-order-head"));
 assert.ok(!/<span>單別<\/span>/.test(listHead) && !hour10.includes("掃價"), "no 單別 column or reason in the list");
-// 單別 filter (全部 / 買 / 賣) above the buckets.
-assert.match(hour10, /data-flow-side-filter/);
+// 單別 (全部 / 買 / 賣) over the list, under the buckets.
+assert.ok(hour10.indexOf('data-flow-side="BUY"') > hour10.lastIndexOf("data-flow-bucket"));
 const sells = renderUnifiedBigOrderMinuteVolume(flow, { bucketKey: "m600", sideFilter: "SELL" });
 const buysOnly = renderUnifiedBigOrderMinuteVolume(flow, { bucketKey: "m600", sideFilter: "BUY" });
 assert.ok(sells.includes("10:01:05"), "the 內盤 print stays under 賣");
@@ -33,13 +33,12 @@ assert.ok(!buysOnly.includes("10:01:05") && buysOnly.includes("沒有買方大�
 assert.ok(hour10.includes("flow-large-order-row price-down"), "a 內盤 print takes the down colour");
 assert.ok(!hour10.includes("11:00~12:00"), "a bucket B did not send (no trades yet) is not shown");
 assert.ok(!hour10.includes("flow-large-order-note"), "a fully listed bucket carries no truncation note");
-// One share per bucket: the larger side under 全部, the filtered side otherwise.
-assert.ok(hour10.includes('<b class="price-down">賣 10.0%</b>') && !hour10.includes("買 5.0%"), "全部 shows only the larger side");
-assert.ok(buysOnly.includes('<b class="price-up">買 5.0%</b>'), "買 shows the buy share even when smaller");
+// Both shares of every bucket are written on its bar, whatever the list's 單別 is.
+for (const shown of [hour10, sells, buysOnly]) assert.ok(shown.includes('<b class="buy">5.0%</b><b class="sell">10.0%</b>') && shown.includes('<b class="buy">0.0%</b><b class="sell">20.0%</b>'));
 
 const all = renderUnifiedBigOrderMinuteVolume(flow);
 assert.ok(all.includes("09:00:03") && all.includes("10:01:05"), "開盤迄今 lists both sides");
-assert.ok(all.includes("data-flow-side-filter"), "the 單別 filter is back (user, 2026-10-08)");
+assert.ok(all.includes("data-flow-side="), "the 單別 filter is there");
 
 // Older prints beyond B's wire cap are called out rather than silently missing.
 const capped = renderUnifiedBigOrderMinuteVolume({ ...flow, largeOrders: flow.largeOrders.slice(0, 1) }, { bucketKey: "m540" });
@@ -170,7 +169,7 @@ assert.equal(asked.length, 4, "and is retried after it");
 {
   const { bigOrderFlowWindowsFromRust, renderUnifiedBigOrderRatios, BIG_ORDER_FLOW_WINDOWS } = await import("../ui/renderer/js/core/big_order_flow.js");
   const block = { windows: {
-    "5": { flow: { large: { buy: 300, sell: 100, buy_ratio: 0.75, sell_ratio: 0.25 }, small: { buy: 10, sell: 30, buy_ratio: 0.25, sell_ratio: 0.75 } } },
+    "5": { flow: { large: { buy: 300, sell: 100, buy_ratio: 0.75, sell_ratio: 0.25 }, small: { buy: 10, sell: 30, net: -20, buy_ratio: 0.25, sell_ratio: 0.75 }, buy: 310, sell: 130, net: 180 } },
     "60": { flow: { large: { buy: 1, sell: 3, buy_ratio: 0.25, sell_ratio: 0.75 }, small: {} } },
   } };
   const windows = bigOrderFlowWindowsFromRust(block);
@@ -178,16 +177,18 @@ assert.equal(asked.length, 4, "and is retried after it");
   assert.equal(windows["300s"].large.buy_ratio, 0.75);
   assert.ok(BIG_ORDER_FLOW_WINDOWS.every(([key]) => key !== "600s"), "only windows B computes are offered");
   const html = renderUnifiedBigOrderRatios({ cumulative: {}, windows }, { activeWindow: "300s" });
-  assert.ok(html.includes("買 75.0%") && html.includes('class="sell" style="width:25%"'), "the 近5分 large ratio comes from B's window");
-  assert.ok(html.includes('<b class="price-up">買 75.0%</b>'), "a cell shows the larger side's share in its colour");
-  assert.ok(html.includes('<b class="price-down">賣 75.0%</b>'), "a sell-heavy cell names 賣");
-  assert.ok(html.includes('<i class="buy" style="width:75%"></i><i class="sell" style="width:25%"></i>'), "with the split bar under it");
+  const five = html.split('data-flow-window="300s"')[1].split("</button>")[0];
+  assert.ok(five.includes('<b class="buy">75.0%</b><b class="sell">25.0%</b>') && five.includes('<b class="buy">25.0%</b><b class="sell">75.0%</b>'), "大單 then 小單, both shares of B's window");
+  assert.ok(five.includes('<i class="buy" style="width:75.00%"></i><i class="sell" style="width:25.00%"></i>'));
+  assert.deepEqual([...html.matchAll(/data-flow-window="([^"]+)"/g)].map(([, key]) => key), ["all", ...BIG_ORDER_FLOW_WINDOWS.map(([key]) => key)], "every period is listed");
+  const detail = html.slice(html.indexOf("flow-ratio-detail")).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  assert.match(detail, /近5分（張） 買 賣 買賣超 .*合計 310 130 \+180/, "the chosen period's volumes, its 合計 B's own");
   // 開盤迄今 and 累計盤差 are B's totals: no direction yet is B's null, shown as such, never a drawn 50/50.
   const totals = { net: -7, large: { buy: 0, sell: 0, unknown: 5, buy_ratio: null, sell_ratio: null }, small: { buy: 2, sell: 6, buy_ratio: 0.25, sell_ratio: 0.75 } };
   const day = renderUnifiedBigOrderRatios({ cumulative: {}, totals, windows: {} }, { activeWindow: "300s" });
   assert.ok(!day.includes("50.0%"), day);
   assert.ok(day.includes("尚無方向"));
-  assert.ok(day.includes('<b class="price-down">賣 75.0%</b>') && day.includes('<i class="buy" style="width:25%"></i>'), "the small day ratio is B's");
+  assert.ok(day.includes('<b class="buy">25.0%</b><b class="sell">75.0%</b>'), "the small day ratio is B's");
   assert.match(day, /累計盤差<\/span><b class="price-down">-7</, "the 累計盤差 is B's net over every class");
   assert.deepEqual(bigOrderFlowWindowsFromRust(undefined), {});
 }

@@ -187,6 +187,17 @@ def test_a_stock_with_no_partition_is_filled_whole_from_zero():
          "prints": [[1, 100.0, 2.0, 1], [2, 101.0, 3.0, 2]]}]})
     assert problems == []
     assert [e["payload"]["total_volume"] for e in events] == [2.0, 5.0]
+    assert [e["payload"]["average"] for e in events] == [1_000_000, 1_006_000]
+
+
+def test_a_fill_inside_the_session_continues_the_average_at_its_start():
+    from service.market.history import history_fill
+
+    window = {"after_ns": 1, "total_before": 10.0, "average_before": 990_000, "end_ns": 9, "next_total_before": 15.0, "prints": [[2, 100.0, 5.0, 1]]}
+    item = {"market": "STK", "code": "2330", "trading_date": "2026-11-06", "session": "DAY"}
+    assert history_fill.fill_events({**item, "windows": [window]})[0][0]["payload"]["average"] == 993_333
+    unknown = {**window, "average_before": None}
+    assert history_fill.fill_events({**item, "windows": [unknown]})[0][0]["payload"]["average"] == 0
 
 
 def test_a_stock_filled_whole_keeps_its_prev_close_as_a_reference():

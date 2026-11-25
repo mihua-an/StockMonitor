@@ -14,14 +14,14 @@ export const BIG_ORDER_FLOW_WINDOWS = Object.freeze([
   ["900s", "近15分"], ["1800s", "近30分"], ["3600s", "近60分"],
 ]);
 
-/** Rust B's `windows` block ({"1": {flow: {large, small, ...}}, ...}) in the ratio tab's shape ({"60s": {large, small}}).
- *  Without it every recent-window ratio would show the empty 50/50. */
+/** Rust B's `windows` block ({"1": {flow: {large, small, buy, sell, net, ...}}, ...}) in the ratio tab's shape, one
+ *  period per key ({"60s": {large, small, buy, sell, net}}). */
 export function bigOrderFlowWindowsFromRust(windowsBlock = {}) {
   const windows = windowsBlock && typeof windowsBlock === "object" ? (windowsBlock.windows || {}) : {};
   const out = {};
   for (const [key] of BIG_ORDER_FLOW_WINDOWS) {
     const flow = windows[String(Number.parseInt(key, 10) / 60)]?.flow;
-    if (flow && typeof flow === "object") out[key] = { large: flow.large || {}, small: flow.small || {} };
+    if (flow && typeof flow === "object") out[key] = { large: flow.large || {}, small: flow.small || {}, buy: flow.buy, sell: flow.sell, net: flow.net };
   }
   return out;
 }
@@ -51,19 +51,19 @@ export function renderBigOrderSignedCell(value) {
 }
 
 // Volumes are decimal quantities: formatQuantity keeps a fraction instead of rounding it to 0. The unit is the
-// instrument's (flow.market), not a fixed 張. The number is the day's net either way; the title says what the chart
-// under it draws -- the running total (累計) or each minute's net (分時).
+// instrument's (flow.market), not a fixed 張. The title and the number say what the chart
+// under it draws: 累計 the running total, 分時 one minute's own net (headlineMinute).
 function renderFlowNetSummary(sizeLabel, netValue, unit = "張", mode = "cumulative") {
   const net = Number(netValue || 0);
   const direction = net < 0 ? "賣超" : "買超";
   const signed = `${net > 0 ? "+" : ""}${formatQuantity(net)}`;
   const cls = signedValueClass(net);
-  const title = mode === "minute" ? `${sizeLabel}每分鐘買賣超｜全日${direction}` : `${sizeLabel}累計${direction}`;
+  const title = `${sizeLabel}${mode === "minute" ? "分時" : "累計"}${direction}`;
   return `<span class="flow-net-summary"><span>${escapeHtml(title)}</span><b class="${cls}">${escapeHtml(signed)}</b><span class="flow-net-unit">${escapeHtml(unit)}</span></span>`;
 }
 
 // The chart's frame is the session Rust B names (session_open_minute / session_close_minute, its first and last
-// trading minute on the axis the series' `minute` is on); without one there is no frame and nothing to draw. Ticks
+// minute of continuous trading on the axis the series' `minute` is on); without one there is no frame and nothing to draw. Ticks
 // are the clock hours inside it, every other hour across a long session (a futures night).
 function axisSpec(flow = {}) {
   const start = Number(flow.session_open_minute), end = Number(flow.session_close_minute);
@@ -79,6 +79,10 @@ function axisSpec(flow = {}) {
 // The plot's width in minutes: axis.end is the last minute that trades, so the plot runs to the end of it (each
 // minute is drawn from its start to the next minute's start, and the closing minute keeps its full width).
 function plotMinutes(axis) { return Math.max(1, axis.end + 1 - axis.start); }
+
+function flowRows(flow) {
+  return Array.isArray(flow.minuteSeries) ? flow.minuteSeries : (Array.isArray(flow.minute_series) ? flow.minute_series : []);
+}
 
 // A row's place on the axis: B's `minute`, already on the session's axis.
 function rowMinute(row) {
@@ -104,37 +108,28 @@ function stepMinutes(values, mode) {
   return out;
 }
 
-// Each minute is a full minute wide, so neighbouring minutes touch. Consecutive minutes on the same side of zero
-// are one closed step outline: separate shapes per minute leave anti-aliasing seams (thin stripes) between them on a
-// stretched plot. A non-zero value keeps a minimum visible height.
-function flowAreaPaths(points, { axis, yPct, zero }) {
+// One bar a minute, each a full minute wide and crisp-edged on shared coordinates, so neighbours touch without a gap.
+// Alternating tones (even / odd bands counted from the open) keep the bars readable one by one; a long session (a
+// futures night) has less than a pixel a minute, so a band there covers the minutes that make it as wide as a minute
+// of a stock's day. A non-zero value keeps a minimum visible height.
+const BAND_SESSION_MINUTES = 270;
+function flowBarPaths(points, { axis, yPct, zero }) {
   const span = plotMinutes(axis);
+  const band = Math.max(1, Math.round(span / BAND_SESSION_MINUTES));
   const x = (minute) => (Math.max(0, Math.min(span, minute - axis.start)) / span * 1000).toFixed(2);
-  const level = (value) => {
+  const base = zero.toFixed(2);
+  const paths = { buy: ["", ""], sell: ["", ""] };
+  for (const { minute, value } of points) {
+    if (!value) continue;
     const y = yPct(value);
-    return value > 0 ? Math.min(y, zero - 0.6) : Math.max(y, zero + 0.6);
-  };
-  const paths = { buy: "", sell: "" };
-  let run = null;
-  const close = () => {
-    if (!run) return;
-    paths[run.side] += `M${x(run.from)} ${zero.toFixed(2)}${run.steps}H${x(run.to + 1)}V${zero.toFixed(2)}Z`;
-    run = null;
-  };
-  for (const point of points) {
-    const side = point.value > 0 ? "buy" : point.value < 0 ? "sell" : null;
-    if (!side || !run || run.side !== side || point.minute !== run.to + 1) close();
-    if (!side) continue;
-    if (!run) run = { side, from: point.minute, to: point.minute, steps: "" };
-    else run.to = point.minute;
-    run.steps += `${run.steps ? `H${x(point.minute)}` : ""}V${level(point.value).toFixed(2)}`;
+    const level = (value > 0 ? Math.min(y, zero - 0.6) : Math.max(y, zero + 0.6)).toFixed(2);
+    paths[value > 0 ? "buy" : "sell"][Math.floor((minute - axis.start) / band) % 2] += `M${x(minute)} ${base}V${level}H${x(minute + 1)}V${base}Z`;
   }
-  close();
   return paths;
 }
 
 function flowChartHtml(flow = {}, { size = "large", mode = "cumulative", showXAxis = true } = {}) {
-  const rows = Array.isArray(flow.minuteSeries) ? flow.minuteSeries : (Array.isArray(flow.minute_series) ? flow.minute_series : []);
+  const rows = flowRows(flow);
   const framed = axisSpec(flow);
   // No session frame: an empty plot without an x axis.
   const axis = framed || { start: 0, end: 0, ticks: [] };
@@ -158,10 +153,13 @@ function flowChartHtml(flow = {}, { size = "large", mode = "cumulative", showXAx
   const yPct = (value) => PLOT_PAD + ((domainMax - value) / span) * (100 - 2 * PLOT_PAD);
   const zero = yPct(0);
   const ticks = domainMax <= 0 ? [0, domainMin] : domainMin >= 0 ? [domainMax, 0] : [domainMax, 0, domainMin];
-  const yLabels = ticks.map((value) => `<span class="flow-chart-y-label" style="top:${yPct(value).toFixed(2)}%">${escapeHtml(formatQuantity(value, { maxFractionDigits: 2 }))}</span>`).join("");
+  // 0 between two extremes gives way to them where their labels would overlap (--flow-label-gap: its distance to the
+  // nearer one, in percent of the plot's height; trade-flow.css compares it with a label's height).
+  const zeroGap = Math.min(yPct(0) - yPct(domainMax), yPct(domainMin) - yPct(0));
+  const yLabels = ticks.map((value) => `<span class="flow-chart-y-label${value === 0 && ticks.length === 3 ? " flow-chart-y-label-zero" : ""}" style="top:${yPct(value).toFixed(2)}%${value === 0 && ticks.length === 3 ? `;--flow-label-gap:${zeroGap.toFixed(2)}` : ""}">${escapeHtml(formatQuantity(value, { maxFractionDigits: 2 }))}</span>`).join("");
   const grid = axis.ticks.map((tick) => `<line class="flow-chart-grid" x1="${xPct(tick.minute) * 10}" y1="0" x2="${xPct(tick.minute) * 10}" y2="100"/>`).join("");
-  const areas = flowAreaPaths(stepMinutes(values, mode), { axis, yPct, zero });
-  const bars = ["buy", "sell"].map((side) => (areas[side] ? `<path class="flow-chart-area ${side}" d="${areas[side]}"/>` : "")).join("");
+  const paths = flowBarPaths(stepMinutes(values, mode), { axis, yPct, zero });
+  const bars = ["buy", "sell"].flatMap((side) => ["", " flow-chart-bar-odd"].map((tone, i) => (paths[side][i] ? `<path class="flow-chart-bar ${side}${tone}" d="${paths[side][i]}"/>` : ""))).join("");
   const xAxis = showXAxis
     ? `<div class="flow-chart-x">${axis.ticks.map((tick) => `<span class="flow-chart-x-label" style="left:${xPct(tick.minute).toFixed(2)}%">${escapeHtml(tick.label)}</span>`).join("")}</div>`
     : "";
@@ -190,7 +188,7 @@ export function flowChartMinutePercent(svg, minute) {
 
 /** {time, large|small: {buy, sell, net, cumulative}} at `minute`, or null outside the traded minutes. */
 export function flowMinuteDetail(flow = {}, minute) {
-  const rows = Array.isArray(flow.minuteSeries) ? flow.minuteSeries : (Array.isArray(flow.minute_series) ? flow.minute_series : []);
+  const rows = flowRows(flow);
   const axis = axisSpec(flow);
   if (!axis) return null;
   const points = rows.map((row) => ({ row, minute: rowMinute(row) }))
@@ -204,10 +202,8 @@ export function flowMinuteDetail(flow = {}, minute) {
     out[size] = { buy: Number(own.buy || 0), sell: Number(own.sell || 0), net: Number(own.net || 0),
       cumulative: Number(at.row?.cumulative?.[size]?.net || 0) };
   }
-  // The axis runs before 0 (a session from the previous day) and past 1440 (a futures night): the clock wraps.
-  const clock = ((minute % 1440) + 1440) % 1440;
-  const hh = Math.floor(clock / 60), mm = clock % 60;
-  return { time: `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`, ...out };
+  // A bar is named by the minute's end (09:00~09:01 is 09:01), which its 累計 runs through.
+  return { time: hhmm(minute + 1), ...out };
 }
 
 /** The 查價 window (as the broker's): per size, 時間 and the 累計 from the open to that minute, said as 買超 / 賣超;
@@ -227,45 +223,89 @@ export function flowQuoteHtml(detail) {
 
 // B's decimal ratio as a percent; null (nothing to divide by yet) stays null.
 function ratioPct(value) { return value === null || value === undefined ? null : Number(value) * 100; }
-// One class's buy/sell split in one period as B computed it (over the volume with a known direction): the larger
-// side's share in its colour, a short split bar under it. With no direction yet B sends
-// null and the cell says so; it never draws a 50/50.
-function ratioCellHtml(item={}) {
-  const buyPct=ratioPct(item.buy_ratio), sellPct=ratioPct(item.sell_ratio);
-  if (buyPct===null||sellPct===null) return `<td><span class="flow-ratio-none">尚無方向</span><div class="flow-ratio-track"></div></td>`;
-  const buyMajor=buyPct>=sellPct;
-  return `<td><b class="${buyMajor?"price-up":"price-down"}">${buyMajor?"買":"賣"} ${(buyMajor?buyPct:sellPct).toFixed(1)}%</b>`
-    + `<div class="flow-ratio-track"><i class="buy" style="width:${buyPct}%"></i><i class="sell" style="width:${sellPct}%"></i></div></td>`;
+// The bar 買賣比 and 分時 share: the buy share from the left, the sell share from the right, both numbers always written
+// on it (over the grey rest when a share is too narrow to hold its own).
+function splitBarHtml(buyPct, sellPct) {
+  return `<span class="flow-split-bar"><i class="buy" style="width:${buyPct.toFixed(2)}%"></i><i class="sell" style="width:${sellPct.toFixed(2)}%"></i>`
+    + `<b class="buy">${buyPct.toFixed(1)}%</b><b class="sell">${sellPct.toFixed(1)}%</b></span>`;
 }
 
-export function renderUnifiedBigOrderInOut(flow = {}, { displayMode = "cumulative" } = {}) {
-  const mode = displayMode === "minute" ? "minute" : "cumulative";
+// One class's buy/sell split in one period as B computed it (over the volume with a known direction). With no
+// direction yet B sends null and the bar says so; it never draws a 50/50.
+function ratioBarHtml(item = {}) {
+  const buyPct = ratioPct(item.buy_ratio), sellPct = ratioPct(item.sell_ratio);
+  return buyPct === null || sellPct === null ? `<span class="flow-split-bar"><em>尚無方向</em></span>` : splitBarHtml(buyPct, sellPct);
+}
+
+const CONTROL_LABELS = Object.freeze({ LARGE: "大單控盤", SMALL: "小單控盤", EVEN: "大小單相當" });
+
+// 控盤: B's verdict (totals.control) and its shares of the classified volume; the controlling side's share, or both
+// when neither controls. One bar, 大單 from the left, with both volumes at its ends.
+function controlHtml(totals = {}) {
+  const control = totals.control || {};
+  const largePct = ratioPct(control.large_ratio), smallPct = ratioPct(control.small_ratio);
+  const label = CONTROL_LABELS[control.side];
+  const large = label && control.side !== "SMALL" ? `<b class="flow-control-large">${largePct.toFixed(1)}%</b>` : "";
+  const small = label && control.side !== "LARGE" ? `<b class="flow-control-small">${smallPct.toFixed(1)}%</b>` : "";
+  return `<section class="flow-control"><div class="flow-control-head"><span>${label || "控盤"}</span><span class="flow-control-share">${label ? large + small : "–"}</span></div>`
+    + `<div class="flow-control-track"><i class="flow-control-bar-large" style="width:${(largePct ?? 0).toFixed(2)}%"></i><i class="flow-control-bar-small" style="width:${(smallPct ?? 0).toFixed(2)}%"></i></div>`
+    + `<div class="flow-control-legend"><span class="flow-control-large">大單 ${formatQuantity(Number(totals.large?.total || 0))}</span><span class="flow-control-small">小單 ${formatQuantity(Number(totals.small?.total || 0))}</span></div></section>`;
+}
+
+// 累計 / 分時 of one chart.
+function modeSwitchHtml(size, label, mode) {
+  const button = (key, text) => `<button type="button" class="pill-switch-btn${mode === key ? " active" : ""}" data-flow-display-mode="${key}" data-flow-mode-size="${size}" aria-pressed="${mode === key}">${text}</button>`;
+  return `<div class="pill-switch flow-mode" role="group" aria-label="${label}圖表模式">${button("cumulative", "累計")}${button("minute", "分時")}</div>`;
+}
+
+/** The mode a click on a chart's 累計／分時 switch asks for ({size, mode}), or null when the click is elsewhere. */
+export function flowModeChoice(target) {
+  const data = target?.closest?.("[data-flow-display-mode]")?.dataset;
+  if (!data || !SIZE_ROWS.some(([size]) => size === data.flowModeSize)) return null;
+  return { size: data.flowModeSize, mode: data.flowDisplayMode === "minute" ? "minute" : "cumulative" };
+}
+
+// The minute the 分時 number is of (B's series is in minute order), of those the chart draws: the newest while the
+// session runs; once it is over, the last one that traded in this class.
+function headlineMinute(flow, size) {
+  const axis = axisSpec(flow);
+  const rows = axis ? flowRows(flow).filter((row) => rowMinute(row) <= axis.end) : [];
+  if (flow.session_closed !== true) return rows.at(-1);
+  return rows.findLast((row) => Number(row?.[size]?.buy || 0) + Number(row?.[size]?.sell || 0) + Number(row?.[size]?.unknown || 0) > 0);
+}
+
+export function renderUnifiedBigOrderInOut(flow = {}, { displayModes = {} } = {}) {
   const cumulative = flow.cumulative || {};
   const unit = volumeUnitLabel(flow.volume_unit ?? flow.market, "張");
-  const totals = flow.totals || {};
-  const largeShare = ratioPct(totals.large?.class_ratio);
-  // 大單控盤: B's large share of the day's volume, one bar with both volumes at its ends.
-  const control = `<section class="flow-control"><div class="flow-control-head"><span>大單控盤</span><b>${largeShare === null ? "–" : `${largeShare.toFixed(1)}%`}</b></div>`
-    + `<div class="flow-control-track"><i style="width:${(largeShare ?? 0).toFixed(2)}%"></i></div>`
-    + `<div class="flow-control-legend"><span class="flow-control-large">大單 ${formatQuantity(Number(totals.large?.total || 0))}</span><span class="flow-control-small">小單 ${formatQuantity(Number(totals.small?.total || 0))}</span></div></section>`;
-  const modes = `<div class="pill-switch flow-mode" role="group" aria-label="大單流向圖表模式">`
-    + `<button type="button" class="pill-switch-btn${mode === "cumulative" ? " active" : ""}" data-flow-display-mode="cumulative" aria-pressed="${mode === "cumulative"}">累計</button>`
-    + `<button type="button" class="pill-switch-btn${mode === "minute" ? " active" : ""}" data-flow-display-mode="minute" aria-pressed="${mode === "minute"}">分時</button></div>`;
-  const sections = SIZE_ROWS.map(([size, label], index) => `<section class="flow-chart-section">${renderFlowNetSummary(label, Number(cumulative?.[size]?.net || 0), unit, mode)}`
-    + `${flowChartHtml(flow, { size, mode, showXAxis: index === SIZE_ROWS.length - 1 })}</section>`).join("");
-  return `<div class="flow-inout-view"><div class="flow-inout-top">${control}${modes}</div><div class="flow-chart-stack">${sections}</div></div>`;
+  const sections = SIZE_ROWS.map(([size, label], index) => {
+    const mode = displayModes[size] === "minute" ? "minute" : "cumulative";
+    const net = Number((mode === "minute" ? headlineMinute(flow, size)?.[size]?.net : cumulative[size]?.net) || 0);
+    return `<section class="flow-chart-section"><div class="flow-chart-head">${renderFlowNetSummary(label, net, unit, mode)}${modeSwitchHtml(size, label, mode)}</div>`
+      + `${flowChartHtml(flow, { size, mode, showXAxis: index === SIZE_ROWS.length - 1 })}</section>`;
+  }).join("");
+  return `<div class="flow-inout-view">${controlHtml(flow.totals || {})}<div class="flow-chart-stack">${sections}</div></div>`;
 }
 
-export function renderUnifiedBigOrderRatios(flow = {}, { activeWindow = "300s" } = {}) {
-  const active=BIG_ORDER_FLOW_WINDOWS.some(([key])=>key===activeWindow)?activeWindow:"300s";
-  const activeLabel=BIG_ORDER_FLOW_WINDOWS.find(([key])=>key===active)?.[1]||"近5分";
-  const totals=flow.totals||{};
-  return `<div class="flow-ratio-summary"><span>累計盤差</span>${renderBigOrderSignedCell(totals.net)}<label>時間區間 <select data-flow-window-select>${BIG_ORDER_FLOW_WINDOWS.map(([key,label])=>`<option value="${key}" ${key===active?"selected":""}>${label}</option>`).join("")}</select></label></div><table class="flow-ratio-table"><thead><tr><th></th><th>開盤迄今</th><th>${escapeHtml(activeLabel)}</th></tr></thead><tbody>${SIZE_ROWS.map(([size,label])=>`<tr><td>${label}</td>${ratioCellHtml(totals[size]||{})}${ratioCellHtml(flow.windows?.[active]?.[size]||{})}</tr>`).join("")}</tbody></table>`;
+// 買賣比: 開盤迄今 and B's recent windows, one row each with 大單 and 小單 side by side; the chosen row's volumes under
+// them, its 合計 B's own over every class.
+export function renderUnifiedBigOrderRatios(flow = {}, { activeWindow = "all" } = {}) {
+  const totals = flow.totals || {};
+  const unit = volumeUnitLabel(flow.volume_unit ?? flow.market, "張");
+  const periods = [["all", "開盤迄今", totals], ...BIG_ORDER_FLOW_WINDOWS.map(([key, label]) => [key, label, flow.windows?.[key] || {}])];
+  const [activeKey, activeLabel, active] = periods.find(([key]) => key === activeWindow) || periods[0];
+  const rows = periods.map(([key, label, period]) => `<button type="button" class="flow-ratio-row${key === activeKey ? " active" : ""}" data-flow-window="${key}" aria-pressed="${key === activeKey}">`
+    + `<span>${label}</span>${SIZE_ROWS.map(([size]) => ratioBarHtml(period[size])).join("")}</button>`).join("");
+  const detail = [...SIZE_ROWS.map(([size, label]) => [label, active[size] || {}]), ["合計", active]].map(([label, side]) => `<tr><td>${label}</td>`
+    + `<td class="price-up">${formatQuantity(Number(side.buy || 0))}</td><td class="price-down">${formatQuantity(Number(side.sell || 0))}</td><td>${renderBigOrderSignedCell(side.net)}</td></tr>`).join("");
+  return `<div class="flow-ratio-view"><div class="flow-ratio-summary"><span>累計盤差</span>${renderBigOrderSignedCell(totals.net)}<span>${escapeHtml(unit)}</span></div>`
+    + `<div class="flow-ratio-head"><span>時間</span>${SIZE_ROWS.map(([, label]) => `<span>${label} 買／賣</span>`).join("")}</div><div class="flow-ratio-list">${rows}</div>`
+    + `<table class="flow-ratio-detail"><thead><tr><th>${activeLabel}（${escapeHtml(unit)}）</th><th>買</th><th>賣</th><th>買賣超</th></tr></thead><tbody>${detail}</tbody></table></div>`;
 }
 
 // 分時: large-order share per session bucket, plus the large prints inside the selected bucket. The buckets are
 // Rust B's (flow.hourSeries: 開盤迄今, then each traded hour of the session, the first from the open and the last to the
-// close), each with its large buy / sell share of the bucket's own volume; this only labels and shows them.
+// close), each with its large buy / sell share of the session's volume so far; this only labels and shows them, 開盤迄今 first and
+// then the newest hour down to the first.
 // The axis runs before 0 (a session from the previous day) and past 1440 (a futures night): the clock wraps.
 function hhmm(minute) {
   const clock = ((minute % 1440) + 1440) % 1440;
@@ -278,14 +318,16 @@ function bucketLabel(row) {
 }
 
 export function bigOrderFlowBuckets(flow = {}) {
-  return (Array.isArray(flow.hourSeries) ? flow.hourSeries : []).map((row) => ({
+  const rows = Array.isArray(flow.hourSeries) ? flow.hourSeries : [];
+  const hours = rows.filter((row) => row.key !== "all").sort((a, b) => Number(b.from_minute) - Number(a.from_minute));
+  return [...rows.filter((row) => row.key === "all"), ...hours].map((row) => ({
     key: String(row.key), label: bucketLabel(row), from: Number(row.from_minute), to: Number(row.to_minute),
-    buy: Number(row.large?.buy || 0), sell: Number(row.large?.sell || 0), total: Number(row.total || 0),
+    buy: Number(row.large?.buy || 0), sell: Number(row.large?.sell || 0), net: Number(row.large?.net || 0), total: Number(row.total || 0),
     buyPct: Number(row.buy_ratio || 0) * 100, sellPct: Number(row.sell_ratio || 0) * 100,
   }));
 }
 
-// 單別 of 分時 (全部 / 買 / 賣).
+// 單別 of 分時's list (全部 / 買 / 賣); the buckets' bars always show both sides.
 export const BIG_ORDER_SIDE_FILTERS = Object.freeze([["ALL", "全部"], ["BUY", "買"], ["SELL", "賣"]]);
 
 // The flow's newest large prints inside a bucket, each placed by B's `minute` (the session axis the buckets are on,
@@ -313,22 +355,16 @@ export function bigOrderBucketWindow(bucket) {
   return { fromMinute: bucket.from, toMinute: bucket.to };
 }
 
-// A bucket's one share: the side the 單別 filter picks, or under 全部 the larger side, said as 買 / 賣 in its colour.
-function hourShareHtml(bucket, side) {
-  const buy = side === "BUY" || (side !== "SELL" && bucket.buyPct >= bucket.sellPct);
-  return `<b class="${buy ? "price-up" : "price-down"}">${buy ? "買" : "賣"} ${(buy ? bucket.buyPct : bucket.sellPct).toFixed(1)}%</b>`;
-}
-
 export function renderUnifiedBigOrderMinuteVolume(flow = {}, { scopeLabel = "當日交易時段", sideFilter = "ALL", bucketKey = "all", windowOrders = null } = {}) {
   const side = BIG_ORDER_SIDE_FILTERS.some(([key]) => key === sideFilter) ? sideFilter : "ALL";
   const buckets = bigOrderFlowBuckets(flow);
   const active = buckets.find((bucket) => bucket.key === bucketKey) || buckets[0] || null;
-  const filter = `<div class="flow-pv-toolbar"><label class="flow-side-filter">單別 <select data-flow-side-filter>${BIG_ORDER_SIDE_FILTERS.map(([key, label]) => `<option value="${key}" ${key === side ? "selected" : ""}>${label}</option>`).join("")}</select></label></div>`;
-  const bucketRows = buckets.length ? buckets.map((bucket) => {
-    const buyPct = side === "SELL" ? 0 : bucket.buyPct, sellPct = side === "BUY" ? 0 : bucket.sellPct;
-    const other = Math.max(0, 100 - buyPct - sellPct);
-    return `<button type="button" class="flow-hour-share-row${bucket === active ? " active" : ""}" data-flow-bucket="${escapeHtml(bucket.key)}"><span class="flow-hour-label">${escapeHtml(bucket.label)}</span><div class="flow-hour-share-track"><i class="buy" style="width:${buyPct}%"></i><i class="other" style="width:${other}%"></i><i class="sell" style="width:${sellPct}%"></i></div>${hourShareHtml(bucket, side)}</button>`;
-  }).join("") : `<div class="flow-large-order-empty">${escapeHtml(scopeLabel)}尚無成交</div>`;
+  const unit = volumeUnitLabel(flow.volume_unit ?? flow.market, "張");
+  const bucketRows = buckets.length
+    ? buckets.map((bucket) => `<button type="button" class="flow-hour-share-row${bucket === active ? " active" : ""}" data-morph-key="${escapeHtml(bucket.key)}" data-flow-bucket="${escapeHtml(bucket.key)}"><span class="flow-hour-label">${escapeHtml(bucket.label)}</span>${splitBarHtml(bucket.buyPct, bucket.sellPct)}</button>`).join("")
+    : `<div class="flow-large-order-empty">${escapeHtml(scopeLabel)}尚無成交</div>`;
+  const sides = `<div class="pill-switch" role="group" aria-label="單別">${BIG_ORDER_SIDE_FILTERS.map(([key, label]) => `<button type="button" class="pill-switch-btn${key === side ? " active" : ""}" data-flow-side="${key}" aria-pressed="${key === side}">${label}</button>`).join("")}</div>`;
+  const toolbar = active ? `<div class="flow-pv-toolbar">${sides}<span class="flow-pv-net">大單${active.net < 0 ? "賣超" : "買超"} ${renderBigOrderSignedCell(active.net)} ${escapeHtml(unit)}</span></div>` : "";
   // The bucket's own list from Rust B when it has answered for THIS bucket; otherwise the newest prints the flow
   // carries, with the note saying an older part may be missing.
   // ... and for THIS side: Rust B picks the side before its limit, so another side's answer is not it.
@@ -345,5 +381,6 @@ export function renderUnifiedBigOrderMinuteVolume(flow = {}, { scopeLabel = "當
   // The list scrolls one row at a time with the shared scrollbar (trade_flow_component.js mounts both on each render),
   // rows parted by a line like every other list (.lined-rows).
   const list = active ? `<div class="flow-large-order-head"><span>時間</span><span>成交</span><span>單量</span></div><div class="flow-large-order-body"><div class="flow-large-order-list lined-rows" data-flow-large-order-list>${rows.length ? rows.map(largeOrderRowHtml).join("") : empty}</div><aside class="shared-discrete-row-rail flow-large-order-rail" data-flow-large-order-rail aria-label="大單分時捲軸"></aside></div>${truncated}` : "";
-  return `<div class="flow-pv-view">${filter}<div class="flow-hour-share-list">${bucketRows}</div>${list}</div>`;
+  const head = `<div class="flow-hour-head"><span>時間</span><span>大單買占比</span><span>大單賣占比</span></div>`;
+  return `<div class="flow-pv-view">${head}<div class="flow-hour-share-list">${bucketRows}</div>${toolbar}${list}</div>`;
 }

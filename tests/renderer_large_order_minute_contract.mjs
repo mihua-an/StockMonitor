@@ -27,7 +27,7 @@ const overnight = { market: "US", minuteSeries: [], hourSeries: [
   bucket("m0", 0, 59, false, false, 5, 0, 20)],
   largeOrders: [row(2, "00:30:00", 30, "SELL"), row(1, "21:40:00", -140)] };
 const labels = bigOrderFlowBuckets(overnight).map((b) => b.label);
-assert.deepEqual(labels, ["開盤迄今", "21:00~22:00", "00:00~01:00"], "a bucket before 0 is labelled on the previous evening's clock");
+assert.deepEqual(labels, ["開盤迄今", "00:00~01:00", "21:00~22:00"], "a bucket before 0 is labelled on the previous evening's clock");
 assert.deepEqual(listed(renderUnifiedBigOrderMinuteVolume(overnight, { bucketKey: "m-180" })), ["21:40:00"], "the previous partition's part lists its print");
 assert.deepEqual(listed(renderUnifiedBigOrderMinuteVolume(overnight, { bucketKey: "m0" })), ["00:30:00"]);
 assert.deepEqual(listed(renderUnifiedBigOrderMinuteVolume(overnight, { bucketKey: "m0", sideFilter: "BUY" })), [], "單別 still picks the side");

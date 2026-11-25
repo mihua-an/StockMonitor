@@ -30,7 +30,7 @@ assert.match(html, /大單累計買超<\/span><b class="price-up">\+160</, "the 
 
 // The crosshair at a minute reads that minute's B total; at a minute without a trade, the last one before it.
 const at = flowMinuteDetail(flow, 543);
-assert.deepEqual([at.time, at.large, at.small], ["09:03", { buy: 150, sell: 100, net: 50, cumulative: 160 }, { buy: 0, sell: 0, net: 0, cumulative: -20 }]);
+assert.deepEqual([at.time, at.large, at.small], ["09:04", { buy: 150, sell: 100, net: 50, cumulative: 160 }, { buy: 0, sell: 0, net: 0, cumulative: -20 }]);
 const quiet = flowMinuteDetail(flow, 542);
 assert.deepEqual([quiet.large, quiet.small], [{ buy: 0, sell: 0, net: 0, cumulative: 110 }, { buy: 0, sell: 0, net: 0, cumulative: -20 }]);
 assert.equal(flowMinuteDetail(flow, 539), null, "before the first traded minute there is nothing to read");

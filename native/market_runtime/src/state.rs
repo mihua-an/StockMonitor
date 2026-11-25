@@ -228,8 +228,8 @@ impl NewestPrint {
 }
 
 /// Where one code's gap starts, for a provider restart's fill (`ingest.hello.ack`): its newest stored print (none:
-/// the session's open), the volume stored at that instant, and the cumulative volume then (None when the stream
-/// states none).
+/// the session's open), the volume stored at that instant, and the cumulative volume and 均價 then (None
+/// when the stream states none).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct GapStart {
     pub market: String,
@@ -239,6 +239,7 @@ pub struct GapStart {
     pub after_ns: i64,
     pub volume_at_after: f64,
     pub total_before: Option<f64>,
+    pub average_before: Option<i64>,
 }
 
 /// A print next to the partition's newest real print (Shioaji's cumulative total says whether it is new).
@@ -571,6 +572,8 @@ impl SymbolState {
             // An odd lot, an average-price or a prior-reference print: traded volume (the quote's total counts it
             // already), never a price of the market.
         } else if let Some(p) = positive(*price) {
+            // A print older than the shown price (a gap filled afterwards) states an older total amount and 均價.
+            let newest = !Self::older_than(self.quote.price_exchange_ts_ns, event);
             // A real print ends the auction: its indicative price no longer describes anything.
             self.quote.indicative_price = None;
             self.quote.indicative_ts_ns = 0;
@@ -591,10 +594,10 @@ impl SymbolState {
             if let Some(v) = positive_volume(*total_volume) {
                 self.quote.total_volume = Some(self.quote.total_volume.map_or(v, |known| known.max(v)));
             }
-            if *total_amount > 0.0 {
+            if newest && *total_amount > 0.0 {
                 self.quote.total_amount = Some(*total_amount);
             }
-            if let Some(a) = positive(*average) {
+            if let (true, Some(a)) = (newest, positive(*average)) {
                 self.quote.average = Some(a);
             }
             if self.quote.status.is_empty() || self.quote.status == "simtrade" {
@@ -992,11 +995,13 @@ impl Engine {
                 _ => state.quote.total_volume,
             };
             starts.insert(i.code.clone(), GapStart { market: market.into(), code: i.code.clone(), trading_date: trading_date.into(),
-                session: session.into(), after_ns, volume_at_after: state.newest_print.volume_at_ts, total_before });
+                session: session.into(), after_ns, volume_at_after: state.newest_print.volume_at_ts, total_before,
+                average_before: if after_ns > 0 { state.quote.average } else { None } });
         }
         for code in listed {
             starts.entry(code.clone()).or_insert_with(|| GapStart { market: market.into(), code: code.clone(), trading_date: trading_date.into(),
-                session: session.into(), after_ns: 0, volume_at_after: 0.0, total_before: (market == "STK").then_some(0.0) });
+                session: session.into(), after_ns: 0, volume_at_after: 0.0, total_before: (market == "STK").then_some(0.0),
+                average_before: None });
         }
         starts.into_values().collect()
     }
@@ -1928,15 +1933,17 @@ mod tests {
         let mut engine = Engine::default();
         let mut newer = trade("2330", 1, 1_010_000, false);
         newer.exchange_ts_ns = 2_000;
+        if let Payload::Trade { average, .. } = &mut newer.payload { *average = 1_005_000; }
         engine.apply(&newer);
         let mut older = trade("2330", 2, 990_000, false);
         older.exchange_ts_ns = 1_000;
         // No cumulative total (a Futu ticker): the re-send check cannot tell, so the exchange time must.
-        if let Payload::Trade { total_volume, .. } = &mut older.payload { *total_volume = 0.0; }
+        if let Payload::Trade { total_volume, average, .. } = &mut older.payload { (*total_volume, *average) = (0.0, 985_000); }
         assert_eq!(engine.apply(&older).0, ApplyResult::Applied, "still accepted and stored");
         let key = newer.state_key();
         let state = engine.state(&key).unwrap();
         assert_eq!(state.quote.current, Some(1_010_000), "the newer price stays");
+        assert_eq!(state.quote.average, Some(1_005_000), "and the 均價 at it");
         assert_eq!(state.quote.low, Some(990_000), "the older print still counts for the day's low");
         assert_eq!(state.recent_trades.len(), 2, "the tape keeps every print");
         assert_eq!(state.stale_latest_updates, 1);

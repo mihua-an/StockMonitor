@@ -21,7 +21,7 @@ from typing import Any, Callable, Iterable
 from zoneinfo import ZoneInfo
 
 from service.market.shared.market_trade_semantics import shioaji_tick_side
-from service.market.shared.native_values import price_to_units
+from service.market.shared.native_values import RunningAverage, price_to_units
 from service.platform.native_binaries import run_job
 
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -156,12 +156,14 @@ def fill_events(result: dict[str, Any]) -> tuple[list[dict], list[str]]:
             got = sum(float(p[2]) for p in prints)
             if abs(got - unseen) > 1e-6:
                 problems.append(f"window {window['after_ns']}..{window['end_ns']}: {got} fetched of {unseen} unseen")
+        running = RunningAverage(from_open=int(window["after_ns"]) <= 0, average_before=window.get("average_before"), total_before=window.get("total_before"))
         for ns, price, volume, tick_type in prints:
             number += 1
             total += float(volume)
             events.append(_event(market, code, date, session, number, int(ns), {"kind": "trade", "price": _units(price),
                 "volume": float(volume), "total_volume": total, "side": shioaji_tick_side(tick_type),
-                "trade_id": f"hf{number}", "minute": _local_minute(int(ns), session), "open": 0, "high": 0, "low": 0, "average": 0,
+                "trade_id": f"hf{number}", "minute": _local_minute(int(ns), session), "open": 0, "high": 0, "low": 0,
+                "average": running.after(_units(price), volume),
                 "total_amount": 0.0, "amount": 0.0}, flags))
     return events, problems
 

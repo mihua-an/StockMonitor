@@ -310,13 +310,13 @@ pub(super) fn replay_shown(item: &mut Value) {
         "windows" => {
             remove(data, &["as_of_ns", "k", "volume_compare"]);
             for window in data.get_mut("windows").and_then(Value::as_object_mut).into_iter().flat_map(|w| w.values_mut()) {
-                // The 買賣比 tab's 近N分 column: each size's buy and sell, and their ratios.
+                // The 買賣比 tab's 近N分 rows: each size's buy, sell and net with their ratios, and the three over every class.
                 let flow = window.get("flow").map(|flow| {
                     let side = |size: &str| -> Value {
                         let s = &flow[size];
-                        json!({"buy": s["buy"], "sell": s["sell"], "buy_ratio": s["buy_ratio"], "sell_ratio": s["sell_ratio"]})
+                        json!({"buy": s["buy"], "sell": s["sell"], "net": s["net"], "buy_ratio": s["buy_ratio"], "sell_ratio": s["sell_ratio"]})
                     };
-                    json!({"large": side("large"), "small": side("small")})
+                    json!({"large": side("large"), "small": side("small"), "buy": flow["buy"], "sell": flow["sell"], "net": flow["net"]})
                 });
                 *window = match flow {
                     Some(flow) => json!({"flow": flow}),
@@ -332,11 +332,8 @@ pub(super) fn replay_shown(item: &mut Value) {
                 remove(totals, &["total", "unclassified"]);
                 for size in ["large", "small"] {
                     if let Some(s) = totals.get_mut(size) {
-                        remove(s, &["count", "net", "net_ratio", "unknown", "unknown_ratio"]);
+                        remove(s, &["count", "net_ratio", "unknown", "unknown_ratio"]);
                     }
-                }
-                if let Some(s) = totals.get_mut("small") {
-                    remove(s, &["class_ratio"]);
                 }
             }
         }

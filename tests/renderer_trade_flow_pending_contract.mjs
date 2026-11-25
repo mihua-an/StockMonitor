@@ -18,9 +18,9 @@ component.replaceContent = (_content, html) => { drawn = html; return true; };
 component.vm = { availability: "UNAVAILABLE", pending: true, message: "計算中", flow: { available: false, sample_count: 0 } };
 component.render();
 assert.match(drawn, /<div class="empty">計算中<\/div>/, "the pending analysis said in the content");
-assert.doesNotMatch(drawn, /大單控盤/, "no 0% that reads as data");
+assert.doesNotMatch(drawn, /flow-control-head/, "no 0% that reads as data");
 
 component.vm = { availability: "AVAILABLE", flow: { available: true, cumulative: { large: { buy: 10, sell: 5 }, small: { buy: 1, sell: 1 } } } };
 component.render();
-assert.match(drawn, /大單控盤/, "the charts come back with the analysis");
+assert.match(drawn, /flow-control-head/, "the charts come back with the analysis");
 console.log("trade flow pending contract passed");

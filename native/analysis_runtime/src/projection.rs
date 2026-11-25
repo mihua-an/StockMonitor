@@ -18,8 +18,9 @@ fn cumulative_wire(flow: &Flow) -> Value {
 /// 分時's buckets, B's one session rule for them: the whole span so far (`all`), then each clock hour of the session
 /// that traded -- the first from the session's open, the last to its close (`opens_session` / `closes_session`), so a
 /// 09:00-13:30 day is 開盤~10:00 ... 13:00~收盤 and a 08:45 open starts with its quarter hour. Minutes are inclusive,
-/// on the session's axis (session_frame; each part comes with its shift onto it), as the large-order query takes them. Each bucket's large buy / sell share is of that bucket's
-/// own volume (every class, unclassified included); a bucket without volume is not listed.
+/// on the session's axis (session_frame; each part comes with its shift onto it), as the large-order query takes them. Each bucket's large buy / sell share is of the
+/// session's whole volume so far (every class, unclassified included), so the hours add up to 開盤迄今 and an hour's
+/// share shrinks as later volume trades; a bucket without volume is not listed.
 fn hour_buckets(parts: &[(&Segment, i32, &[(i32, &Minute)])]) -> Vec<Value> {
     let (Some((first, first_shift, _)), Some((last, last_shift, _))) = (parts.first(), parts.last()) else { return Vec::new() };
     let (open, close) = (first.start + first_shift, last.end + last_shift);
@@ -36,11 +37,12 @@ fn hour_buckets(parts: &[(&Segment, i32, &[(i32, &Minute)])]) -> Vec<Value> {
             }
         }
     }
+    let session_total = all.total();
     let bucket = |key: String, from: i32, to: i32, flow: &Flow| {
         let total = flow.total();
         vol::positive(total).map(|_| json!({"key": key, "from_minute": from, "to_minute": to, "opens_session": from == open, "closes_session": to == close,
-            "large": {"buy": vol::wire(flow.large.buy), "sell": vol::wire(flow.large.sell)}, "total": vol::wire(total),
-            "buy_ratio": ratio(flow.large.buy, total), "sell_ratio": ratio(flow.large.sell, total), "ratio_unit": "decimal_ratio"}))
+            "large": side_wire(&flow.large), "total": vol::wire(total),
+            "buy_ratio": ratio(flow.large.buy, session_total), "sell_ratio": ratio(flow.large.sell, session_total), "ratio_unit": "decimal_ratio"}))
     };
     bucket("all".into(), open, close, &all).into_iter()
         .chain(hours.iter().filter_map(|(from, to, flow)| bucket(format!("m{from}"), *from, *to, flow)))
@@ -48,13 +50,13 @@ fn hour_buckets(parts: &[(&Segment, i32, &[(i32, &Minute)])]) -> Vec<Value> {
 }
 
 /// The flow chart's frame, B's session calendar the one owner of it: the business session's name and its first and
-/// last trading minute (inclusive minute starts). A session continuing from the previous partition opens there, before
+/// last minute of continuous trading (inclusive minute starts; a closing call auction has no large or small volume). A session continuing from the previous partition opens there, before
 /// this partition's 0 (its open is that segment's start - 1440), on the same axis as the series' `minute`.
 fn session_frame(wire: &mut Value, cal: &Calendar, key: market_runtime::calendar::CalKey<'_>, seg: &Segment) {
     let open = cal.previous_day_segment(key, seg).map_or(seg.start, |ps| ps.start - 1440);
     wire["session"] = json!(seg.name);
     wire["session_open_minute"] = json!(open);
-    wire["session_close_minute"] = json!(seg.end);
+    wire["session_close_minute"] = json!(seg.last_continuous());
 }
 
 impl Instrument {
@@ -202,7 +204,7 @@ impl Instrument {
                 "volume": vol::wire(volume_known), "volume_complete": volume_complete,
                 "base_price": opt_money(base), "base_source": base_source, "base_minute": base_minute,
                 "change": change.0, "change_pct": change.1, "change_pct_unit": "percent",
-                "flow": flow.wire(rule), "completeness": completeness, "gap_minutes": gaps,
+                "flow": flow.period_wire(rule), "completeness": completeness, "gap_minutes": gaps,
                 "synthetic_minutes": records.iter().filter(|(_, r, _)| r.quality == Quality::NoTradeSynthetic).count(),
             }));
         }
@@ -466,7 +468,7 @@ impl Instrument {
     pub fn flow_wire(&self, cal: &Calendar, rules: &RuleSet, t_ns: i64, previous: Option<&Instrument>, unchanged: Option<&Listed>,
                      inc: Option<&Increment>) -> (Value, Listed, Option<(i32, i32)>) {
         let t_minute = partition_local_minute(&self.id.source, &self.id.market, &self.id.session, t_ns).map(|(_, m)| m).unwrap_or(0);
-        let Some((seg, m, _)) = self.evaluation(cal, t_minute) else {
+        let Some((seg, m, closed)) = self.evaluation(cal, t_minute) else {
             // Before the first session the chart is framed by the session about to open.
             let mut wire = json!({"availability": "BEFORE_SESSION"});
             if let Some(next) = cal.segments(self.id.cal_key()).iter().find(|s| s.start > t_minute) {
@@ -522,10 +524,13 @@ impl Instrument {
                "cumulative": cumulative_wire(&total),
                "definition_version": rules.flow_revision.map(|r| format!("flow_rules@{r}"))});
         // The large parts go in by move (json! would copy each whole).
-        wire["totals"] = total.wire(rule);
+        wire["totals"] = total.period_wire(rule);
+        wire["totals"]["control"] = total.control_wire();
         wire["minuteSeries"] = Value::Array(series);
         wire["hourSeries"] = Value::Array(hours);
         session_frame(&mut wire, cal, self.id.cal_key(), seg);
+        // The 分時 number is the minute in progress while the session runs, the last one that traded once it is over.
+        wire["session_closed"] = json!(closed);
         match large_orders {
             Some(rows) => wire["largeOrders"] = Value::Array(rows),
             None => wire["replace"] = json!(false),

@@ -1,4 +1,4 @@
-/* 大單流向 (trade_flow_component.js + big_order_flow.js): the view tabs, 進出 (大單控盤 and the two net-flow charts),
+/* 大單流向 (trade_flow_component.js + big_order_flow.js): the view tabs, 進出 (控盤 and the two net-flow charts),
  * 買賣比, 分時 (session buckets and their large prints) and the 查價 window. One rule per selector; the charts' text is
  * HTML beside a stretched bar plot, never inside it. */
 
@@ -44,16 +44,8 @@
   box-sizing: border-box;
 }
 
-/* 大單控盤 beside the one 累計／分時 switch both charts follow. */
-.flow-inout-top {
-  flex: 0 0 auto;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 12px;
-}
-
 .flow-control {
+  flex: 0 0 auto;
   min-width: 0;
   display: grid;
   gap: 4px;
@@ -67,23 +59,39 @@
   font-size: 12px;
 }
 
-.flow-control-head > b {
-  color: var(--amber-500x-2);
+.flow-control-share {
+  display: flex;
+  gap: 8px;
+}
+
+.flow-control-share > b {
   font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
 
+.flow-control-share > .flow-control-small {
+  color: var(--slate-100);
+}
+
 .flow-control-track {
-  height: 6px;
-  border-radius: 3px;
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
   overflow: hidden;
-  background: var(--blue-700x-13);
+  background: var(--slate-800);
 }
 
 .flow-control-track > i {
   display: block;
   height: 100%;
+}
+
+.flow-control-bar-large {
   background: var(--amber-500x-2);
+}
+
+.flow-control-bar-small {
+  background: var(--slate-300);
 }
 
 .flow-control-legend {
@@ -122,6 +130,13 @@
   gap: 4px;
 }
 
+.flow-chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .flow-net-summary {
   display: flex;
   align-items: baseline;
@@ -153,9 +168,11 @@
   grid-template-rows: minmax(0, 1fr) 16px;
 }
 
+/* A size container, so a label can be compared with the plot's own height. */
 .flow-chart-y {
   position: relative;
   min-height: 0;
+  container-type: size;
 }
 
 .flow-chart-y-label {
@@ -166,6 +183,12 @@
   font-size: 10px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* 0 beside an extreme: a gap under a label's height (14px) takes its height away; a wider one is past any label's. */
+.flow-chart-y-label-zero {
+  max-height: calc((var(--flow-label-gap) * 1cqh - 14px) * 1000);
+  overflow: hidden;
 }
 
 /* The plot is a rounded inset, like the trend chart's. */
@@ -196,16 +219,24 @@
   vector-effect: non-scaling-stroke;
 }
 
-.flow-chart-area {
+.flow-chart-bar {
   shape-rendering: crispEdges;
 }
 
-.flow-chart-area.buy {
+.flow-chart-bar.buy {
   fill: var(--price-up-color);
 }
 
-.flow-chart-area.sell {
+.flow-chart-bar.sell {
   fill: var(--price-down-color);
+}
+
+.flow-chart-bar-odd.buy {
+  fill: color-mix(in srgb, var(--price-up-color) 66%, var(--chart-plot-bg));
+}
+
+.flow-chart-bar-odd.sell {
+  fill: color-mix(in srgb, var(--price-down-color) 66%, var(--chart-plot-bg));
 }
 
 .flow-chart-empty {
@@ -247,100 +278,140 @@
   pointer-events: none;
 }
 
-/* ===== 買賣比 ===== */
-.flow-ratio-summary {
-  display: grid;
-  grid-template-columns: auto auto 1fr;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  color: var(--blue-200x-2);
-  font-size: 11px;
-}
-
-.flow-ratio-summary > b {
-  font-size: 14px;
-}
-
-.flow-ratio-summary > label {
-  justify-self: end;
-}
-
-.flow-ratio-summary select,
-.flow-side-filter select {
-  height: 22px;
-  border: 1px solid var(--blue-700x-11);
-  background: var(--surface-panel);
-  color: var(--blue-50x);
-}
-
-/* One row per class (大單 / 小單), one column per period: the larger side's share over a short split bar. */
-.flow-ratio-table {
-  width: calc(100% - 20px);
-  margin: 0 10px 10px;
-  border-collapse: collapse;
-  font-size: 11px;
-}
-
-.flow-ratio-table th {
-  padding: 0 0 4px;
-  color: var(--slate-500);
-  font-size: 10.5px;
-  font-weight: 600;
-  text-align: right;
-}
-
-.flow-ratio-table td {
-  padding: 6px 0;
-  border-top: 1px solid var(--pane-border);
-  text-align: right;
-  vertical-align: middle;
-}
-
-.flow-ratio-table :is(th, td):first-child {
-  text-align: left;
-}
-
-.flow-ratio-table td:first-child {
-  color: var(--slate-100);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.flow-ratio-table td > b {
-  display: block;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.flow-ratio-none {
-  display: block;
-  color: var(--slate-500);
-  font-size: 11px;
-  line-height: 17px;
-}
-
-.flow-ratio-track {
-  width: 80px;
-  height: 4px;
-  margin: 3px 0 0 auto;
+/* ===== The split bar 買賣比 and 分時 share: both shares written on it ===== */
+.flow-split-bar {
+  position: relative;
+  height: 20px;
+  min-width: 0;
   display: flex;
-  border-radius: 2px;
+  justify-content: space-between;
   overflow: hidden;
-  background: var(--slate-800);
+  border-radius: 4px;
+  background: var(--slate-600);
 }
 
-.flow-ratio-track > i {
-  display: block;
-  height: 100%;
-}
-
-.flow-ratio-track > .buy {
+.flow-split-bar > i.buy {
   background: var(--price-up-color);
 }
 
-.flow-ratio-track > .sell {
+.flow-split-bar > i.sell {
   background: var(--price-down-color);
+}
+
+.flow-split-bar > b {
+  position: absolute;
+  top: 0;
+  color: var(--white);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 20px;
+  text-shadow: 0 1px 2px var(--black-a55);
+}
+
+.flow-split-bar > b.buy {
+  left: 4px;
+}
+
+.flow-split-bar > b.sell {
+  right: 4px;
+}
+
+.flow-split-bar > em {
+  width: 100%;
+  color: var(--slate-300);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 20px;
+  text-align: center;
+}
+
+/* ===== 買賣比 ===== */
+.flow-ratio-view {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.flow-ratio-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 10px 0;
+  color: var(--blue-100x-4);
+  font-size: 12px;
+}
+
+.flow-ratio-summary > b {
+  margin-left: auto;
+  font-size: 15px;
+}
+
+/* One row per period: its name, then 大單 and 小單. */
+.flow-ratio-head,
+.flow-ratio-row {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.flow-ratio-head {
+  height: 26px;
+  padding: 0 10px;
+  color: var(--slate-400);
+  font-size: 12px;
+}
+
+.flow-ratio-list {
+  display: grid;
+  padding: 0 4px 4px;
+}
+
+.flow-ratio-row {
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--slate-300);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.flow-ratio-row:hover {
+  background: var(--row-hover-bg);
+}
+
+.flow-ratio-row.active {
+  background: var(--slate-800);
+}
+
+.flow-ratio-detail {
+  width: calc(100% - 20px);
+  margin: 0 10px 4px;
+  border-collapse: collapse;
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.flow-ratio-detail :is(th, td) {
+  padding: 2px 0;
+  border-top: 1px solid var(--pane-border);
+  text-align: right;
+}
+
+.flow-ratio-detail th {
+  color: var(--slate-400);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.flow-ratio-detail :is(th, td):first-child {
+  text-align: left;
 }
 
 /* ===== 分時: session buckets and the selected bucket's large prints ===== */
@@ -353,11 +424,31 @@
 
 .flow-pv-toolbar {
   display: flex;
-  justify-content: flex-end;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--pane-border);
-  color: var(--blue-300x-6);
-  font-size: 11px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px;
+  border-top: 1px solid var(--pane-border);
+  color: var(--blue-100x-4);
+  font-size: 12px;
+}
+
+.flow-pv-net > b {
+  font-size: 14px;
+}
+
+.flow-hour-head {
+  display: grid;
+  grid-template-columns: 92px auto auto;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 11px;
+  color: var(--slate-400);
+  font-size: 12px;
+}
+
+.flow-hour-head > :last-child {
+  text-align: right;
 }
 
 /* The bucket rows take whatever height the whole-row large-order list leaves (core/whole_row_fit.js). */
@@ -372,10 +463,10 @@
 .flow-hour-share-row {
   width: 100%;
   display: grid;
-  grid-template-columns: 92px minmax(60px, 1fr) 72px;
+  grid-template-columns: 92px minmax(60px, 1fr);
   align-items: center;
   gap: 8px;
-  min-height: 28px;
+  min-height: 32px;
   padding: 0 6px;
   border: 1px solid transparent;
   border-radius: 8px;
@@ -396,42 +487,10 @@
   background: var(--slate-800);
 }
 
-.flow-hour-share-row > b {
-  font-size: 14px;
-  font-weight: 700;
-  text-align: right;
-  white-space: nowrap;
-}
-
 .flow-hour-label {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.flow-hour-share-track {
-  height: 10px;
-  display: flex;
-  border-radius: 2px;
-  overflow: hidden;
-  background: var(--slate-700x);
-}
-
-.flow-hour-share-track > i {
-  display: block;
-  height: 100%;
-}
-
-.flow-hour-share-track > i.buy {
-  background: var(--price-up-color);
-}
-
-.flow-hour-share-track > i.sell {
-  background: var(--price-down-color);
-}
-
-.flow-hour-share-track > i.other {
-  background: transparent;
 }
 
 /* The list scrolls one 26 px row at a time with the shared scrollbar over its right edge (as 成交明細 / 價量). */

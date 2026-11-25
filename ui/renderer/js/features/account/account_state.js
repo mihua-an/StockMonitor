@@ -69,7 +69,7 @@ export const actualAccountReplayState = {
   kbarMinutes: 5,
   kbarHover: null,
   // 大單流向's charts: "cumulative" (累計) or "minute" (分時).
-  flowMode: "cumulative",
+  flowModes: { large: "cumulative", small: "cumulative" },
 };
 
 export const VIEW_META = {

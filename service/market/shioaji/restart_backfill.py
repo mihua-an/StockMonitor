@@ -28,7 +28,8 @@ Only that window is fetched (``api.ticks`` RangeTime), never the day:
 
 - a stock or a futures contract: each history print inside the window becomes a backfill trade (flags.backfill,
   backfill_cutoff_ns = the window's end) carrying its cumulative volume -- the gap's start plus the window's prints so
-  far -- so Rust B places it in the volume it was missing (accum::TradeChain). At the start instant the volume Market
+  far -- so Rust B places it in the volume it was missing (accum::TradeChain), and the session's 均價 at it, which the
+  history does not state (RunningAverage). At the start instant the volume Market
   Runtime already holds is skipped; at the end instant nothing is taken (the live stream holds that instant).
 - an index: each history print is the index's value at that instant (every 5 s, as its live quotes) and becomes a
   backfill quote of that value, as the close's fill does (history_fill.fill_events): Rust B's features take an index
@@ -59,7 +60,7 @@ from typing import Any, Callable, Iterable
 from zoneinfo import ZoneInfo
 
 from service.market.shared.market_trade_semantics import shioaji_tick_side
-from service.market.shared.native_values import price_to_units
+from service.market.shared.native_values import RunningAverage, price_to_units
 from service.market.shared.rust_live import RustLiveEvent
 from service.platform import remediation
 from service.platform.atomic_files import write_json_atomic
@@ -170,6 +171,8 @@ class Gap:
     restart_from_ns: int
     restart_to_ns: int
     cause: str = CAUSE_RESTART
+    # The session's 均價 at the gap's start, fixed point (None: not known, or the gap starts at the open).
+    average_before: int | None = None
     # A late join: when this process subscribed the code. A closed session viewed: when it was asked for.
     since_ns: int = 0
     # A broker-connection outage: the connection and the outage's end (as its report stated them).
@@ -204,12 +207,13 @@ class Gap:
         # Market Runtime states the end of a late join's gap, and of an outage's whose code printed again.
         stated_end = not restart and item.get("next_ns") is not None
         next_total = item.get("next_total_before")
+        average = item.get("average_before")
         return cls(market=str(item["market"]).upper(), code=str(item["code"]).upper(), trading_date=str(item["trading_date"]),
                    session=str(item["session"]).upper(), after_ns=int(item.get("after_ns") or 0),
                    volume_at_after=float(item.get("volume_at_after") or 0.0), total_before=None if total is None else float(total),
                    restart_from_ns=int(item["restart_from_ns"]) if restart else 0,
                    restart_to_ns=int(item["restart_to_ns"]) if restart else 0,
-                   cause=cause, since_ns=int(item["since_ns"]) if late else 0,
+                   cause=cause, average_before=None if average is None else int(average), since_ns=int(item["since_ns"]) if late else 0,
                    connection=str(item["connection"]) if outage else "", outage_to_ns=int(item["outage_to_ns"]) if outage else 0,
                    next_ns=int(item["next_ns"]) if stated_end else None,
                    next_total_before=None if not stated_end or next_total is None else float(next_total))
@@ -548,10 +552,12 @@ class RestartBackfill:
                            "amount": 0.0, **({} if number else stated)}, flags)
             return len(prints), 0.0
         total = gap.total_before
+        running = RunningAverage(from_open=gap.after_ns <= 0, average_before=gap.average_before, total_before=gap.total_before)
         volume = 0.0
         for number, (ns, price, size, tick_type) in enumerate(prints, start=1):
             volume += size
-            data = {"price": price_to_units(price, scale=self._scale), "volume": size,
+            units = price_to_units(price, scale=self._scale)
+            data = {"price": units, "volume": size, "average": running.after(units, size),
                     "side": shioaji_tick_side(tick_type), "trade_id": f"bf{gap.cause_ns}:{number}",
                     "simtrade": False, **({} if number > 1 else stated)}
             if total is not None:

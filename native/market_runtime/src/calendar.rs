@@ -45,6 +45,9 @@ pub struct SessionSpec {
     /// 14:30 盤後定價): no trading minute, but a span touching one is a trading outage (crate::evidence).
     #[serde(default)]
     pub print_instants: Vec<i32>,
+    /// The first minute of the session's closing call auction (TW stocks' 13:25): continuous trading ends before it.
+    #[serde(default)]
+    pub closing_call_from: Option<i32>,
     /// The session's trading intervals on a half day (`is_half_day`), when they differ from `intervals`.
     #[serde(default)]
     pub half_day_intervals: Option<Vec<(i32, i32)>>,
@@ -100,9 +103,14 @@ pub struct Segment {
     pub continues_previous_day: bool,
     pub known_market: bool,
     pub print_instants: Vec<i32>,
+    pub closing_call_from: Option<i32>,
 }
 
 impl Segment {
+    /// The last minute of continuous trading: the one before the closing call auction, else the last trading minute.
+    pub fn last_continuous(&self) -> i32 {
+        self.closing_call_from.map_or(self.end, |from| from - 1)
+    }
     pub fn is_trading(&self, minute: i32) -> bool {
         self.intervals.iter().any(|(a, b)| minute >= *a && minute <= *b)
     }
@@ -194,6 +202,7 @@ impl Calendar {
                 continues_previous_day: s.continues_previous_day,
                 known_market: known,
                 print_instants: s.print_instants,
+                closing_call_from: s.closing_call_from,
             })
             .collect()
     }

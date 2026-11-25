@@ -4,7 +4,7 @@
 //!
 //! - a stock: the holes in the cumulative volume its prints cover (accum::TradeChain, the same model Rust B folds):
 //!   each from the print at the hole's low end (its exchange time, the volume stored at that instant, the cumulative
-//!   volume) to the print at its high end (its time, its cumulative volume less its own). A hole from the session's
+//!   volume and 均價) to the print at its high end (its time, its cumulative volume less its own). A hole from the session's
 //!   start (the App started after the open) starts at the open.
 //! - a futures contract: the same over its quotes that carry their own print volume; a hole from the start is not
 //!   one (a DAY partition's first quote carries the night before it).
@@ -39,6 +39,8 @@ struct Print {
     minute: i32,
     total: f64,
     volume: f64,
+    /// The session's 均價 at it (0 = not stated).
+    average: i64,
     filled: bool,
 }
 
@@ -61,26 +63,28 @@ pub fn windows(events: &[MarketEvent], cal: &Calendar) -> Vec<Value> {
     }
     let mut prints = Vec::new();
     for e in events {
-        let (total, volume, stated) = match &e.payload {
-            Payload::Trade { total_volume, volume, minute, simtrade: false, .. } => (*total_volume, *volume, *minute),
-            Payload::Quote { total_volume, volume, minute, status, .. } if market == "FUT" && status != "simulated" => (*total_volume, *volume, *minute),
+        let (total, volume, stated, average) = match &e.payload {
+            Payload::Trade { total_volume, volume, minute, average, simtrade: false, .. } => (*total_volume, *volume, *minute, *average),
+            Payload::Quote { total_volume, volume, minute, average, status, .. } if market == "FUT" && status != "simulated" => (*total_volume, *volume, *minute, *average),
             _ => continue,
         };
         let Some(minute) = minute_of(e, stated) else { continue };
         if vol::positive(total).is_none() || vol::positive(volume).is_none() || !cal.is_trading(cal_key, minute) {
             continue;
         }
-        prints.push(Print { ts: e.exchange_ts_ns, minute, total, volume, filled: e.flags.backfill });
+        prints.push(Print { ts: e.exchange_ts_ns, minute, total, volume, average, filled: e.flags.backfill });
     }
     let mut chain = TradeChain::default();
     // Each span end's print: the newest one ending at a total (hi), the oldest one starting at a total (lo).
-    let mut ending: HashMap<i64, i64> = HashMap::new();
+    let mut ending: HashMap<i64, (i64, i64)> = HashMap::new();
     let mut starting: HashMap<i64, i64> = HashMap::new();
     let mut at_instant: BTreeMap<i64, f64> = BTreeMap::new();
     for p in &prints {
         chain.cover(p.total, p.volume, p.minute, p.filled);
-        let end = ending.entry(key(p.total)).or_insert(p.ts);
-        *end = (*end).max(p.ts);
+        let end = ending.entry(key(p.total)).or_insert((p.ts, p.average));
+        if p.ts > end.0 {
+            *end = (p.ts, p.average);
+        }
         let start = starting.entry(key(p.total - p.volume)).or_insert(p.ts);
         *start = (*start).min(p.ts);
         *at_instant.entry(p.ts).or_insert(0.0) += p.volume;
@@ -94,14 +98,14 @@ pub fn windows(events: &[MarketEvent], cal: &Calendar) -> Vec<Value> {
             continue;
         }
         let Some(&end_ns) = starting.get(&key(right.lo)) else { continue };
-        let (after_ns, volume_at_after) = if from_open {
-            (0, 0.0)
+        let (after_ns, volume_at_after, average) = if from_open {
+            (0, 0.0, 0)
         } else {
-            let Some(&ts) = ending.get(&key(left.hi)) else { continue };
-            (ts, at_instant.get(&ts).copied().unwrap_or(0.0))
+            let Some(&(ts, average)) = ending.get(&key(left.hi)) else { continue };
+            (ts, at_instant.get(&ts).copied().unwrap_or(0.0), average)
         };
         out.push(json!({"after_ns": after_ns, "volume_at_after": vol::wire(volume_at_after), "total_before": vol::wire(left.hi),
-            "end_ns": end_ns, "next_total_before": vol::wire(right.lo), "end_is_live": true,
+            "average_before": (average > 0).then_some(average), "end_ns": end_ns, "next_total_before": vol::wire(right.lo), "end_is_live": true,
             "unseen": vol::wire(right.lo - left.hi)}));
     }
     out
@@ -244,14 +248,16 @@ mod tests {
 
     #[test]
     fn a_stocks_windows_are_its_cumulative_volume_holes_bounded_by_the_prints_around_them() {
-        let events = vec![print(1, 541, 0, 20.0, 50.0), print(2, 600, 0, 3.0, 53.0), print(3, 600, 0, 2.0, 55.0),
+        let mut events = vec![print(1, 541, 0, 20.0, 50.0), print(2, 600, 0, 3.0, 53.0), print(3, 600, 0, 2.0, 55.0),
                           print(4, 605, 9, 5.0, 85.0), print(5, 606, 0, 1.0, 86.0)];
+        if let Payload::Trade { average, .. } = &mut events[2].payload { *average = 1_000_300; }
         let w = windows(&events, &Calendar::default());
         assert_eq!(w.len(), 2, "{w:?}");
         assert_eq!((w[0]["after_ns"].as_i64(), w[0]["end_ns"].as_i64(), w[0]["unseen"].as_f64()), (Some(0), Some(ts(541, 0)), Some(30.0)),
                    "from the open: 30 lots before the first print seen");
         assert_eq!((w[1]["after_ns"].as_i64(), w[1]["volume_at_after"].as_f64(), w[1]["total_before"].as_f64()),
                    (Some(ts(600, 0)), Some(5.0), Some(55.0)), "both 10:00:00 prints are held at the start instant");
+        assert_eq!((w[0]["average_before"].as_i64(), w[1]["average_before"].as_i64()), (None, Some(1_000_300)), "the 均價 the fill continues from");
         assert_eq!((w[1]["end_ns"].as_i64(), w[1]["next_total_before"].as_f64()), (Some(ts(605, 9)), Some(80.0)));
     }
 

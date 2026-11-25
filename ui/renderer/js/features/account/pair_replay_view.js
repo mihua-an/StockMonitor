@@ -6,7 +6,7 @@
 import { morphInto } from "../../core/dom_morph.js";
 import { ComponentHost } from "../../core/component_host.js";
 import { componentRegistry } from "../../core/component_registry.js";
-import { renderUnifiedBigOrderInOut } from "../../core/big_order_flow.js";
+import { flowModeChoice, renderUnifiedBigOrderInOut } from "../../core/big_order_flow.js";
 import { normalizeRustTradeFlow } from "../../market_data/realtime_market_math.js";
 import { displayQuote } from "../../core/auction_price.js";
 import { MarketPriceColorPolicy, TradeSideColorPolicy, signedValueClass } from "../../core/market_color_policy.js";
@@ -224,15 +224,15 @@ function renderKbars(panel, frame) {
   }
 }
 
-/** 大單流向: 即時報價's 進出 view (core/big_order_flow.js) -- 大單控盤, then the 大單 and 小單 net flows over the day,
- * 累計 or 分時 -- from the replay's flow, up to the replay time. */
+/** 大單流向: 即時報價's 進出 view (core/big_order_flow.js) -- 控盤, then the 大單 and 小單 net flows over the day,
+ * each 累計 or 分時 -- from the replay's flow, up to the replay time. */
 function renderFlow(host, tradeflow, waiting, wait) {
   const flow = waiting ? null : normalizeRustTradeFlow(tradeflow || {});
   if (!flow?.available) {
     morphInto(host, waiting ? wait : noteHtml("等待 Rust B 計算回放的大單流向"));
     return;
   }
-  morphInto(host, renderUnifiedBigOrderInOut(flow, { displayMode: actualAccountReplayState.flowMode }));
+  morphInto(host, renderUnifiedBigOrderInOut(flow, { displayModes: actualAccountReplayState.flowModes }));
 }
 
 // ---------------------------------------------------------------------------------------------------- one frame
@@ -394,9 +394,9 @@ export function bindPairReplayControls() {
   });
   // 大單流向's 累計／分時: the buttons are redrawn with the view, so the click is taken on the card.
   panel.querySelector("[data-replay-flow]")?.addEventListener("click", (event) => {
-    const mode = event.target.closest("[data-flow-display-mode]")?.dataset.flowDisplayMode;
-    if (mode !== "cumulative" && mode !== "minute") return;
-    state.flowMode = mode;
+    const choice = flowModeChoice(event.target);
+    if (!choice) return;
+    state.flowModes = { ...state.flowModes, [choice.size]: choice.mode };
     renderPairReplayFrame();
   });
   // 查價: the bar under the mouse (the chunk of the minute it points at); off the chart, the newest bar again.
