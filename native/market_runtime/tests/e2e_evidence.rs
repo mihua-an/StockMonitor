@@ -243,5 +243,18 @@ fn a_code_subscribed_once_its_session_traded_comes_back_at_its_first_print_as_a_
     assert_eq!(reply["known"], json!([true]));
     let file = read_until(&path, |f| f["late_joins"]["3481"]["fill"]["state"] == "filled");
     assert_eq!(file["completeness"], "complete", "a late join is no loss of the partition: {file}");
+
+    // The provider stops before filling TXFR1's: the next process is answered with that gap again, as it was asked,
+    // at its hello (a friend's App, 11-27: closed 6 s after the night's late join, the gap from the open was lost).
+    let futures = evidence_file(&root, "FUT", "2026-09-29", "DAY");
+    read_until(&futures, |f| f["late_joins"]["TXFR1"]["fill"]["gap"]["next_ns"] == json!(TAIPEI_0930_NS + 2));
+    drop(p);
+    let mut q = d.client(SHIOAJI);
+    let hello = command(&mut q, "ingest.hello", json!({"instance": "p2", "fills_gaps": true}));
+    let again: Vec<&Value> = hello["gaps"].as_array().unwrap().iter().filter(|g| g["cause"] == "late_join").collect();
+    let codes: Vec<&str> = again.iter().map(|g| g["code"].as_str().unwrap()).collect();
+    assert!(codes.contains(&"TXFR1") && codes.contains(&"IX0028") && !codes.contains(&"3481"), "the unfilled late joins only: {hello}");
+    let txf = again.iter().find(|g| g["code"] == "TXFR1").unwrap();
+    assert_eq!((txf["after_ns"].as_i64(), txf["next_ns"].as_i64(), txf["next_total_before"].as_f64()), (Some(0), Some(TAIPEI_0930_NS + 2), Some(39_997.0)));
     d.shutdown();
 }

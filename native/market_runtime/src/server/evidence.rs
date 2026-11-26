@@ -157,17 +157,21 @@ pub(crate) fn cmd_hello(stream: &mut FrameWriter, hub: &Hub, session: &mut Sessi
         core.late_joins.set_fills_gaps(&source, fills_gaps);
         if fills_gaps {
             for id in &restarted {
+                // What the process before it was answered and never reported filled: this one fills it, whether or not
+                // this restart itself touched trading.
+                gaps.extend(core.evidence.unfilled_gaps(id, now));
                 let Some(restart) = core.evidence.row(id).and_then(|row| row.restarts.last()).filter(|r| r.during_trading && r.to_ns == now).cloned()
                 else { continue };
                 let codes: Vec<String> = listed.iter().filter(|(market, _)| *market == id.market).map(|(_, code)| code.clone()).collect();
                 let starts = core.engine.gap_starts(&id.source, &id.market, &id.trading_date, &id.session, &codes);
                 core.evidence.backfill_requested(id, restart.to_ns, starts.iter().map(|s| s.code.clone()));
-                gaps.extend(starts.into_iter().map(|s| {
-                    let mut gap = json!(s);
+                for start in starts {
+                    let mut gap = json!(start);
                     gap["restart_from_ns"] = json!(restart.from_ns);
                     gap["restart_to_ns"] = json!(restart.to_ns);
-                    gap
-                }));
+                    core.evidence.gap_answered(&source, &gap);
+                    gaps.push(gap);
+                }
             }
         }
         restarted
@@ -279,6 +283,10 @@ pub(crate) fn answered_gaps(hub: &Hub, source: &str) -> Vec<Value> {
     let Core { outage_gaps, evidence, .. } = &mut *core;
     outage_gaps.due(evidence, now_ns() as i64);
     gaps.extend(outage_gaps.take(source));
+    // Kept on their fills: a provider that stops before reporting one leaves it to its successor (Ledger::unfilled_gaps).
+    for gap in &gaps {
+        evidence.gap_answered(source, gap);
+    }
     gaps
 }
 

@@ -120,5 +120,28 @@ async function settle(predicate) {
     assert.equal(records[1].detail.revision, "r2", "it ends when the announced revision is loaded");
     store.stop();
   }
+  // A catalog app_api is still building answers late (9.6 s on a friend's machine, 11-27): the read waits for it. A
+  // fixed 8 s deadline aborted it and failed the required startup step on a working App.
+  {
+    let answer = null;
+    let signalled = null;
+    const store = createProductCatalogStore({
+      urlFor: (path) => `http://127.0.0.1:8001${path}`,
+      logger: { warn: () => {} },
+      fetchImpl: (url, options = {}) => {
+        if (!url.endsWith("/api/product-catalog/bootstrap")) return new Promise(() => {});
+        signalled = options.signal || null;
+        return new Promise((resolve) => { answer = resolve; });
+      },
+    });
+    const loading = store.bootstrap();
+    await settle(() => answer !== null);
+    assert.equal(signalled, null, "the catalog read carries no abort signal: nothing cuts it");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    answer({ ok: true, json: async () => ({ ok: true, items: [{ source: "shioaji", code: "2330", name: "台積電" }], status: { revision: "r9", last_error: null } }) });
+    const snapshot = await loading;
+    assert.equal(snapshot.status.loaded, true);
+    store.stop();
+  }
   console.log("product_catalog_store_follow: ok");
 })().catch((error) => { console.error(error); process.exit(1); });

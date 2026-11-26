@@ -1,6 +1,5 @@
 "use strict";
 
-const { withTimeout } = require("../../service/platform/js/fetch_timeout");
 const { normalizeProviderSource } = require("../../config/js/provider_contract");
 
 function normalizeRow(raw = {}) {
@@ -85,18 +84,19 @@ function createProductCatalogStore({
   let loadPromise = null;
   let stopFollowing = null;
 
-  async function requestJson(pathname, { method = "GET", timeoutMs = 5000 } = {}) {
-    return withTimeout(Math.max(100, Number(timeoutMs) || 5000), async (signal) => {
-      const response = await fetchImpl(urlFor(pathname), { method, cache: "no-store", signal });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return response.json();
-    });
+  // app_api builds the catalog when it starts (a 23k-row master read and written, 10 s on a slow disk) and answers
+  // once it is built: the answer is waited for, never cut at a fixed time. A deadline shorter than that build failed
+  // the required startup step on a working App; a dead app_api ends the request by its connection.
+  async function requestJson(pathname) {
+    const response = await fetchImpl(urlFor(pathname), { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
   }
 
-  async function bootstrap({ timeoutMs = 8000 } = {}) {
+  async function bootstrap() {
     if (loadPromise) return loadPromise;
     loadPromise = (async () => {
-      const payload = await requestJson("/api/product-catalog/bootstrap", { timeoutMs });
+      const payload = await requestJson("/api/product-catalog/bootstrap");
       // A catalog whose source masters are simply not on disk is DEGRADED, not broken. That is
       // the normal state of a fresh install, and the product list
       // does not read this catalog at all -- it reads watch_pages.csv. As a hard failure it would

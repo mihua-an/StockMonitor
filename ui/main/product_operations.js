@@ -14,7 +14,7 @@ function createProductOperations({ fetch, urlFor, productCatalogStore, sourceEna
   }
 
   async function loadProductCatalogIndex() {
-    return productCatalogStore.bootstrap({ timeoutMs: 10000 });
+    return productCatalogStore.bootstrap();
   }
 
   // Only Futu's master is asked for at the start: Shioaji's is written by the provider's login (before it the broker's

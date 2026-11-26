@@ -622,3 +622,16 @@ def test_the_provider_hands_a_view_asked_before_the_close_to_the_fill_once():
     ShioajiBrokerService._closed_view_requested(owner, payload)
     ShioajiBrokerService._closed_view_requested(owner, payload)
     assert [(i["cause"], i["code"]) for i in asked] == [(rb.CAUSE_CLOSED_VIEW, "2458")], "queued for its close, asked once"
+
+def test_an_earlier_processs_restart_gap_answered_again_ends_where_market_runtime_says():
+    # Market Runtime answers a new process with a restart gap the process before it never filled, ended at that
+    # process's first live print (evidence.rs unfilled_gaps): its end is stated, never looked for on this stream.
+    stated = rb.Gap.from_wire({"cause": "restart", "market": "FUT", "code": "TXFR1", "trading_date": "2026-11-06", "session": "NIGHT",
+                               "after_ns": ns(1, 50, 42), "volume_at_after": 1.0, "total_before": 24275.0,
+                               "restart_from_ns": ns(1, 50, 40), "restart_to_ns": ns(1, 50, 53),
+                               "next_ns": ns(1, 50, 58), "next_total_before": 24292.0})
+    assert (stated.next_ns, stated.next_total_before, stated.restart_to_ns) == (ns(1, 50, 58), 24292.0, ns(1, 50, 53))
+    own = rb.Gap.from_wire({"cause": "restart", "market": "FUT", "code": "TXFR1", "trading_date": "2026-11-06", "session": "NIGHT",
+                            "after_ns": ns(1, 51, 31), "volume_at_after": 1.0, "total_before": 24305.0,
+                            "restart_from_ns": ns(1, 51, 30), "restart_to_ns": ns(1, 51, 44)})
+    assert own.next_ns is None, "this process's own restart ends at its own first live print"

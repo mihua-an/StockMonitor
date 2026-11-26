@@ -179,7 +179,7 @@ class Gap:
     connection: str = ""
     outage_to_ns: int = 0
     # The first print after the gap (exchange ns, its cumulative volume less its own): stated by Market Runtime for a
-    # late join and an outage, observed on the live stream for a restart.
+    # late join, an outage and an earlier process's restart, observed on the live stream for this process's restart.
     next_ns: int | None = None
     next_total_before: float | None = None
     done: bool = False
@@ -204,8 +204,9 @@ class Gap:
         late = cause in (CAUSE_LATE_JOIN, CAUSE_CLOSED_VIEW)
         outage = cause == CAUSE_OUTAGE
         restart = cause == CAUSE_RESTART
-        # Market Runtime states the end of a late join's gap, and of an outage's whose code printed again.
-        stated_end = not restart and item.get("next_ns") is not None
+        # Market Runtime states the end of a late join's gap, of an outage's whose code printed again, and of a restart's
+        # it answers again for a process that stopped before filling it (that process's first live print).
+        stated_end = item.get("next_ns") is not None
         next_total = item.get("next_total_before")
         average = item.get("average_before")
         return cls(market=str(item["market"]).upper(), code=str(item["code"]).upper(), trading_date=str(item["trading_date"]),

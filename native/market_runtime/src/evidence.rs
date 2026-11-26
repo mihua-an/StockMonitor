@@ -91,6 +91,12 @@ pub struct Fill {
     pub volume: f64,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub reason: String,
+    /// The gap as its provider was answered with (`ingest.hello` / batch `gaps`): kept so a provider that stops before
+    /// reporting it is not the end of it -- its successor is answered with it again (`Ledger::unfilled_gaps`). A
+    /// restart's gap gets its end (`next_ns`, `next_total_before`) when the provider's first live print of the code
+    /// after its start is stored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gap: Option<Value>,
 }
 
 pub const FILL_REQUESTED: &str = "requested";
@@ -135,6 +141,20 @@ pub const CAUSE_OUTAGE: &str = "outage";
 
 fn cause_restart() -> String {
     CAUSE_RESTART.into()
+}
+
+/// The newest restart's gap in `event`'s code ends at the provider's first live print after its start: noted on the
+/// gap so a successor of a provider that stopped before reporting knows where it ended.
+fn end_restart_gap(row: &mut Row, event: &MarketEvent) {
+    let Some(restart) = row.restarts.last_mut().filter(|r| !r.backfill.is_empty()) else { return };
+    let Some(fill) = restart.backfill.get_mut(&event.code.to_uppercase()).filter(|fill| fill.state == FILL_REQUESTED) else { return };
+    let Some(gap) = fill.gap.as_mut().filter(|gap| gap.get("next_ns").is_none_or(Value::is_null)) else { return };
+    if event.exchange_ts_ns <= gap.get("after_ns").and_then(Value::as_i64).unwrap_or(0) {
+        return;
+    }
+    let Some(first) = crate::late_join::FirstPrint::of(event) else { return };
+    gap["next_ns"] = json!(first.exchange_ns);
+    gap["next_total_before"] = json!(first.total_before);
 }
 
 /// Why a stored fill stays unverified: the volumes that did not meet, or the one nobody stated (a futures session's
@@ -571,9 +591,76 @@ impl Ledger {
                 let happened_ns = if event.flags.time_label { event.exchange_ts_ns.min(event.arrival_ns as i64) } else { event.exchange_ts_ns };
                 stored.last_ts_ns = stored.last_ts_ns.max(happened_ns);
             }
+            end_restart_gap(row, event);
         }
         self.dirty.insert(id);
         created
+    }
+
+    /// A gap answered to `source`'s provider (a late join's, an outage's, a restart's), kept on the fill it asks for
+    /// while that fill is still `requested`. False: no open record asks for it.
+    pub fn gap_answered(&mut self, source: &str, gap: &Value) -> bool {
+        let text = |field: &str| gap.get(field).and_then(Value::as_str).unwrap_or("").to_uppercase();
+        let ns = |field: &str| gap.get(field).and_then(Value::as_i64).unwrap_or(0);
+        let id = PartitionId { source: source.to_lowercase(), market: text("market"), trading_date: gap.get("trading_date")
+            .and_then(Value::as_str).unwrap_or("").to_owned(), session: text("session") };
+        let code = text("code");
+        let Some(row) = self.rows.get_mut(&id).filter(|row| row.open()) else { return false };
+        let fill = match gap.get("cause").and_then(Value::as_str).unwrap_or(CAUSE_RESTART) {
+            CAUSE_LATE_JOIN => row.late_joins.get_mut(&code).map(|join| &mut join.fill),
+            CAUSE_OUTAGE => {
+                let connection = gap.get("connection").and_then(Value::as_str).unwrap_or("");
+                row.outage_fills.iter_mut().find(|f| f.connection == connection && f.to_ns == ns("outage_to_ns")).and_then(|f| f.backfill.get_mut(&code))
+            }
+            _ => row.restarts.iter_mut().find(|r| r.to_ns == ns("restart_to_ns")).and_then(|r| r.backfill.get_mut(&code)),
+        };
+        let Some(fill) = fill.filter(|fill| fill.state == FILL_REQUESTED) else { return false };
+        let mut kept = gap.clone();
+        // A restart's gap ends at its provider's first live print, which is noted when stored (end_restart_gap).
+        if let (Some(old), true) = (fill.gap.as_ref(), kept.get("next_ns").is_none_or(Value::is_null)) {
+            kept["next_ns"] = old.get("next_ns").cloned().unwrap_or(Value::Null);
+            kept["next_total_before"] = old.get("next_total_before").cloned().unwrap_or(Value::Null);
+        }
+        fill.gap = Some(kept);
+        self.dirty.insert(id.clone());
+        self.urgent.insert(id);
+        true
+    }
+
+    /// The gaps of the open record `id` that an earlier provider process was answered with but never reported filled:
+    /// its successor fills them (a provider closed while it was still fetching left them for good before). Each with
+    /// its end: a late join's and an outage's as answered, an earlier restart's at that process's first live print. An
+    /// earlier restart's gap without one (its process stored no live print of the code) begins where the new restart's
+    /// own gap begins (the code's newest stored print), which fills it: it is closed as such.
+    pub fn unfilled_gaps(&mut self, id: &PartitionId, current_restart_to_ns: i64) -> Vec<Value> {
+        let Some(row) = self.rows.get_mut(id).filter(|row| row.open()) else { return Vec::new() };
+        let waiting = |fill: &Fill| fill.state == FILL_REQUESTED;
+        let mut gaps: Vec<Value> = Vec::new();
+        for join in row.late_joins.values().filter(|join| waiting(&join.fill)) {
+            gaps.extend(join.fill.gap.clone());
+        }
+        for outage in &row.outage_fills {
+            gaps.extend(outage.backfill.values().filter(|fill| waiting(fill)).filter_map(|fill| fill.gap.clone()));
+        }
+        let mut superseded = false;
+        for restart in row.restarts.iter_mut().filter(|r| r.to_ns != current_restart_to_ns) {
+            for fill in restart.backfill.values_mut().filter(|fill| fill.state == FILL_REQUESTED) {
+                match fill.gap.as_ref().filter(|gap| gap.get("next_ns").is_some_and(|ns| !ns.is_null())) {
+                    Some(gap) => gaps.push(gap.clone()),
+                    None => {
+                        fill.state = FILL_FAILED.into();
+                        fill.reason = "its provider stopped before a live print of the code: the next restart's gap starts where this \
+                                       one did".into();
+                        superseded = true;
+                    }
+                }
+            }
+        }
+        if !gaps.is_empty() || superseded {
+            self.dirty.insert(id.clone());
+            self.urgent.insert(id.clone());
+        }
+        gaps
     }
 
     /// An event of this partition Market Runtime refused for good (`reason`), or a re-sent one it already held. A
@@ -713,7 +800,9 @@ impl Ledger {
             (Some(from), Some(next)) => crate::volume::eq(from + report.volume, next),
             _ => !checkable,
         };
+        let gap = fill.gap.take();
         *fill = Fill {
+            gap,
             state: match (report.outcome.as_str(), met) {
                 ("stored", true) => FILL_FILLED,
                 ("stored", false) => FILL_UNVERIFIED,
@@ -1043,6 +1132,57 @@ mod tests {
         let night = id("FUT", "2026-09-29", "NIGHT");
         assert!(!ledger.late_join(&night, "TXFR1", taipei((2026, 9, 29), 880), taipei((2026, 9, 29), 900)), "14:40: before the night opens");
         assert!(ledger.late_join(&night, "TXFR1", taipei((2026, 9, 30), 60), taipei((2026, 9, 30), 61)), "01:00: the night is trading");
+    }
+
+    #[test]
+    fn a_gap_whose_provider_stopped_before_reporting_it_is_answered_to_the_next_process() {
+        // A friend's App, 11-27: TXFR1 joined the night at 01:50:39 and the App closed at 01:50:45, before the fill
+        // from the open ran; each later start filled only from the newest stored print.
+        let mut ledger = Ledger::default();
+        let night = id("FUT", "2026-09-29", "NIGHT");
+        let at = |minute| taipei((2026, 9, 30), minute);
+        ledger.hello("shioaji", "p1", at(110));
+        ledger.fold(&print("FUT", at(111), "TXFR1"), true);
+        assert!(ledger.late_join(&night, "TXFR1", at(110), at(111)));
+        let join = json!({"cause": "late_join", "market": "FUT", "code": "TXFR1", "trading_date": "2026-09-29", "session": "NIGHT",
+            "after_ns": 0, "since_ns": at(110), "next_ns": at(111), "next_total_before": 24275.0});
+        assert!(ledger.gap_answered("shioaji", &join));
+        // p2: its hello asks for the restart gap; its first live print after the start ends it; it stops unreported.
+        let p2 = at(112);
+        assert_eq!(ledger.hello("shioaji", "p2", p2), vec![night.clone()]);
+        assert!(ledger.unfilled_gaps(&night, p2).contains(&join), "the late join p1 never filled goes to p2");
+        ledger.backfill_requested(&night, p2, ["TXFR1".to_owned()]);
+        let restart = json!({"cause": "restart", "market": "FUT", "code": "TXFR1", "trading_date": "2026-09-29", "session": "NIGHT",
+            "after_ns": at(111), "restart_to_ns": p2});
+        assert!(ledger.gap_answered("shioaji", &restart));
+        let mut backfilled = print("FUT", at(112) + 1, "TXFR1");
+        backfilled.flags.backfill = true;
+        ledger.fold(&backfilled, true);
+        assert!(ledger.row(&night).unwrap().restarts[0].backfill["TXFR1"].gap.as_ref().unwrap()["next_ns"].is_null(), "a fill is no live print");
+        ledger.fold(&print("FUT", at(113), "TXFR1"), true);
+        // p3: answered with the late join (still unfilled) and p2's restart gap, ended at p2's first live print.
+        let p3 = at(114);
+        ledger.hello("shioaji", "p3", p3);
+        let gaps = ledger.unfilled_gaps(&night, p3);
+        assert_eq!(gaps.len(), 2);
+        assert_eq!(gaps[1]["restart_to_ns"], json!(p2));
+        assert_eq!((gaps[1]["next_ns"].as_i64(), gaps[1]["next_total_before"].as_f64()), (Some(at(113)), Some(0.0)));
+        // Reported filled, nothing is answered again.
+        let report = FillReport { market: "FUT".into(), code: "TXFR1".into(), trading_date: "2026-09-29".into(), session: "NIGHT".into(),
+            cause: CAUSE_LATE_JOIN.into(), restart_to_ns: 0, connection: String::new(), outage_to_ns: 0, outcome: "stored".into(),
+            end: "first_live_print".into(), prints: 9, volume: 24275.0, total_before: Some(0.0), next_total_before: Some(24275.0),
+            history_last_ns: None, reason: String::new() };
+        assert!(ledger.backfill_reported("shioaji", &report));
+        assert!(ledger.unfilled_gaps(&night, p3).iter().all(|gap| gap["cause"] != "late_join"));
+        // A restart's gap whose process stored no live print of the code is closed: the next restart starts there.
+        let p4 = at(115);
+        ledger.hello("shioaji", "p4", p4);
+        ledger.backfill_requested(&night, p4, ["MXFR1".to_owned()]);
+        assert!(ledger.gap_answered("shioaji", &json!({"cause": "restart", "market": "FUT", "code": "MXFR1", "trading_date": "2026-09-29",
+            "session": "NIGHT", "after_ns": at(100), "restart_to_ns": p4})));
+        ledger.hello("shioaji", "p5", at(116));
+        assert!(ledger.unfilled_gaps(&night, at(116)).iter().all(|gap| gap["code"] != "MXFR1"));
+        assert_eq!(ledger.row(&night).unwrap().restarts[2].backfill["MXFR1"].state, FILL_FAILED);
     }
 
     #[test]
